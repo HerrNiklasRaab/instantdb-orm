@@ -4,106 +4,62 @@ import { i } from "@instantdb/admin";
 
 const _schema = i.schema({
   entities: {
-    $files: i.entity({
-      deletedAt: i.date().indexed().optional(),
-      path: i.string().unique().indexed(),
-      url: i.string(),
-    }),
-    $users: i.entity({
-      deletedAt: i.date().indexed().optional(),
-      email: i.string().unique().indexed().optional(),
-      imageURL: i.string().optional(),
-      type: i.string().optional(),
-    }),
-    accounts: i.entity({
-      accessToken: i.string().optional(),
-      accessTokenExpiresAt: i.date().optional(),
-      accountId: i.string().indexed(),
-      createdAt: i.date().indexed(),
-      deletedAt: i.date().indexed().optional(),
-      idToken: i.string().optional(),
-      password: i.string().optional(),
-      providerId: i.string().indexed(),
-      refreshToken: i.string().optional(),
-      refreshTokenExpiresAt: i.date().optional(),
-      scope: i.string().optional(),
-      updatedAt: i.date().indexed(),
-    }),
-    sessions: i.entity({
-      createdAt: i.date().indexed(),
-      deletedAt: i.date().indexed().optional(),
-      expiresAt: i.date().indexed(),
-      ipAddress: i.string().optional(),
-      token: i.string().unique().indexed(),
-      updatedAt: i.date().indexed(),
-      userAgent: i.string().optional(),
-    }),
     users: i.entity({
-      createdAt: i.date().indexed(),
-      deletedAt: i.date().indexed().optional(),
-      email: i.string().unique().indexed(),
-      emailVerified: i.boolean(),
-      image: i.string().optional(),
       name: i.string(),
-      updatedAt: i.date().indexed(),
-    }),
-    verifications: i.entity({
       createdAt: i.date().indexed(),
-      deletedAt: i.date().indexed().optional(),
-      expiresAt: i.date().indexed(),
-      identifier: i.string().indexed(),
       updatedAt: i.date().indexed(),
-      value: i.string(),
+      deletedAt: i.date().indexed().optional(),
+    }),
+    profiles: i.entity({
+      bio: i.string().optional(),
+      avatarUrl: i.string().optional(),
+      createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
+      deletedAt: i.date().indexed().optional(),
+    }),
+    posts: i.entity({
+      title: i.string(),
+      content: i.string().optional(),
+      createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
+      deletedAt: i.date().indexed().optional(),
     }),
   },
   links: {
-    $usersLinkedPrimaryUser: {
+    usersProfile: {
       forward: {
-        on: "$users",
+        on: "users",
         has: "one",
-        label: "linkedPrimaryUser",
-        onDelete: "cascade",
+        label: "profile",
       },
       reverse: {
-        on: "$users",
-        has: "many",
-        label: "linkedGuestUsers",
-      },
-    },
-    accountsUser: {
-      forward: {
-        on: "accounts",
+        on: "profiles",
         has: "one",
         label: "user",
+      },
+    },
+    postsAuthor: {
+      forward: {
+        on: "posts",
+        has: "one",
+        label: "author",
       },
       reverse: {
         on: "users",
         has: "many",
-        label: "accounts",
+        label: "posts",
       },
     },
-    sessionsUser: {
+    usersReferredBy: {
       forward: {
-        on: "sessions",
+        on: "users",
         has: "one",
-        label: "user",
+        label: "referredBy",
       },
       reverse: {
         on: "users",
         has: "many",
-        label: "sessions",
-      },
-    },
-    users$user: {
-      forward: {
-        on: "users",
-        has: "one",
-        label: "$user",
-      },
-      reverse: {
-        on: "$users",
-        has: "one",
-        label: "user",
+        label: "referrals",
       },
     },
   },

@@ -6,7 +6,7 @@ import {
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
-import { Account } from "../entities/Account";
+import { Post } from "../entities/Post";
 
 describe("Entity Save (Integration)", () => {
   let db: TestInstantDBClient;
@@ -32,15 +32,6 @@ describe("Entity Save (Integration)", () => {
       expect(user.isDirty()).toBe(true);
     });
 
-    it("returns true after changing boolean field", async () => {
-      const user = new User(id());
-      await flushMicrotasks();
-
-      user.emailVerified = true;
-
-      expect(user.isDirty()).toBe(true);
-    });
-
     it("returns true after changing date field", async () => {
       const user = new User(id());
       await flushMicrotasks();
@@ -55,7 +46,7 @@ describe("Entity Save (Integration)", () => {
       await flushMicrotasks();
 
       user.name = "New Name";
-      user.email = "new@email.com";
+      user.updatedAt = new Date();
 
       expect(user.isDirty()).toBe(true);
     });
@@ -63,82 +54,76 @@ describe("Entity Save (Integration)", () => {
 
   describe("isDirty() - relationship changes", () => {
     it("returns true after assigning one-to-one relationship", async () => {
-      const account = new Account(id());
+      const post = new Post(id());
       const user = new User(id());
       await flushMicrotasks();
 
-      account.user = user;
+      post.author = user;
 
-      expect(account.isDirty()).toBe(true);
+      expect(post.isDirty()).toBe(true);
     });
 
     it("returns true after removing one-to-one relationship", async () => {
-      const accountId = id();
+      const postId = id();
       const userId = id();
-      const account = new Account(accountId);
+      const post = new Post(postId);
       const user = new User(userId);
       await flushMicrotasks();
 
       // First save the user with all required fields
       user.name = "Test User";
-      user.email = `${userId}@test.com`;
-      user.emailVerified = true;
       user.createdAt = new Date();
       user.updatedAt = new Date();
       await user.save();
 
       // Set up initial relationship and save
-      account.user = user;
-      account.providerId = "google";
-      account.accountId = "g123";
-      account.createdAt = new Date();
-      account.updatedAt = new Date();
-      await account.save();
+      post.author = user;
+      post.title = "Test Post";
+      post.createdAt = new Date();
+      post.updatedAt = new Date();
+      await post.save();
 
       // Now remove it
-      account.user = null;
+      post.author = null;
 
-      expect(account.isDirty()).toBe(true);
+      expect(post.isDirty()).toBe(true);
     });
 
     it("returns true after adding to one-to-many relationship", async () => {
       const user = new User(id());
-      const account = new Account(id());
+      const post = new Post(id());
       await flushMicrotasks();
 
-      user.accounts.push(account);
+      user.posts.push(post);
 
       expect(user.isDirty()).toBe(true);
     });
 
     it("returns true after removing from one-to-many relationship", async () => {
       const userId = id();
-      const accountId = id();
+      const postId = id();
       const user = new User(userId);
-      const account = new Account(accountId);
+      const post = new Post(postId);
       await flushMicrotasks();
 
       // Save user first
       user.name = "Test User";
-      user.email = `${userId}@test.com`;
-      user.emailVerified = true;
       user.createdAt = new Date();
       user.updatedAt = new Date();
       await user.save();
 
-      // Save account with required fields
-      account.providerId = "google";
-      account.accountId = "acc123";
-      account.createdAt = new Date();
-      account.updatedAt = new Date();
-      await account.save();
+      // Save post with required fields
+      post.title = "Test Post";
+      post.createdAt = new Date();
+      post.updatedAt = new Date();
+      await post.save();
 
       // Set up initial relationship and save
-      user.accounts.push(account);
+      user.posts.push(post);
       await user.save();
 
       // Now remove it
-      user.accounts.pop();
+      user.posts.pop();
 
       expect(user.isDirty()).toBe(true);
     });
@@ -163,99 +148,90 @@ describe("Entity Save (Integration)", () => {
       await flushMicrotasks();
 
       user.name = "New Name";
-      user.email = `${userId}@test.com`;
-      user.emailVerified = true;
       user.createdAt = new Date();
       user.updatedAt = new Date();
       await user.save();
 
       // Verify in database
       const result = await db.query({ users: { $: { where: { id: userId } } } });
-      const savedUser = (result as { users?: Array<{ name: string; email: string }> }).users?.[0];
+      const savedUser = (result as { users?: Array<{ name: string }> }).users?.[0];
       expect(savedUser).toBeDefined();
       expect(savedUser!.name).toBe("New Name");
-      expect(savedUser!.email).toBe(`${userId}@test.com`);
     });
 
     it("persists relationship link to database", async () => {
-      const accountId = id();
+      const postId = id();
       const userId = id();
-      const account = new Account(accountId);
+      const post = new Post(postId);
       const user = new User(userId);
       await flushMicrotasks();
 
       // First save the user
       user.name = "Test User";
-      user.email = `${userId}@test.com`;
-      user.emailVerified = true;
       user.createdAt = new Date();
       user.updatedAt = new Date();
       await user.save();
 
-      // Then link account to user
-      account.providerId = "google";
-      account.accountId = "g123";
-      account.createdAt = new Date();
-      account.updatedAt = new Date();
-      account.user = user;
-      await account.save();
+      // Then link post to user
+      post.title = "Test Post";
+      post.createdAt = new Date();
+      post.updatedAt = new Date();
+      post.author = user;
+      await post.save();
 
       // Verify relationship in database
       const result = await db.query({
-        accounts: {
-          $: { where: { id: accountId } },
-          user: {},
+        posts: {
+          $: { where: { id: postId } },
+          author: {},
         },
       });
       // InstantDB returns has-one relationships as single objects, not arrays
-      const savedAccount = (result as { accounts?: Array<{ user?: { id: string } }> }).accounts?.[0];
-      expect(savedAccount?.user?.id).toBe(userId);
+      const savedPost = (result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0];
+      expect(savedPost?.author?.id).toBe(userId);
     });
 
     it("persists relationship unlink to database", async () => {
-      const accountId = id();
+      const postId = id();
       const userId = id();
-      const account = new Account(accountId);
+      const post = new Post(postId);
       const user = new User(userId);
       await flushMicrotasks();
 
       // First save the user
       user.name = "Test User";
-      user.email = `${userId}@test.com`;
-      user.emailVerified = true;
       user.createdAt = new Date();
       user.updatedAt = new Date();
       await user.save();
 
       // Set up and save initial relationship
-      account.providerId = "google";
-      account.accountId = "g123";
-      account.createdAt = new Date();
-      account.updatedAt = new Date();
-      account.user = user;
-      await account.save();
+      post.title = "Test Post";
+      post.createdAt = new Date();
+      post.updatedAt = new Date();
+      post.author = user;
+      await post.save();
 
       // Verify link exists (has-one returns object, not array)
       let result = await db.query({
-        accounts: {
-          $: { where: { id: accountId } },
-          user: {},
+        posts: {
+          $: { where: { id: postId } },
+          author: {},
         },
       });
-      expect((result as { accounts?: Array<{ user?: { id: string } }> }).accounts?.[0]?.user?.id).toBe(userId);
+      expect((result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0]?.author?.id).toBe(userId);
 
       // Now remove the relationship
-      account.user = null;
-      await account.save();
+      post.author = null;
+      await post.save();
 
-      // Verify unlinked (user should be null/undefined when unlinked)
+      // Verify unlinked (author should be null/undefined when unlinked)
       result = await db.query({
-        accounts: {
-          $: { where: { id: accountId } },
-          user: {},
+        posts: {
+          $: { where: { id: postId } },
+          author: {},
         },
       });
-      expect((result as { accounts?: Array<{ user?: { id: string } | null }> }).accounts?.[0]?.user).toBeNull();
+      expect((result as { posts?: Array<{ author?: { id: string } | null }> }).posts?.[0]?.author).toBeNull();
     });
 
     it("converts Date to ISO string", async () => {
@@ -265,8 +241,6 @@ describe("Entity Save (Integration)", () => {
 
       const testDate = new Date("2024-06-15T10:30:00.000Z");
       user.name = "Test";
-      user.email = `${userId}@test.com`;
-      user.emailVerified = true;
       user.createdAt = new Date();
       user.updatedAt = testDate;
       await user.save();
@@ -285,8 +259,6 @@ describe("Entity Save (Integration)", () => {
       await flushMicrotasks();
 
       user.name = "New Name";
-      user.email = `${userId}@test.com`;
-      user.emailVerified = true;
       user.createdAt = new Date();
       user.updatedAt = new Date();
       expect(user.isDirty()).toBe(true);
@@ -302,8 +274,6 @@ describe("Entity Save (Integration)", () => {
       await flushMicrotasks();
 
       user.name = "First Change";
-      user.email = `${userId}@test.com`;
-      user.emailVerified = true;
       user.createdAt = new Date();
       user.updatedAt = new Date();
       await user.save();

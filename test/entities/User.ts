@@ -1,39 +1,34 @@
 import { makeObservable, observable } from "mobx";
 import { Model } from "../../src/object-graph/Model";
-import type { $User } from "./$User";
-import type { Account } from "./Account";
-import type { Session } from "./Session";
+import type { Profile } from "./Profile";
+import type { Post } from "./Post";
 
 export class User extends Model {
   readonly id: string;
 
-  createdAt: Date = undefined!;
-  deletedAt: Date | null = null;
-  email: string = undefined!;
-  emailVerified: boolean = undefined!;
-  image?: string = undefined;
   name: string = undefined!;
+  createdAt: Date = undefined!;
   updatedAt: Date = undefined!;
+  deletedAt: Date | null = null;
 
   // Relationships
-  $user: $User | null = null;
-  accounts: Account[] = [];
-  sessions: Session[] = [];
+  profile: Profile | null = null;
+  posts: Post[] = [];
+  referredBy: User | null = null;
+  referrals: User[] = [];
 
   constructor(id: string) {
     super();
     this.id = id;
     makeObservable(this, {
-      createdAt: observable,
-      deletedAt: observable,
-      email: observable,
-      emailVerified: observable,
-      image: observable,
       name: observable,
+      createdAt: observable,
       updatedAt: observable,
-      $user: observable.ref,
-      accounts: observable.shallow,
-      sessions: observable.shallow,
+      deletedAt: observable,
+      profile: observable.ref,
+      posts: observable.shallow,
+      referredBy: observable.ref,
+      referrals: observable.shallow,
     });
     this.initializeTracking();
   }

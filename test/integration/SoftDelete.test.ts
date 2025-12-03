@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import { setDatabase } from "../../src/object-graph/persistence/DatabaseProvider";
 import { User } from "../entities/User";
-import { Account } from "../entities/Account";
+import { Post } from "../entities/Post";
 import {
   setupTestDatabase,
   id,
@@ -37,8 +37,6 @@ describe("Soft Delete (Integration)", () => {
     await db.transact([
       db.tx.users[entityId].update({
         name: "Test User",
-        email: `${entityId}@test.com`,
-        emailVerified: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         deletedAt: deleted ? new Date().toISOString() : null,
@@ -46,18 +44,17 @@ describe("Soft Delete (Integration)", () => {
     ]);
   }
 
-  // Helper to create test account directly in database
-  async function createTestAccountInDb(entityId: string, userId?: string, deleted = false) {
-    let tx = db.tx.accounts[entityId].update({
-      providerId: "google",
-      accountId: "g123",
+  // Helper to create test post directly in database
+  async function createTestPostInDb(entityId: string, authorId?: string, deleted = false) {
+    let tx = db.tx.posts[entityId].update({
+      title: "Test Post",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deletedAt: deleted ? new Date().toISOString() : null,
     });
 
-    if (userId) {
-      tx = tx.link({ user: userId });
+    if (authorId) {
+      tx = tx.link({ author: authorId });
     }
 
     await db.transact([tx]);
@@ -146,63 +143,63 @@ describe("Soft Delete (Integration)", () => {
   describe("relationship cleanup", () => {
     it("sets forward reference to null when target is deleted during hydration", async () => {
       const userId = id();
-      const accountId = id();
+      const postId = id();
 
       // Create entities in database - user is deleted
       await createTestUserInDb(userId, true);
-      await createTestAccountInDb(accountId, userId);
+      await createTestPostInDb(postId, userId);
 
       // Hydrate - deleted user should trigger cleanup
       await rootStore.watchEntity("users");
-      await rootStore.watchEntity("accounts");
+      await rootStore.watchEntity("posts");
 
-      const account = rootStore.getById("accounts", accountId);
-      expect(account).toBeDefined();
-      // The user reference should be null since user was deleted
-      expect(account?.user).toBeNull();
+      const post = rootStore.getById("posts", postId);
+      expect(post).toBeDefined();
+      // The author reference should be null since user was deleted
+      expect(post?.author).toBeNull();
     });
 
     it("removes deleted entity from reverse arrays during hydration", async () => {
       const userId = id();
-      const accountId1 = id();
-      const accountId2 = id();
+      const postId1 = id();
+      const postId2 = id();
 
-      // Create entities in database - account1 is deleted
+      // Create entities in database - post1 is deleted
       await createTestUserInDb(userId, false);
-      await createTestAccountInDb(accountId1, userId, true);
-      await createTestAccountInDb(accountId2, userId, false);
+      await createTestPostInDb(postId1, userId, true);
+      await createTestPostInDb(postId2, userId, false);
 
       // Hydrate all entities
       await rootStore.watchEntity("users");
-      await rootStore.watchEntity("accounts");
+      await rootStore.watchEntity("posts");
 
       const user = rootStore.getById("users", userId);
       expect(user).toBeDefined();
 
-      // Only non-deleted account should be in the array
-      expect(user?.accounts.length).toBe(1);
-      expect(user?.accounts[0]?.id).toBe(accountId2);
+      // Only non-deleted post should be in the array
+      expect(user?.posts.length).toBe(1);
+      expect(user?.posts[0]?.id).toBe(postId2);
     });
 
     it("cleans up relationships when entity becomes deleted", async () => {
       const userId = id();
-      const accountId = id();
+      const postId = id();
 
       // Create non-deleted entities
       await createTestUserInDb(userId, false);
-      await createTestAccountInDb(accountId, userId, false);
+      await createTestPostInDb(postId, userId, false);
 
       // First hydration - both entities present, relationship intact
       await rootStore.watchEntity("users");
-      await rootStore.watchEntity("accounts");
+      await rootStore.watchEntity("posts");
 
       const user = rootStore.getById("users", userId);
-      const account = rootStore.getById("accounts", accountId);
+      const post = rootStore.getById("posts", postId);
 
       expect(user).toBeDefined();
-      expect(account).toBeDefined();
-      expect(account?.user).toBe(user);
-      expect(user?.accounts).toContain(account);
+      expect(post).toBeDefined();
+      expect(post?.author).toBe(user);
+      expect(user?.posts).toContain(post);
 
       // Mark user as deleted in DB
       await markAsDeletedInDb("users", userId);
@@ -213,8 +210,8 @@ describe("Soft Delete (Integration)", () => {
       // User should be removed
       expect(rootStore.getById("users", userId)).toBeUndefined();
 
-      // Account's user reference should be cleaned up
-      expect(account?.user).toBeNull();
+      // Post's author reference should be cleaned up
+      expect(post?.author).toBeNull();
     });
   });
 });

@@ -8,8 +8,8 @@ import {
   TEST_ENTITY_REGISTRY,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
-import { Account } from "../entities/Account";
-import { $User } from "../entities/$User";
+import { Post } from "../entities/Post";
+import { Profile } from "../entities/Profile";
 
 type TestRootStore = RootStore<typeof TEST_ENTITY_REGISTRY>;
 
@@ -29,8 +29,6 @@ describe("RootStore hydration (Integration)", () => {
     entityId: string,
     data: Partial<{
       name: string;
-      email: string;
-      emailVerified: boolean;
       createdAt: Date;
       updatedAt: Date;
     }>
@@ -38,82 +36,72 @@ describe("RootStore hydration (Integration)", () => {
     const user = new User(entityId);
     storeA.getIdentityMap("users").set(user);
     await flushMicrotasks(); // Wait for tracking to initialize
-    // Set ALL properties AFTER tracking is initialized so changes are captured
-    // Note: We must change each field to trigger MobX observation, even if same as default
     user.name = data.name ?? "Test User";
-    user.email = data.email ?? `${entityId}@test.com`;
-    // Force a change by setting to opposite first, then to desired value
-    user.emailVerified = !user.emailVerified;
-    user.emailVerified = data.emailVerified ?? false;
     user.createdAt = data.createdAt ?? new Date();
     user.updatedAt = data.updatedAt ?? new Date();
     await user.save();
     return user;
   }
 
-  // Helper to create account through Store A
-  async function createAccountInStoreA(
+  // Helper to create post through Store A
+  async function createPostInStoreA(
     entityId: string,
     data: Partial<{
-      providerId: string;
-      accountId: string;
-      user: User;
+      title: string;
+      content: string;
+      author: User;
     }>
-  ): Promise<Account> {
-    const account = new Account(entityId);
-    storeA.getIdentityMap("accounts").set(account);
+  ): Promise<Post> {
+    const post = new Post(entityId);
+    storeA.getIdentityMap("posts").set(post);
     await flushMicrotasks(); // Wait for tracking to initialize
-    // Set properties AFTER tracking is initialized so changes are captured
-    account.providerId = data.providerId ?? "google";
-    account.accountId = data.accountId ?? "acc123";
-    account.createdAt = new Date();
-    account.updatedAt = new Date();
-    if (data.user) {
-      account.user = data.user;
+    post.title = data.title ?? "Test Post";
+    post.content = data.content;
+    post.createdAt = new Date();
+    post.updatedAt = new Date();
+    if (data.author) {
+      post.author = data.author;
     }
-    await account.save();
-    return account;
+    await post.save();
+    return post;
   }
 
-  // Helper to create $User through Store A
-  async function create$UserInStoreA(
+  // Helper to create profile through Store A
+  async function createProfileInStoreA(
     entityId: string,
     data: Partial<{
-      email: string;
-      type: string;
-      linkedPrimaryUser: $User;
+      bio: string;
+      avatarUrl: string;
       user: User;
     }>
-  ): Promise<$User> {
-    const $user = new $User(entityId);
-    storeA.getIdentityMap("$users").set($user);
+  ): Promise<Profile> {
+    const profile = new Profile(entityId);
+    storeA.getIdentityMap("profiles").set(profile);
     await flushMicrotasks();
-    $user.email = data.email;
-    $user.type = data.type ?? "primary";
-    if (data.linkedPrimaryUser) {
-      $user.linkedPrimaryUser = data.linkedPrimaryUser;
-    }
+    profile.bio = data.bio;
+    profile.avatarUrl = data.avatarUrl;
+    profile.createdAt = new Date();
+    profile.updatedAt = new Date();
     if (data.user) {
-      $user.user = data.user;
+      profile.user = data.user;
     }
-    await $user.save();
-    return $user;
+    await profile.save();
+    return profile;
   }
 
-  // Helper to create account with dangling link directly in DB (for edge case tests)
-  async function createAccountInDbWithDanglingLink(
+  // Helper to create post with dangling link directly in DB (for edge case tests)
+  async function createPostInDbWithDanglingLink(
     entityId: string,
     fakeUserId: string
   ) {
     await db.transact([
-      db.tx.accounts[entityId]
+      db.tx.posts[entityId]
         .update({
-          providerId: "google",
-          accountId: "acc123",
+          title: "Test Post",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         })
-        .link({ user: fakeUserId }),
+        .link({ author: fakeUserId }),
     ]);
   }
 
@@ -124,8 +112,6 @@ describe("RootStore hydration (Integration)", () => {
       // Store A creates user
       await createUserInStoreA(userId, {
         name: "John",
-        email: `john-${userId}@test.com`,
-        emailVerified: true,
       });
 
       // Store B hydrates and verifies (only users needed)
@@ -134,8 +120,6 @@ describe("RootStore hydration (Integration)", () => {
 
       expect(user).toBeDefined();
       expect(user!.name).toBe("John");
-      expect(user!.email).toBe(`john-${userId}@test.com`);
-      expect(user!.emailVerified).toBe(true);
     });
 
     it("converts date fields to Date objects", async () => {
@@ -183,65 +167,65 @@ describe("RootStore hydration (Integration)", () => {
   describe("forward link resolution", () => {
     it("sets forward relationship when target exists", async () => {
       const userId = id();
-      const accountId = id();
+      const postId = id();
 
-      // Store A creates user and account with relationship
+      // Store A creates user and post with relationship
       const user = await createUserInStoreA(userId, { name: "John" });
-      await createAccountInStoreA(accountId, { user });
+      await createPostInStoreA(postId, { author: user });
 
       // Store B hydrates and verifies relationship
       await storeB.watchAll();
       const hydratedUser = storeB.getById("users", userId);
-      const hydratedAccount = storeB.getById("accounts", accountId);
+      const hydratedPost = storeB.getById("posts", postId);
 
-      expect(hydratedAccount!.user).toBe(hydratedUser);
+      expect(hydratedPost!.author).toBe(hydratedUser);
     });
 
     it("sets reverse relationship on target (has many)", async () => {
       const userId = id();
-      const accountId = id();
+      const postId = id();
 
-      // Store A creates user and account with relationship
+      // Store A creates user and post with relationship
       const user = await createUserInStoreA(userId, { name: "John" });
-      await createAccountInStoreA(accountId, { user });
+      await createPostInStoreA(postId, { author: user });
 
       // Store B hydrates and verifies reverse relationship
       await storeB.watchAll();
       const hydratedUser = storeB.getById("users", userId);
-      const hydratedAccount = storeB.getById("accounts", accountId);
+      const hydratedPost = storeB.getById("posts", postId);
 
-      expect(hydratedUser!.accounts).toContain(hydratedAccount);
-      expect(hydratedUser!.accounts.length).toBe(1);
+      expect(hydratedUser!.posts).toContain(hydratedPost);
+      expect(hydratedUser!.posts.length).toBe(1);
     });
 
     it("forward relationship is null when target does not exist yet", async () => {
-      const accountId = id();
+      const postId = id();
       const fakeUserId = id();
 
-      // Create account with link to non-existent user directly in DB
+      // Create post with link to non-existent user directly in DB
       // (simulates corrupted data or data from another system)
-      await createAccountInDbWithDanglingLink(accountId, fakeUserId);
+      await createPostInDbWithDanglingLink(postId, fakeUserId);
 
-      // Store B hydrates - should handle dangling reference gracefully (only accounts needed)
-      const accounts = await storeB.watchEntity("accounts");
-      const account = accounts.find((a) => a.id === accountId);
+      // Store B hydrates - should handle dangling reference gracefully (only posts needed)
+      const posts = await storeB.watchEntity("posts");
+      const post = posts.find((p) => p.id === postId);
 
-      expect(account!.user).toBeNull();
+      expect(post!.author).toBeNull();
     });
   });
 
   describe("reverse link resolution", () => {
     it("updates existing forward entities when target is hydrated later", async () => {
       const userId = id();
-      const accountId = id();
+      const postId = id();
 
-      // Create account with link to user that doesn't exist yet (direct DB)
-      await createAccountInDbWithDanglingLink(accountId, userId);
+      // Create post with link to user that doesn't exist yet (direct DB)
+      await createPostInDbWithDanglingLink(postId, userId);
 
-      // Store B hydrates account first (before user exists) - only accounts needed
-      const accounts = await storeB.watchEntity("accounts");
-      const account = accounts.find((a) => a.id === accountId);
-      expect(account!.user).toBeNull();
+      // Store B hydrates post first (before user exists) - only posts needed
+      const posts = await storeB.watchEntity("posts");
+      const post = posts.find((p) => p.id === postId);
+      expect(post!.author).toBeNull();
 
       // Now Store A creates the user
       await createUserInStoreA(userId, { name: "John" });
@@ -250,56 +234,56 @@ describe("RootStore hydration (Integration)", () => {
       await storeB.watchAll();
       const user = storeB.getById("users", userId);
 
-      // Account's user should now be resolved
-      expect(account!.user).toBe(user);
-      expect(user!.accounts).toContain(account);
+      // Post's author should now be resolved
+      expect(post!.author).toBe(user);
+      expect(user!.posts).toContain(post);
     });
 
     it("handles multiple forward entities referencing same target", async () => {
       const userId = id();
-      const accountId1 = id();
-      const accountId2 = id();
+      const postId1 = id();
+      const postId2 = id();
 
-      // Store A creates user and two accounts linked to it
+      // Store A creates user and two posts linked to it
       const user = await createUserInStoreA(userId, { name: "John" });
-      await createAccountInStoreA(accountId1, { providerId: "google", user });
-      await createAccountInStoreA(accountId2, { providerId: "github", user });
+      await createPostInStoreA(postId1, { title: "Post 1", author: user });
+      await createPostInStoreA(postId2, { title: "Post 2", author: user });
 
       // Store B hydrates and verifies all relationships
       await storeB.watchAll();
       const hydratedUser = storeB.getById("users", userId);
-      const account1 = storeB.getById("accounts", accountId1);
-      const account2 = storeB.getById("accounts", accountId2);
+      const post1 = storeB.getById("posts", postId1);
+      const post2 = storeB.getById("posts", postId2);
 
-      expect(account1!.user).toBe(hydratedUser);
-      expect(account2!.user).toBe(hydratedUser);
-      expect(hydratedUser!.accounts).toContain(account1);
-      expect(hydratedUser!.accounts).toContain(account2);
-      expect(hydratedUser!.accounts.length).toBe(2);
+      expect(post1!.author).toBe(hydratedUser);
+      expect(post2!.author).toBe(hydratedUser);
+      expect(hydratedUser!.posts).toContain(post1);
+      expect(hydratedUser!.posts).toContain(post2);
+      expect(hydratedUser!.posts.length).toBe(2);
     });
   });
 
   describe("edge cases", () => {
     it("does not set relationship when no link exists", async () => {
-      const accountId = id();
+      const postId = id();
 
-      // Store A creates account without user link
-      await createAccountInStoreA(accountId, {});
+      // Store A creates post without author link
+      await createPostInStoreA(postId, {});
 
-      // Store B hydrates and verifies no relationship (only accounts needed)
-      const accounts = await storeB.watchEntity("accounts");
-      const account = accounts.find((a) => a.id === accountId);
+      // Store B hydrates and verifies no relationship (only posts needed)
+      const posts = await storeB.watchEntity("posts");
+      const post = posts.find((p) => p.id === postId);
 
-      expect(account!.user).toBeNull();
+      expect(post!.author).toBeNull();
     });
 
     it("does not duplicate relationships when entity is hydrated multiple times", async () => {
       const userId = id();
-      const accountId = id();
+      const postId = id();
 
-      // Store A creates user and account with relationship
+      // Store A creates user and post with relationship
       const user = await createUserInStoreA(userId, { name: "John" });
-      await createAccountInStoreA(accountId, { user });
+      await createPostInStoreA(postId, { author: user });
 
       // Store B hydrates multiple times
       await storeB.watchAll();
@@ -307,83 +291,83 @@ describe("RootStore hydration (Integration)", () => {
       await storeB.watchAll();
 
       const hydratedUser = storeB.getById("users", userId);
-      const hydratedAccount = storeB.getById("accounts", accountId);
+      const hydratedPost = storeB.getById("posts", postId);
 
-      expect(hydratedUser!.accounts.length).toBe(1);
-      expect(hydratedUser!.accounts[0]).toBe(hydratedAccount);
+      expect(hydratedUser!.posts.length).toBe(1);
+      expect(hydratedUser!.posts[0]).toBe(hydratedPost);
     });
   });
 
   describe("deeply nested query hydration", () => {
-    it("hydrates 3-level nested relationships with where clause (User → $user → linkedGuestUsers)", async () => {
+    it("hydrates 3-level nested relationships with where clause (User → referrals → referrals)", async () => {
       const userId = id();
-      const primary$UserId = id();
-      const guestId1 = id();
-      const guestId2 = id();
+      const referral1Id = id();
+      const referral2Id = id();
 
-      // Create User
+      // Create User (the referrer)
       const user = await createUserInStoreA(userId, { name: "Primary User" });
 
-      // Create primary $User linked to User
-      const primary$User = await create$UserInStoreA(primary$UserId, {
-        email: `primary-${primary$UserId}@test.com`,
-        type: "primary",
-        user: user,
-      });
-      user.$user = primary$User;
-      await user.save();
+      // Create referral users linked to primary user
+      const referral1 = await createUserInStoreA(referral1Id, { name: "Referral 1" });
+      referral1.referredBy = user;
+      await referral1.save();
 
-      // Create guest $User linked to primary
-      await create$UserInStoreA(guestId1, {
-        email: `guest1-${guestId1}@test.com`,
-        type: "guest",
-        linkedPrimaryUser: primary$User,
-      });
-      await create$UserInStoreA(guestId2, {
-        email: `guest2-${guestId2}@test.com`,
-        type: "guest",
-        linkedPrimaryUser: primary$User,
-      });
+      const referral2 = await createUserInStoreA(referral2Id, { name: "Referral 2" });
+      referral2.referredBy = user;
+      await referral2.save();
 
-      // Store B hydrates using 3-level nested query with WHERE clause
+      // Store B hydrates using nested query with WHERE clause
       await storeB.query({
         users: {
           $: { where: { id: userId } },
-          $user: {
-            linkedGuestUsers: {},
-          },
+          referrals: {},
         },
       });
 
       // Get hydrated entities
       const hydratedUser = storeB.getById("users", userId);
-      const hydratedPrimary = storeB.getById("$users", primary$UserId);
-      const hydratedGuest1 = storeB.getById("$users", guestId1);
-      const hydratedGuest2 = storeB.getById("$users", guestId2);
+      const hydratedReferral1 = storeB.getById("users", referral1Id);
+      const hydratedReferral2 = storeB.getById("users", referral2Id);
 
-      // Level 1: User → $user
-      expect(hydratedUser!.$user).toBe(hydratedPrimary);
+      // User → referrals
+      expect(hydratedUser!.referrals).toContain(hydratedReferral1);
+      expect(hydratedUser!.referrals).toContain(hydratedReferral2);
+      expect(hydratedUser!.referrals.length).toBe(2);
 
-      // Level 2: $user → linkedGuestUsers
-      expect(hydratedPrimary!.linkedGuestUsers).toContain(hydratedGuest1);
-      expect(hydratedPrimary!.linkedGuestUsers).toContain(hydratedGuest2);
-      expect(hydratedPrimary!.linkedGuestUsers.length).toBe(2);
+      // Verify reverse relationships
+      expect(hydratedReferral1!.referredBy).toBe(hydratedUser);
+      expect(hydratedReferral2!.referredBy).toBe(hydratedUser);
+    });
 
-      // Level 3: Verify reverse relationships
-      expect(hydratedGuest1!.linkedPrimaryUser).toBe(hydratedPrimary);
-      expect(hydratedGuest2!.linkedPrimaryUser).toBe(hydratedPrimary);
+    it("hydrates one-to-one relationships (User ↔ Profile)", async () => {
+      const userId = id();
+      const profileId = id();
 
-      // Verify bidirectional User ↔ $User
-      expect(hydratedPrimary!.user).toBe(hydratedUser);
+      // Create User
+      const user = await createUserInStoreA(userId, { name: "John" });
 
-      // Verify object identity across traversal paths
-      expect(hydratedUser!.$user).toBe(hydratedGuest1!.linkedPrimaryUser);
-      expect(hydratedUser!.$user!.linkedGuestUsers[0]).toBe(
-        storeB.getById(
-          "$users",
-          hydratedUser!.$user!.linkedGuestUsers[0]!.id
-        )
-      );
+      // Create Profile linked to User
+      const profile = await createProfileInStoreA(profileId, {
+        bio: "Hello world",
+        user: user,
+      });
+      user.profile = profile;
+      await user.save();
+
+      // Store B hydrates
+      await storeB.query({
+        users: {
+          $: { where: { id: userId } },
+          profile: {},
+        },
+      });
+
+      const hydratedUser = storeB.getById("users", userId);
+      const hydratedProfile = storeB.getById("profiles", profileId);
+
+      // Verify bidirectional one-to-one
+      expect(hydratedUser!.profile).toBe(hydratedProfile);
+      expect(hydratedProfile!.user).toBe(hydratedUser);
     });
   });
 });

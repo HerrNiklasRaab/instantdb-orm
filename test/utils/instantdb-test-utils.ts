@@ -9,26 +9,16 @@ import type {
 import { setDatabase } from "../../src/object-graph/persistence/DatabaseProvider";
 import { configureEntityMeta, createEntityRegistry } from "../../src/object-graph";
 import schema from "../instant.schema";
-import {
-  $File,
-  $User,
-  Account,
-  Session,
-  User,
-  Verification,
-} from "../entities";
+import { User, Profile, Post } from "../entities";
 
 // Re-export id() for generating UUIDs in tests
 export { id };
 
 // Type-safe entity registry - created once and exported for use with RootStore<typeof TEST_ENTITY_REGISTRY>
 export const TEST_ENTITY_REGISTRY = createEntityRegistry({
-  $files: $File,
-  $users: $User,
-  accounts: Account,
-  sessions: Session,
   users: User,
-  verifications: Verification,
+  profiles: Profile,
+  posts: Post,
 });
 
 // Type for admin DB instance
