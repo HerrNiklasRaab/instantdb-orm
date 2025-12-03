@@ -1,60 +1,6 @@
 // Generic entity name type - will be narrowed by configuration
 export type EntityName = string;
 
-export class RelationshipFieldMeta {
-  constructor(
-    readonly fieldName: string,
-    readonly targetEntity: EntityName,
-    readonly linkName: string,
-    readonly cardinality: "one" | "many",
-    readonly isForward: boolean
-  ) {}
-
-  isToOne(): boolean {
-    return this.cardinality === "one";
-  }
-
-  isToMany(): boolean {
-    return this.cardinality === "many";
-  }
-}
-
-export class EntityMeta {
-  readonly schemaName: EntityName;
-  readonly scalarFields: string[];
-  readonly relationshipFields: RelationshipFieldMeta[];
-  readonly dateFields: Set<string>;
-
-  constructor(
-    schemaName: EntityName,
-    scalarFields: string[],
-    relationshipFields: RelationshipFieldMeta[],
-    dateFields: Set<string>
-  ) {
-    this.schemaName = schemaName;
-    this.scalarFields = scalarFields;
-    this.relationshipFields = relationshipFields;
-    this.dateFields = dateFields;
-  }
-
-  isDateField(name: string): boolean {
-    return this.dateFields.has(name);
-  }
-
-  getRelationshipFieldNames(): Set<string> {
-    return new Set(this.relationshipFields.map((r) => r.fieldName));
-  }
-
-  findReverseRelationship(
-    linkName: string,
-    excludeFieldName?: string
-  ): RelationshipFieldMeta | undefined {
-    return this.relationshipFields.find(
-      (r) => r.linkName === linkName && r.fieldName !== excludeFieldName
-    );
-  }
-}
-
 // Schema types for configuration
 interface AttrDef {
   valueType: string;
@@ -75,79 +21,106 @@ export interface SchemaConfig {
   links: Record<string, LinkDef>;
 }
 
+export class RelationshipFieldMeta {
+  readonly fieldName: string;
+  readonly targetEntity: EntityName;
+  readonly cardinality: "one" | "many";
+
+  constructor(
+    readonly linkName: string,
+    link: LinkDef,
+    readonly isForward: boolean
+  ) {
+    const side = isForward ? link.forward : link.reverse;
+    const otherSide = isForward ? link.reverse : link.forward;
+
+    this.fieldName = side.label;
+    this.targetEntity = otherSide.on;
+    this.cardinality = side.has as "one" | "many";
+  }
+
+  isToOne(): boolean {
+    return this.cardinality === "one";
+  }
+
+  isToMany(): boolean {
+    return this.cardinality === "many";
+  }
+}
+
+export class EntityMeta {
+  readonly schemaName: EntityName;
+  readonly scalarFields: string[];
+  readonly relationshipFields: RelationshipFieldMeta[];
+  readonly dateFields: Set<string>;
+
+  constructor(schema: SchemaConfig, entityName: EntityName) {
+    this.schemaName = entityName;
+
+    const entityDef = schema.entities[entityName];
+    const attrs = entityDef?.attrs ?? {};
+
+    this.scalarFields = Object.keys(attrs);
+    this.dateFields = this.extractDateFields(attrs);
+    this.relationshipFields = this.extractRelationshipFields(schema);
+  }
+
+  private extractDateFields(attrs: Record<string, AttrDef>): Set<string> {
+    const dateFields = new Set<string>();
+    for (const [fieldName, attrDef] of Object.entries(attrs)) {
+      if (attrDef.valueType === "date") {
+        dateFields.add(fieldName);
+      }
+    }
+    return dateFields;
+  }
+
+  private extractRelationshipFields(schema: SchemaConfig): RelationshipFieldMeta[] {
+    const relationships: RelationshipFieldMeta[] = [];
+    const allEntityNames = new Set(Object.keys(schema.entities));
+
+    for (const [linkName, link] of Object.entries(schema.links)) {
+      // Forward side
+      if (link.forward.on === this.schemaName && allEntityNames.has(link.reverse.on)) {
+        relationships.push(new RelationshipFieldMeta(linkName, link, true));
+      }
+
+      // Reverse side
+      if (link.reverse.on === this.schemaName && allEntityNames.has(link.forward.on)) {
+        relationships.push(new RelationshipFieldMeta(linkName, link, false));
+      }
+    }
+
+    return relationships;
+  }
+
+  isDateField(name: string): boolean {
+    return this.dateFields.has(name);
+  }
+
+  getRelationshipFieldNames(): Set<string> {
+    return new Set(this.relationshipFields.map((r) => r.fieldName));
+  }
+
+  findReverseRelationship(
+    linkName: string,
+    excludeFieldName?: string
+  ): RelationshipFieldMeta | undefined {
+    return this.relationshipFields.find(
+      (r) => r.linkName === linkName && r.fieldName !== excludeFieldName
+    );
+  }
+}
+
 // Mutable state - configured at runtime
 let ENTITY_META: Map<EntityName, EntityMeta> = new Map();
 let ENTITY_NAMES: EntityName[] = [];
-
-function extractDateFieldsForEntity(schema: SchemaConfig, entityName: EntityName): Set<string> {
-  const dateFields = new Set<string>();
-  const entityDef = schema.entities[entityName];
-  if (!entityDef?.attrs) return dateFields;
-
-  for (const [fieldName, attrDef] of Object.entries(entityDef.attrs)) {
-    if (attrDef.valueType === "date") {
-      dateFields.add(fieldName);
-    }
-  }
-  return dateFields;
-}
-
-function getScalarFields(schema: SchemaConfig, entityName: EntityName): string[] {
-  const entityDef = schema.entities[entityName];
-  return entityDef?.attrs ? Object.keys(entityDef.attrs) : [];
-}
-
-function buildRelationshipFields(
-  schema: SchemaConfig,
-  entityName: EntityName
-): RelationshipFieldMeta[] {
-  const relationships: RelationshipFieldMeta[] = [];
-  const entityNames = new Set(Object.keys(schema.entities));
-
-  for (const [linkName, link] of Object.entries(schema.links)) {
-    // Forward side: this entity owns the forward relationship
-    if (link.forward.on === entityName && entityNames.has(link.reverse.on)) {
-      relationships.push(
-        new RelationshipFieldMeta(
-          link.forward.label,
-          link.reverse.on,
-          linkName,
-          link.forward.has as "one" | "many",
-          true
-        )
-      );
-    }
-
-    // Reverse side: this entity owns the reverse relationship
-    if (link.reverse.on === entityName && entityNames.has(link.forward.on)) {
-      relationships.push(
-        new RelationshipFieldMeta(
-          link.reverse.label,
-          link.forward.on,
-          linkName,
-          link.reverse.has as "one" | "many",
-          false
-        )
-      );
-    }
-  }
-
-  return relationships;
-}
 
 function buildEntityMeta(schema: SchemaConfig): Map<EntityName, EntityMeta> {
   const meta = new Map<EntityName, EntityMeta>();
 
   for (const entityName of Object.keys(schema.entities)) {
-    meta.set(
-      entityName,
-      new EntityMeta(
-        entityName,
-        getScalarFields(schema, entityName),
-        buildRelationshipFields(schema, entityName),
-        extractDateFieldsForEntity(schema, entityName)
-      )
-    );
+    meta.set(entityName, new EntityMeta(schema, entityName));
   }
 
   return meta;
