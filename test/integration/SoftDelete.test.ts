@@ -1,0 +1,220 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { RootStore } from "../../src/object-graph/store/RootStore";
+import { setDatabase } from "../../src/object-graph/persistence/DatabaseProvider";
+import { User } from "../entities/User";
+import { Account } from "../entities/Account";
+import {
+  setupTestDatabase,
+  id,
+  flushMicrotasks,
+  type TestInstantDBClient,
+  TEST_ENTITY_REGISTRY,
+} from "../utils/instantdb-test-utils";
+
+type TestRootStore = RootStore<typeof TEST_ENTITY_REGISTRY>;
+
+describe("Soft Delete (Integration)", () => {
+  let db: TestInstantDBClient;
+  let rootStore: TestRootStore;
+
+  beforeEach(() => {
+    db = setupTestDatabase();
+    setDatabase(db);
+    rootStore = new RootStore({ db });
+  });
+
+  // Helper to mark entity as deleted directly in database (simulating deletion from another device)
+  async function markAsDeletedInDb(entityType: string, entityId: string) {
+    await db.transact([
+      db.tx[entityType][entityId].update({
+        deletedAt: new Date().toISOString(),
+      }),
+    ]);
+  }
+
+  // Helper to create test user directly in database
+  async function createTestUserInDb(entityId: string, deleted = false) {
+    await db.transact([
+      db.tx.users[entityId].update({
+        name: "Test User",
+        email: `${entityId}@test.com`,
+        emailVerified: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        deletedAt: deleted ? new Date().toISOString() : null,
+      }),
+    ]);
+  }
+
+  // Helper to create test account directly in database
+  async function createTestAccountInDb(entityId: string, userId?: string, deleted = false) {
+    let tx = db.tx.accounts[entityId].update({
+      providerId: "google",
+      accountId: "g123",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      deletedAt: deleted ? new Date().toISOString() : null,
+    });
+
+    if (userId) {
+      tx = tx.link({ user: userId });
+    }
+
+    await db.transact([tx]);
+  }
+
+  describe("entity.delete()", () => {
+    it("sets deletedAt and persists to database", async () => {
+      const userId = id();
+
+      // First create the user in database
+      await createTestUserInDb(userId);
+
+      // Create entity and set up for deletion
+      const user = new User(userId);
+      rootStore.getIdentityMap("users").set(user);
+      await flushMicrotasks();
+
+      expect(user.deletedAt).toBeNull();
+
+      await user.delete();
+
+      expect(user.deletedAt).toBeInstanceOf(Date);
+
+      // Verify deletedAt is persisted in database
+      const userResult = await db.query({ users: { $: { where: { id: userId } } } });
+      const users = (userResult as { users?: { deletedAt?: string }[] }).users ?? [];
+      expect(users).toHaveLength(1);
+      expect(users[0]?.deletedAt).toBeDefined();
+    });
+  });
+
+  describe("hydration of deleted entities", () => {
+    it("removes deleted entities from identity map during hydration", async () => {
+      const userId = id();
+
+      // Create a deleted user in DB
+      await createTestUserInDb(userId, true);
+
+      // Hydrate via watchEntity
+      const users = await rootStore.watchEntity("users");
+
+      // Deleted user should not be in results
+      expect(users.find((u) => u.id === userId)).toBeUndefined();
+
+      // And not in identity map
+      expect(rootStore.getById("users", userId)).toBeUndefined();
+    });
+
+    it("removes entity from identity map when deletedAt is set on existing entity", async () => {
+      const userId = id();
+
+      // Create a non-deleted user in DB
+      await createTestUserInDb(userId, false);
+
+      // First hydration - user should be present
+      await rootStore.watchEntity("users");
+      expect(rootStore.getById("users", userId)).toBeDefined();
+
+      // Simulate deletion from another device
+      await markAsDeletedInDb("users", userId);
+
+      // Re-hydrate - user should be removed
+      await rootStore.watchEntity("users");
+      expect(rootStore.getById("users", userId)).toBeUndefined();
+    });
+
+    it("does not remove entities that are not deleted", async () => {
+      const userId1 = id();
+      const userId2 = id();
+
+      // Create one normal user and one deleted user
+      await createTestUserInDb(userId1, false);
+      await createTestUserInDb(userId2, true);
+
+      // Hydrate
+      const users = await rootStore.watchEntity("users");
+
+      // Only non-deleted user should be present
+      expect(users.find((u) => u.id === userId1)).toBeDefined();
+      expect(users.find((u) => u.id === userId2)).toBeUndefined();
+      expect(rootStore.getById("users", userId1)).toBeDefined();
+      expect(rootStore.getById("users", userId2)).toBeUndefined();
+    });
+  });
+
+  describe("relationship cleanup", () => {
+    it("sets forward reference to null when target is deleted during hydration", async () => {
+      const userId = id();
+      const accountId = id();
+
+      // Create entities in database - user is deleted
+      await createTestUserInDb(userId, true);
+      await createTestAccountInDb(accountId, userId);
+
+      // Hydrate - deleted user should trigger cleanup
+      await rootStore.watchEntity("users");
+      await rootStore.watchEntity("accounts");
+
+      const account = rootStore.getById("accounts", accountId);
+      expect(account).toBeDefined();
+      // The user reference should be null since user was deleted
+      expect(account?.user).toBeNull();
+    });
+
+    it("removes deleted entity from reverse arrays during hydration", async () => {
+      const userId = id();
+      const accountId1 = id();
+      const accountId2 = id();
+
+      // Create entities in database - account1 is deleted
+      await createTestUserInDb(userId, false);
+      await createTestAccountInDb(accountId1, userId, true);
+      await createTestAccountInDb(accountId2, userId, false);
+
+      // Hydrate all entities
+      await rootStore.watchEntity("users");
+      await rootStore.watchEntity("accounts");
+
+      const user = rootStore.getById("users", userId);
+      expect(user).toBeDefined();
+
+      // Only non-deleted account should be in the array
+      expect(user?.accounts.length).toBe(1);
+      expect(user?.accounts[0]?.id).toBe(accountId2);
+    });
+
+    it("cleans up relationships when entity becomes deleted", async () => {
+      const userId = id();
+      const accountId = id();
+
+      // Create non-deleted entities
+      await createTestUserInDb(userId, false);
+      await createTestAccountInDb(accountId, userId, false);
+
+      // First hydration - both entities present, relationship intact
+      await rootStore.watchEntity("users");
+      await rootStore.watchEntity("accounts");
+
+      const user = rootStore.getById("users", userId);
+      const account = rootStore.getById("accounts", accountId);
+
+      expect(user).toBeDefined();
+      expect(account).toBeDefined();
+      expect(account?.user).toBe(user);
+      expect(user?.accounts).toContain(account);
+
+      // Mark user as deleted in DB
+      await markAsDeletedInDb("users", userId);
+
+      // Re-hydrate users - should clean up relationships
+      await rootStore.watchEntity("users");
+
+      // User should be removed
+      expect(rootStore.getById("users", userId)).toBeUndefined();
+
+      // Account's user reference should be cleaned up
+      expect(account?.user).toBeNull();
+    });
+  });
+});

@@ -1,0 +1,176 @@
+import { init, id } from "@instantdb/admin";
+import type {
+  InstantDBClient,
+  TxChunk,
+  SubscriptionCallback,
+  Unsubscribe,
+  TransactionResult,
+} from "../../src/object-graph/persistence/types";
+import { setDatabase } from "../../src/object-graph/persistence/DatabaseProvider";
+import { configureEntityMeta, createEntityRegistry } from "../../src/object-graph";
+import schema from "../instant.schema";
+import {
+  $File,
+  $User,
+  Account,
+  Session,
+  User,
+  Verification,
+} from "../entities";
+
+// Re-export id() for generating UUIDs in tests
+export { id };
+
+// Type-safe entity registry - created once and exported for use with RootStore<typeof TEST_ENTITY_REGISTRY>
+export const TEST_ENTITY_REGISTRY = createEntityRegistry({
+  $files: $File,
+  $users: $User,
+  accounts: Account,
+  sessions: Session,
+  users: User,
+  verifications: Verification,
+});
+
+// Type for admin DB instance
+type AdminDB = ReturnType<typeof init>;
+
+// Admin DB instance (singleton)
+let adminDb: AdminDB | null = null;
+
+export interface TestInstantDBClient extends InstantDBClient {
+  __adminDb: AdminDB;
+}
+
+export function initTestDatabase(): TestInstantDBClient {
+  if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
+    throw new Error(
+      "INSTANTDB_APP_ID and INSTANTDB_ADMIN_TOKEN environment variables are required for integration tests"
+    );
+  }
+
+  adminDb = init({
+    appId: process.env.INSTANTDB_APP_ID,
+    adminToken: process.env.INSTANTDB_ADMIN_TOKEN,
+    // Cast schema to work around type incompatibility between @instantdb/react and @instantdb/admin
+    schema: schema as Parameters<typeof init>[0]["schema"],
+  });
+
+  const client: TestInstantDBClient = {
+    __adminDb: adminDb,
+
+    async query<T = unknown>(queryObj: Record<string, unknown>): Promise<T> {
+      // Cast query to admin SDK's expected type
+      const result = await adminDb!.query(
+        queryObj as Parameters<AdminDB["query"]>[0]
+      );
+      return result as T;
+    },
+
+    async transact(chunks: TxChunk | TxChunk[]): Promise<TransactionResult> {
+      const chunksArray = Array.isArray(chunks) ? chunks : [chunks];
+      const result = await adminDb!.transact(
+        chunksArray as Parameters<AdminDB["transact"]>[0]
+      );
+      return result as TransactionResult;
+    },
+
+    subscribeQuery<T = unknown>(
+      queryObj: Record<string, unknown>,
+      callback: SubscriptionCallback<T>
+    ): Unsubscribe {
+      const subscription = adminDb!.subscribeQuery(
+        queryObj as Parameters<AdminDB["subscribeQuery"]>[0],
+        (result: { error?: Error; data?: Record<string, unknown[]> }) => {
+          if (result.error) {
+            callback({ error: { message: result.error.message }, data: undefined });
+          } else {
+            callback({ data: result.data as T });
+          }
+        }
+      );
+      // Admin SDK returns an object with close() method
+      return () => subscription.close();
+    },
+
+    tx: adminDb!.tx as InstantDBClient["tx"],
+  };
+
+  return client;
+}
+
+// Unique ID generator for test isolation (deprecated - use id() instead for UUIDs)
+export function testId(prefix: string = "test"): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Setup helper that initializes DB and injects it
+export function setupTestDatabase(): TestInstantDBClient {
+  // Configure the entity system with test schema
+  // Note: Entities are already registered via TEST_ENTITY_REGISTRY (createEntityRegistry)
+  configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
+
+  const client = initTestDatabase();
+  setDatabase(client);
+  return client;
+}
+
+// Helper to wait for async operations and MobX reactions
+export function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// Helper to wait for subscription to receive data
+export function waitForSubscription<T>(
+  db: TestInstantDBClient,
+  queryObj: Record<string, unknown>,
+  predicate: (data: T) => boolean,
+  timeoutMs: number = 5000
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error(`Subscription timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const unsubscribe = db.subscribeQuery<T>(queryObj, ({ error, data }) => {
+      if (error) {
+        clearTimeout(timeout);
+        unsubscribe();
+        reject(new Error(error.message));
+        return;
+      }
+      if (data && predicate(data)) {
+        clearTimeout(timeout);
+        unsubscribe();
+        resolve(data);
+      }
+    });
+  });
+}
+
+// Helper to wait a specified amount of time (for subscription propagation)
+export function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Cleanup helper to delete test entities by IDs
+export async function cleanupTestEntities(
+  db: TestInstantDBClient,
+  entities: { entityType: string; ids: string[] }[]
+): Promise<void> {
+  const txChunks: TxChunk[] = [];
+
+  for (const { entityType, ids } of entities) {
+    for (const entityId of ids) {
+      txChunks.push(
+        (db.tx as Record<string, Record<string, { delete: () => TxChunk }>>)[
+          entityType
+        ][entityId].delete()
+      );
+    }
+  }
+
+  if (txChunks.length > 0) {
+    await db.transact(txChunks);
+  }
+}
