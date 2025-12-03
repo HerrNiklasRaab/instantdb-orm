@@ -30,7 +30,7 @@ export class ChangeTracker {
     // Capture relationship state
     for (const rel of meta.relationshipFields) {
       const value = record[rel.fieldName];
-      if (rel.cardinality === "one") {
+      if (rel.isToOne()) {
         const entityRef = value as IEntity | null;
         this.originalRelationships.set(rel.fieldName, entityRef?.id ?? null);
         this.currentRelationships.set(rel.fieldName, entityRef?.id ?? null);
@@ -69,7 +69,7 @@ export class ChangeTracker {
 
     // Observe relationship changes
     for (const rel of meta.relationshipFields) {
-      if (rel.cardinality === "one") {
+      if (rel.isToOne()) {
         // observable.ref - observe the reference change
         try {
           const disposer = observe(
@@ -118,7 +118,7 @@ export class ChangeTracker {
       const original = this.originalRelationships.get(rel.fieldName);
       const current = this.currentRelationships.get(rel.fieldName);
 
-      if (rel.cardinality === "one") {
+      if (rel.isToOne()) {
         const origId = original as string | null;
         const currId = current as string | null;
 

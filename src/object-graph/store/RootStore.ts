@@ -46,7 +46,7 @@ export class RootStore {
           const entityRecord = entity as unknown as Record<string, unknown>;
           const fieldValue = entityRecord[rel.fieldName];
 
-          if (rel.cardinality === "one") {
+          if (rel.isToOne()) {
             // Forward reference (one-to-one): set to null if it points to deleted entity
             if (fieldValue === deletedEntity) {
               entityRecord[rel.fieldName] = null;

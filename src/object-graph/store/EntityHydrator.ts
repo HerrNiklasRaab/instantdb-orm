@@ -6,7 +6,7 @@ import {
   type EntityName,
   type EntityInstanceFor,
 } from "./EntityRegistry";
-import { getEntityMeta, getDateFields } from "./EntityMeta";
+import { getEntityMeta } from "./EntityMeta";
 import type { RawEntityData } from "./types";
 
 export type GetIdentityMap = <K extends EntityName>(
@@ -70,9 +70,7 @@ export class EntityHydrator {
   ): void {
     const record = entity as unknown as Record<string, unknown>;
     const meta = getEntityMeta(entityName);
-    const relationshipFieldNames = new Set(
-      meta.relationshipFields.map((r) => r.fieldName)
-    );
+    const relationshipFieldNames = meta.getRelationshipFieldNames();
 
     runInAction(() => {
       // First pass: hydrate scalar fields
@@ -82,7 +80,7 @@ export class EntityHydrator {
         // Skip relationship fields - they will be processed separately
         if (relationshipFieldNames.has(key)) continue;
 
-        if (getDateFields().has(key) && value != null) {
+        if (meta.isDateField(key) && value != null) {
           record[key] = new Date(value as string | number);
         } else {
           record[key] = value;
@@ -122,7 +120,7 @@ export class EntityHydrator {
 
       const targetMap = getIdentityMap(rel.targetEntity);
 
-      if (rel.cardinality === "one") {
+      if (rel.isToOne()) {
         // has-one: InstantDB returns [{ id: '...' }] or { id: '...' } for has-one relationships
         const firstItem = nestedArray[0] as RawEntityData | undefined;
         if (firstItem?.id) {
@@ -144,7 +142,7 @@ export class EntityHydrator {
             record[rel.fieldName] = targetEntity;
 
             // Set up bidirectional relationship
-            this.setReverseRelationship(entity, targetEntity, rel, meta);
+            this.setReverseRelationship(entity, targetEntity, rel);
           }
         }
       } else {
@@ -172,7 +170,7 @@ export class EntityHydrator {
               existingArray.push(targetEntity);
 
               // Set up bidirectional relationship
-              this.setReverseRelationship(entity, targetEntity, rel, meta);
+              this.setReverseRelationship(entity, targetEntity, rel);
             }
           }
         }
@@ -192,20 +190,17 @@ export class EntityHydrator {
   private setReverseRelationship(
     entity: Model,
     targetEntity: Model,
-    rel: { fieldName: string; targetEntity: EntityName; cardinality: "one" | "many"; isForward: boolean; linkName: string },
-    _meta: { schemaName: EntityName; scalarFields: string[]; relationshipFields: typeof rel[] }
+    rel: { fieldName: string; targetEntity: EntityName; cardinality: "one" | "many"; isForward: boolean; linkName: string }
   ): void {
     // Find the reverse relationship on the target entity
     const targetMeta = getEntityMeta(rel.targetEntity);
-    const reverseRel = targetMeta.relationshipFields.find(
-      (r) => r.linkName === rel.linkName && r.fieldName !== rel.fieldName
-    );
+    const reverseRel = targetMeta.findReverseRelationship(rel.linkName, rel.fieldName);
 
     if (!reverseRel) return;
 
     const targetRecord = targetEntity as unknown as Record<string, unknown>;
 
-    if (reverseRel.cardinality === "many") {
+    if (reverseRel.isToMany()) {
       const array = targetRecord[reverseRel.fieldName] as Model[];
       if (Array.isArray(array) && !array.includes(entity)) {
         array.push(entity);

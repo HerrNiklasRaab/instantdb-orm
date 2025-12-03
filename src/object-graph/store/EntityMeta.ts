@@ -1,18 +1,58 @@
 // Generic entity name type - will be narrowed by configuration
 export type EntityName = string;
 
-export interface RelationshipFieldMeta {
-  fieldName: string;
-  targetEntity: EntityName;
-  linkName: string;
-  cardinality: "one" | "many";
-  isForward: boolean;
+export class RelationshipFieldMeta {
+  constructor(
+    readonly fieldName: string,
+    readonly targetEntity: EntityName,
+    readonly linkName: string,
+    readonly cardinality: "one" | "many",
+    readonly isForward: boolean
+  ) {}
+
+  isToOne(): boolean {
+    return this.cardinality === "one";
+  }
+
+  isToMany(): boolean {
+    return this.cardinality === "many";
+  }
 }
 
-export interface EntityMeta {
-  schemaName: EntityName;
-  scalarFields: string[];
-  relationshipFields: RelationshipFieldMeta[];
+export class EntityMeta {
+  readonly schemaName: EntityName;
+  readonly scalarFields: string[];
+  readonly relationshipFields: RelationshipFieldMeta[];
+  readonly dateFields: Set<string>;
+
+  constructor(
+    schemaName: EntityName,
+    scalarFields: string[],
+    relationshipFields: RelationshipFieldMeta[],
+    dateFields: Set<string>
+  ) {
+    this.schemaName = schemaName;
+    this.scalarFields = scalarFields;
+    this.relationshipFields = relationshipFields;
+    this.dateFields = dateFields;
+  }
+
+  isDateField(name: string): boolean {
+    return this.dateFields.has(name);
+  }
+
+  getRelationshipFieldNames(): Set<string> {
+    return new Set(this.relationshipFields.map((r) => r.fieldName));
+  }
+
+  findReverseRelationship(
+    linkName: string,
+    excludeFieldName?: string
+  ): RelationshipFieldMeta | undefined {
+    return this.relationshipFields.find(
+      (r) => r.linkName === linkName && r.fieldName !== excludeFieldName
+    );
+  }
 }
 
 // Schema types for configuration
@@ -37,18 +77,16 @@ export interface SchemaConfig {
 
 // Mutable state - configured at runtime
 let ENTITY_META: Map<EntityName, EntityMeta> = new Map();
-let DATE_FIELDS: Set<string> = new Set();
 let ENTITY_NAMES: EntityName[] = [];
 
-function extractDateFields(schema: SchemaConfig): Set<string> {
+function extractDateFieldsForEntity(schema: SchemaConfig, entityName: EntityName): Set<string> {
   const dateFields = new Set<string>();
+  const entityDef = schema.entities[entityName];
+  if (!entityDef?.attrs) return dateFields;
 
-  for (const entityDef of Object.values(schema.entities)) {
-    if (!entityDef?.attrs) continue;
-    for (const [fieldName, attrDef] of Object.entries(entityDef.attrs)) {
-      if (attrDef.valueType === "date") {
-        dateFields.add(fieldName);
-      }
+  for (const [fieldName, attrDef] of Object.entries(entityDef.attrs)) {
+    if (attrDef.valueType === "date") {
+      dateFields.add(fieldName);
     }
   }
   return dateFields;
@@ -59,47 +97,57 @@ function getScalarFields(schema: SchemaConfig, entityName: EntityName): string[]
   return entityDef?.attrs ? Object.keys(entityDef.attrs) : [];
 }
 
-function buildEntityMeta(schema: SchemaConfig): Map<EntityName, EntityMeta> {
-  const meta = new Map<EntityName, EntityMeta>();
-  const entityNames = Object.keys(schema.entities);
+function buildRelationshipFields(
+  schema: SchemaConfig,
+  entityName: EntityName
+): RelationshipFieldMeta[] {
+  const relationships: RelationshipFieldMeta[] = [];
+  const entityNames = new Set(Object.keys(schema.entities));
 
-  // Initialize with scalar fields
-  for (const entityName of entityNames) {
-    meta.set(entityName, {
-      schemaName: entityName,
-      scalarFields: getScalarFields(schema, entityName),
-      relationshipFields: [],
-    });
+  for (const [linkName, link] of Object.entries(schema.links)) {
+    // Forward side: this entity owns the forward relationship
+    if (link.forward.on === entityName && entityNames.has(link.reverse.on)) {
+      relationships.push(
+        new RelationshipFieldMeta(
+          link.forward.label,
+          link.reverse.on,
+          linkName,
+          link.forward.has as "one" | "many",
+          true
+        )
+      );
+    }
+
+    // Reverse side: this entity owns the reverse relationship
+    if (link.reverse.on === entityName && entityNames.has(link.forward.on)) {
+      relationships.push(
+        new RelationshipFieldMeta(
+          link.reverse.label,
+          link.forward.on,
+          linkName,
+          link.reverse.has as "one" | "many",
+          false
+        )
+      );
+    }
   }
 
-  // Add relationship fields from links
-  for (const [linkName, link] of Object.entries(schema.links)) {
-    const forwardEntity = link.forward.on;
-    const reverseEntity = link.reverse.on;
+  return relationships;
+}
 
-    // Forward side
-    if (meta.has(forwardEntity) && meta.has(reverseEntity)) {
-      const forwardMeta = meta.get(forwardEntity)!;
-      forwardMeta.relationshipFields.push({
-        fieldName: link.forward.label,
-        targetEntity: reverseEntity,
-        linkName,
-        cardinality: link.forward.has as "one" | "many",
-        isForward: true,
-      });
-    }
+function buildEntityMeta(schema: SchemaConfig): Map<EntityName, EntityMeta> {
+  const meta = new Map<EntityName, EntityMeta>();
 
-    // Reverse side
-    if (meta.has(reverseEntity) && meta.has(forwardEntity)) {
-      const reverseMeta = meta.get(reverseEntity)!;
-      reverseMeta.relationshipFields.push({
-        fieldName: link.reverse.label,
-        targetEntity: forwardEntity,
-        linkName,
-        cardinality: link.reverse.has as "one" | "many",
-        isForward: false,
-      });
-    }
+  for (const entityName of Object.keys(schema.entities)) {
+    meta.set(
+      entityName,
+      new EntityMeta(
+        entityName,
+        getScalarFields(schema, entityName),
+        buildRelationshipFields(schema, entityName),
+        extractDateFieldsForEntity(schema, entityName)
+      )
+    );
   }
 
   return meta;
@@ -111,7 +159,6 @@ function buildEntityMeta(schema: SchemaConfig): Map<EntityName, EntityMeta> {
  */
 export function configureEntityMeta(schema: SchemaConfig): void {
   ENTITY_META = buildEntityMeta(schema);
-  DATE_FIELDS = extractDateFields(schema);
   ENTITY_NAMES = Object.keys(schema.entities);
 }
 
@@ -123,10 +170,6 @@ export function getEntityMeta(entityName: EntityName): EntityMeta {
   return meta;
 }
 
-export function getDateFields(): Set<string> {
-  return DATE_FIELDS;
-}
-
 export function getEntityNames(): EntityName[] {
   return ENTITY_NAMES;
 }
@@ -136,4 +179,4 @@ export function isValidEntityName(name: string): name is EntityName {
 }
 
 // For backwards compatibility - re-export (now mutable internally)
-export { ENTITY_META, DATE_FIELDS };
+export { ENTITY_META };
