@@ -6,19 +6,12 @@ import {
   type EntityName,
   type EntityInstanceFor,
 } from "./EntityRegistry";
-import { getEntityMeta, getDateFields, type RelationshipFieldMeta } from "./EntityMeta";
+import { getEntityMeta, getDateFields } from "./EntityMeta";
 import type { RawEntityData } from "./types";
 
 export type GetIdentityMap = <K extends EntityName>(
   entityName: K
 ) => IdentityMap<EntityInstanceFor<K>>;
-
-// Pending forward reference - stored when target entity doesn't exist yet
-interface PendingForwardRef {
-  entity: Model;
-  fieldName: string;
-  rel: RelationshipFieldMeta;
-}
 
 // Callback for when a deleted entity is encountered during hydration
 export type OnDeletedEntityCallback = (entityName: EntityName, entity: Model) => void;
@@ -28,16 +21,10 @@ export interface EntityHydratorConfig {
 }
 
 export class EntityHydrator {
-  // Map from "entityName:entityId" to pending forward references waiting for that entity
-  private pendingForwardRefs = new Map<string, PendingForwardRef[]>();
   private onDeletedEntity?: OnDeletedEntityCallback;
 
   constructor(config?: EntityHydratorConfig) {
     this.onDeletedEntity = config?.onDeletedEntity;
-  }
-
-  private getPendingKey(entityName: EntityName, entityId: string): string {
-    return `${entityName}:${entityId}`;
   }
 
   hydrate<K extends EntityName>(
@@ -61,9 +48,6 @@ export class EntityHydrator {
       identityMap.delete(rawData.id);
       return null;
     }
-
-    // After hydrating, resolve any pending forward refs that were waiting for this entity
-    this.resolvePendingForwardRefs(entity, entityName);
 
     return entity;
   }
@@ -161,13 +145,6 @@ export class EntityHydrator {
 
             // Set up bidirectional relationship
             this.setReverseRelationship(entity, targetEntity, rel, meta);
-          } else {
-            // Target doesn't exist yet - store pending forward ref
-            this.addPendingForwardRef(rel.targetEntity, firstItem.id, {
-              entity,
-              fieldName: rel.fieldName,
-              rel,
-            });
           }
         }
       } else {
@@ -196,13 +173,6 @@ export class EntityHydrator {
 
               // Set up bidirectional relationship
               this.setReverseRelationship(entity, targetEntity, rel, meta);
-            } else if (!targetEntity) {
-              // Target doesn't exist yet - store pending forward ref
-              this.addPendingForwardRef(rel.targetEntity, item.id, {
-                entity,
-                fieldName: rel.fieldName,
-                rel,
-              });
             }
           }
         }
@@ -217,52 +187,6 @@ export class EntityHydrator {
   private hasFullEntityData(rawData: RawEntityData): boolean {
     const keys = Object.keys(rawData);
     return keys.length > 1 || (keys.length === 1 && keys[0] !== "id");
-  }
-
-  private addPendingForwardRef(
-    targetEntityName: EntityName,
-    targetId: string,
-    ref: PendingForwardRef
-  ): void {
-    const key = this.getPendingKey(targetEntityName, targetId);
-    const existing = this.pendingForwardRefs.get(key) ?? [];
-    existing.push(ref);
-    this.pendingForwardRefs.set(key, existing);
-  }
-
-  private resolvePendingForwardRefs(
-    targetEntity: Model,
-    targetEntityName: EntityName
-  ): void {
-    const key = this.getPendingKey(targetEntityName, targetEntity.id);
-    const pendingRefs = this.pendingForwardRefs.get(key);
-
-    if (!pendingRefs || pendingRefs.length === 0) return;
-
-    runInAction(() => {
-      for (const { entity, fieldName, rel } of pendingRefs) {
-        // Skip if source entity was deleted
-        if (entity.deletedAt != null) continue;
-
-        const record = entity as unknown as Record<string, unknown>;
-        const meta = getEntityMeta(rel.targetEntity);
-
-        if (rel.cardinality === "one") {
-          record[fieldName] = targetEntity;
-        } else {
-          const array = record[fieldName] as Model[];
-          if (Array.isArray(array) && !array.includes(targetEntity)) {
-            array.push(targetEntity);
-          }
-        }
-
-        // Set up bidirectional relationship
-        this.setReverseRelationship(entity, targetEntity, rel, meta);
-      }
-    });
-
-    // Clear resolved refs
-    this.pendingForwardRefs.delete(key);
   }
 
   private setReverseRelationship(

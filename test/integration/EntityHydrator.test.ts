@@ -336,6 +336,35 @@ describe("RootStore hydration (Integration)", () => {
       expect(hydratedReferral2!.referredBy).toBe(hydratedUser);
     });
 
+    it("resolves one-to-one when Profile synced before User", async () => {
+      const userId = id();
+      const profileId = id();
+
+      // Store A creates both User and Profile with relationship
+      const user = await createUserInStoreA(userId, { name: "John" });
+      const profile = await createProfileInStoreA(profileId, {
+        bio: "Hello",
+        user: user,
+      });
+      user.profile = profile;
+      await user.save();
+
+      // Store B hydrates Profile FIRST (before User)
+      const profiles = await storeB.watchEntity(Profile);
+      const hydratedProfile = profiles.find((p) => p.id === profileId);
+
+      // Profile.user should be null because User hasn't been hydrated yet
+      expect(hydratedProfile!.user).toBeNull();
+
+      // Now Store B hydrates User
+      await storeB.watchEntity(User);
+      const hydratedUser = storeB.getById(User, userId);
+
+      // Bidirectional wiring should have set both directions
+      expect(hydratedUser!.profile).toBe(hydratedProfile);
+      expect(hydratedProfile!.user).toBe(hydratedUser);
+    });
+
     it("hydrates one-to-one relationships (User ↔ Profile)", async () => {
       const userId = id();
       const profileId = id();
