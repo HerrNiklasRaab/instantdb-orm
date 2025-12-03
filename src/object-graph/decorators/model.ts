@@ -29,34 +29,15 @@ export function getEntityNameFromClass(
 
 /**
  * Registers an entity class in the registry.
+ * Derives entity name from class name: User → "users"
  *
  * @example
- * @model                    // User → "users"
+ * @model
  * class User extends Model { }
- *
- * @model("people")          // Override for irregular plurals
- * class Person extends Model { }
  */
-// Overload: @model (no parentheses)
-export function model<T extends ModelConstructor>(target: T): T;
-// Overload: @model("people") (with custom name)
-export function model(entityName: string): <T extends ModelConstructor>(target: T) => T;
-// Implementation
-export function model<T extends ModelConstructor>(
-  targetOrName: T | string
-): T | (<U extends ModelConstructor>(target: U) => U) {
-  // Called with string: @model("people")
-  if (typeof targetOrName === "string") {
-    return <U extends ModelConstructor>(target: U): U => {
-      (target as any)[ENTITY_NAME_KEY] = targetOrName;
-      ENTITY_REGISTRY.set(targetOrName, target);
-      return target;
-    };
-  }
-
-  // Called directly: @model
-  const entityName = deriveEntityName(targetOrName.name);
-  (targetOrName as any)[ENTITY_NAME_KEY] = entityName;
-  ENTITY_REGISTRY.set(entityName, targetOrName);
-  return targetOrName;
+export function model<T extends ModelConstructor>(target: T): T {
+  const entityName = deriveEntityName(target.name);
+  (target as any)[ENTITY_NAME_KEY] = entityName;
+  ENTITY_REGISTRY.set(entityName, target);
+  return target;
 }
