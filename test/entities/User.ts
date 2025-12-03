@@ -1,8 +1,9 @@
 import { makeObservable, observable } from "mobx";
-import { Model } from "../../src/object-graph/Model";
+import { Model, model } from "../../src/object-graph";
 import type { Profile } from "./Profile";
 import type { Post } from "./Post";
 
+@model
 export class User extends Model {
   readonly id: string;
 

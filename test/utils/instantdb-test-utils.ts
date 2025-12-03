@@ -7,19 +7,16 @@ import type {
   TransactionResult,
 } from "../../src/object-graph/persistence/types";
 import { setDatabase } from "../../src/object-graph/persistence/DatabaseProvider";
-import { configureEntityMeta, createEntityRegistry } from "../../src/object-graph";
+import { configureEntityMeta } from "../../src/object-graph";
 import schema from "../instant.schema";
-import { User, Profile, Post } from "../entities";
+
+// Side-effect imports: @model decorator auto-registers these entities
+import "../entities/User";
+import "../entities/Profile";
+import "../entities/Post";
 
 // Re-export id() for generating UUIDs in tests
 export { id };
-
-// Type-safe entity registry - created once and exported for use with RootStore<typeof TEST_ENTITY_REGISTRY>
-export const TEST_ENTITY_REGISTRY = createEntityRegistry({
-  users: User,
-  profiles: Profile,
-  posts: Post,
-});
 
 // Type for admin DB instance
 type AdminDB = ReturnType<typeof init>;
@@ -96,7 +93,7 @@ export function testId(prefix: string = "test"): string {
 // Setup helper that initializes DB and injects it
 export function setupTestDatabase(): TestInstantDBClient {
   // Configure the entity system with test schema
-  // Note: Entities are already registered via TEST_ENTITY_REGISTRY (createEntityRegistry)
+  // Note: Entities are auto-registered via @model decorator on import
   configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
 
   const client = initTestDatabase();

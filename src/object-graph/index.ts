@@ -1,5 +1,6 @@
 export { IdentityMap } from "./IdentityMap";
 export { Model } from "./Model";
+export { model } from "./decorators";
 export {
   RootStore,
   EntityHydrator,
@@ -7,11 +8,7 @@ export {
   getEntityClass,
   isValidEntityName,
   getEntityNames,
-  // Configuration functions
   configureEntityMeta,
-  registerEntity,
-  registerEntities,
-  createEntityRegistry,
   type SchemaConfig,
   type EntityName,
   type EntityInstanceFor,

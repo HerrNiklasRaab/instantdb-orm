@@ -5,18 +5,15 @@ import {
   id,
   flushMicrotasks,
   type TestInstantDBClient,
-  TEST_ENTITY_REGISTRY,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
 import { Post } from "../entities/Post";
 import { Profile } from "../entities/Profile";
 
-type TestRootStore = RootStore<typeof TEST_ENTITY_REGISTRY>;
-
 describe("RootStore hydration (Integration)", () => {
   let db: TestInstantDBClient;
-  let storeA: TestRootStore; // "Device A" - creates data
-  let storeB: TestRootStore; // "Device B" - hydrates data
+  let storeA: RootStore; // "Device A" - creates data
+  let storeB: RootStore; // "Device B" - hydrates data
 
   beforeEach(() => {
     db = setupTestDatabase();
@@ -34,7 +31,7 @@ describe("RootStore hydration (Integration)", () => {
     }>
   ): Promise<User> {
     const user = new User(entityId);
-    storeA.getIdentityMap("users").set(user);
+    storeA.getIdentityMap(User).set(user);
     await flushMicrotasks(); // Wait for tracking to initialize
     user.name = data.name ?? "Test User";
     user.createdAt = data.createdAt ?? new Date();
@@ -53,7 +50,7 @@ describe("RootStore hydration (Integration)", () => {
     }>
   ): Promise<Post> {
     const post = new Post(entityId);
-    storeA.getIdentityMap("posts").set(post);
+    storeA.getIdentityMap(Post).set(post);
     await flushMicrotasks(); // Wait for tracking to initialize
     post.title = data.title ?? "Test Post";
     post.content = data.content;
@@ -76,7 +73,7 @@ describe("RootStore hydration (Integration)", () => {
     }>
   ): Promise<Profile> {
     const profile = new Profile(entityId);
-    storeA.getIdentityMap("profiles").set(profile);
+    storeA.getIdentityMap(Profile).set(profile);
     await flushMicrotasks();
     profile.bio = data.bio;
     profile.avatarUrl = data.avatarUrl;
@@ -115,7 +112,7 @@ describe("RootStore hydration (Integration)", () => {
       });
 
       // Store B hydrates and verifies (only users needed)
-      const users = await storeB.watchEntity("users");
+      const users = await storeB.watchEntity(User);
       const user = users.find((u) => u.id === userId);
 
       expect(user).toBeDefined();
@@ -133,7 +130,7 @@ describe("RootStore hydration (Integration)", () => {
       });
 
       // Store B hydrates and verifies dates are Date objects (only users needed)
-      const users = await storeB.watchEntity("users");
+      const users = await storeB.watchEntity(User);
       const user = users.find((u) => u.id === userId);
 
       expect(user!.createdAt).toBeInstanceOf(Date);
@@ -147,16 +144,16 @@ describe("RootStore hydration (Integration)", () => {
       await createUserInStoreA(userId, { name: "John" });
 
       // Store B hydrates first time (only users needed)
-      const users1 = await storeB.watchEntity("users");
+      const users1 = await storeB.watchEntity(User);
       const user1 = users1.find((u) => u.id === userId);
 
       // Store A updates user name
-      const userA = storeA.getById("users", userId)!;
+      const userA = storeA.getById(User, userId)!;
       userA.name = "John Updated";
       await userA.save();
 
       // Store B re-hydrates (only users needed)
-      const users2 = await storeB.watchEntity("users");
+      const users2 = await storeB.watchEntity(User);
       const user2 = users2.find((u) => u.id === userId);
 
       expect(user1).toBe(user2); // Same instance
@@ -175,8 +172,8 @@ describe("RootStore hydration (Integration)", () => {
 
       // Store B hydrates and verifies relationship
       await storeB.watchAll();
-      const hydratedUser = storeB.getById("users", userId);
-      const hydratedPost = storeB.getById("posts", postId);
+      const hydratedUser = storeB.getById(User, userId);
+      const hydratedPost = storeB.getById(Post, postId);
 
       expect(hydratedPost!.author).toBe(hydratedUser);
     });
@@ -191,8 +188,8 @@ describe("RootStore hydration (Integration)", () => {
 
       // Store B hydrates and verifies reverse relationship
       await storeB.watchAll();
-      const hydratedUser = storeB.getById("users", userId);
-      const hydratedPost = storeB.getById("posts", postId);
+      const hydratedUser = storeB.getById(User, userId);
+      const hydratedPost = storeB.getById(Post, postId);
 
       expect(hydratedUser!.posts).toContain(hydratedPost);
       expect(hydratedUser!.posts.length).toBe(1);
@@ -207,7 +204,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInDbWithDanglingLink(postId, fakeUserId);
 
       // Store B hydrates - should handle dangling reference gracefully (only posts needed)
-      const posts = await storeB.watchEntity("posts");
+      const posts = await storeB.watchEntity(Post);
       const post = posts.find((p) => p.id === postId);
 
       expect(post!.author).toBeNull();
@@ -223,7 +220,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInDbWithDanglingLink(postId, userId);
 
       // Store B hydrates post first (before user exists) - only posts needed
-      const posts = await storeB.watchEntity("posts");
+      const posts = await storeB.watchEntity(Post);
       const post = posts.find((p) => p.id === postId);
       expect(post!.author).toBeNull();
 
@@ -232,7 +229,7 @@ describe("RootStore hydration (Integration)", () => {
 
       // Store B re-hydrates everything to pick up the new user
       await storeB.watchAll();
-      const user = storeB.getById("users", userId);
+      const user = storeB.getById(User, userId);
 
       // Post's author should now be resolved
       expect(post!.author).toBe(user);
@@ -251,9 +248,9 @@ describe("RootStore hydration (Integration)", () => {
 
       // Store B hydrates and verifies all relationships
       await storeB.watchAll();
-      const hydratedUser = storeB.getById("users", userId);
-      const post1 = storeB.getById("posts", postId1);
-      const post2 = storeB.getById("posts", postId2);
+      const hydratedUser = storeB.getById(User, userId);
+      const post1 = storeB.getById(Post, postId1);
+      const post2 = storeB.getById(Post, postId2);
 
       expect(post1!.author).toBe(hydratedUser);
       expect(post2!.author).toBe(hydratedUser);
@@ -271,7 +268,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInStoreA(postId, {});
 
       // Store B hydrates and verifies no relationship (only posts needed)
-      const posts = await storeB.watchEntity("posts");
+      const posts = await storeB.watchEntity(Post);
       const post = posts.find((p) => p.id === postId);
 
       expect(post!.author).toBeNull();
@@ -290,8 +287,8 @@ describe("RootStore hydration (Integration)", () => {
       await storeB.watchAll();
       await storeB.watchAll();
 
-      const hydratedUser = storeB.getById("users", userId);
-      const hydratedPost = storeB.getById("posts", postId);
+      const hydratedUser = storeB.getById(User, userId);
+      const hydratedPost = storeB.getById(Post, postId);
 
       expect(hydratedUser!.posts.length).toBe(1);
       expect(hydratedUser!.posts[0]).toBe(hydratedPost);
@@ -325,9 +322,9 @@ describe("RootStore hydration (Integration)", () => {
       });
 
       // Get hydrated entities
-      const hydratedUser = storeB.getById("users", userId);
-      const hydratedReferral1 = storeB.getById("users", referral1Id);
-      const hydratedReferral2 = storeB.getById("users", referral2Id);
+      const hydratedUser = storeB.getById(User, userId);
+      const hydratedReferral1 = storeB.getById(User, referral1Id);
+      const hydratedReferral2 = storeB.getById(User, referral2Id);
 
       // User → referrals
       expect(hydratedUser!.referrals).toContain(hydratedReferral1);
@@ -362,8 +359,8 @@ describe("RootStore hydration (Integration)", () => {
         },
       });
 
-      const hydratedUser = storeB.getById("users", userId);
-      const hydratedProfile = storeB.getById("profiles", profileId);
+      const hydratedUser = storeB.getById(User, userId);
+      const hydratedProfile = storeB.getById(Profile, profileId);
 
       // Verify bidirectional one-to-one
       expect(hydratedUser!.profile).toBe(hydratedProfile);

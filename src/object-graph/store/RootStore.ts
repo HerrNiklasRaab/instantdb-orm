@@ -1,22 +1,19 @@
 import { IdentityMap } from "../IdentityMap";
 import type { Model } from "../Model";
-import { getEntityNames, isValidEntityName } from "./EntityRegistry";
+import { getEntityNames, isValidEntityName, getEntityClass } from "./EntityRegistry";
 import { getEntityMeta } from "./EntityMeta";
 import { EntityHydrator } from "./EntityHydrator";
+import { getEntityNameFromClass } from "../decorators";
 import type {
   RawEntityData,
   RootStoreConfig,
   InstantDBClient,
   QueryResult,
-  EntityConstructor,
 } from "./types";
 
-export class RootStore<
-  TRegistry extends Record<string, EntityConstructor> = Record<
-    string,
-    EntityConstructor
-  >
-> {
+type ModelConstructor<T extends Model = Model> = new (id: string) => T;
+
+export class RootStore {
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private hydrator: EntityHydrator;
   private db: InstantDBClient;
@@ -39,7 +36,7 @@ export class RootStore<
     // Find all entity types that have relationships pointing to the deleted entity type
     for (const entityName of getEntityNames()) {
       const meta = getEntityMeta(entityName);
-      const identityMap = this.getIdentityMap(entityName);
+      const identityMap = this.getIdentityMapByName(entityName);
 
       for (const rel of meta.relationshipFields) {
         if (rel.targetEntity !== deletedEntityType) continue;
@@ -69,32 +66,40 @@ export class RootStore<
     }
   }
 
-  getIdentityMap<K extends keyof TRegistry & string>(
-    entityName: K
-  ): IdentityMap<InstanceType<TRegistry[K]>> {
+  private getIdentityMapByName(entityName: string): IdentityMap<Model> {
     const map = this.identityMaps.get(entityName);
     if (!map) {
       throw new Error(`No identity map for entity: ${entityName}`);
     }
-    return map as IdentityMap<InstanceType<TRegistry[K]>>;
+    return map;
   }
 
-  getAll<K extends keyof TRegistry & string>(
-    entityName: K
-  ): InstanceType<TRegistry[K]>[] {
-    return this.getIdentityMap(entityName).values();
+  /** Get identity map for an entity class */
+  getIdentityMap<T extends Model>(
+    EntityClass: ModelConstructor<T>
+  ): IdentityMap<T> {
+    const entityName = getEntityNameFromClass(EntityClass);
+    return this.getIdentityMapByName(entityName) as IdentityMap<T>;
   }
 
-  getById<K extends keyof TRegistry & string>(
-    entityName: K,
+  /** Get all entities of a class */
+  getAll<T extends Model>(EntityClass: ModelConstructor<T>): T[] {
+    return this.getIdentityMap(EntityClass).values();
+  }
+
+  /** Get entity by ID */
+  getById<T extends Model>(
+    EntityClass: ModelConstructor<T>,
     id: string
-  ): InstanceType<TRegistry[K]> | undefined {
-    return this.getIdentityMap(entityName).get(id);
+  ): T | undefined {
+    return this.getIdentityMap(EntityClass).get(id);
   }
 
-  async watchEntity<K extends keyof TRegistry & string>(
-    entityName: K
-  ): Promise<InstanceType<TRegistry[K]>[]> {
+  /** Watch and hydrate all entities of a class */
+  async watchEntity<T extends Model>(
+    EntityClass: ModelConstructor<T>
+  ): Promise<T[]> {
+    const entityName = getEntityNameFromClass(EntityClass);
     const query = this.buildQueryWithRelationships(entityName);
     const result = (await this.db.query(query)) as QueryResult;
 
@@ -103,8 +108,8 @@ export class RootStore<
     return this.hydrator.hydrateMany(
       entityName,
       rawDataArray,
-      this.getIdentityMap.bind(this)
-    ) as InstanceType<TRegistry[K]>[];
+      this.getIdentityMapByName.bind(this)
+    ) as T[];
   }
 
   private buildQueryWithRelationships(
@@ -128,7 +133,12 @@ export class RootStore<
 
   async watchAll(): Promise<void> {
     const entityNames = getEntityNames();
-    await Promise.all(entityNames.map((name) => this.watchEntity(name)));
+    await Promise.all(
+      entityNames.map((name) => {
+        const EntityClass = getEntityClass(name);
+        return this.watchEntity(EntityClass);
+      })
+    );
   }
 
   async query(queryObj: Record<string, unknown>): Promise<void> {
@@ -142,7 +152,7 @@ export class RootStore<
         this.hydrator.hydrateMany(
           entityName,
           rawDataArray as RawEntityData[],
-          this.getIdentityMap.bind(this)
+          this.getIdentityMapByName.bind(this)
         );
       }
     }

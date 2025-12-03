@@ -4,17 +4,20 @@ import {
   saveEntity,
   getTracker,
 } from "./persistence/EntityPersistence";
+import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model";
 
 export abstract class Model {
   abstract readonly id: string;
   abstract deletedAt: Date | null;
 
   get entityName(): EntityName {
-    const className = this.constructor.name;
-    if (className.startsWith("$")) {
-      return ("$" + className.slice(1).toLowerCase() + "s") as EntityName;
+    // Read from decorator-stored value, fallback to derivation
+    const stored = (this.constructor as any)[ENTITY_NAME_KEY];
+    if (stored) {
+      return stored as EntityName;
     }
-    return (className.toLowerCase() + "s") as EntityName;
+    // Fallback for classes without @model decorator
+    return deriveEntityName(this.constructor.name) as EntityName;
   }
 
   protected initializeTracking(): void {
