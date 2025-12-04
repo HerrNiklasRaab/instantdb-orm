@@ -35,7 +35,7 @@ describe("RootStore hydration (Integration)", () => {
     user.name = data.name ?? "Test User";
     user.createdAt = data.createdAt ?? new Date();
     user.updatedAt = data.updatedAt ?? new Date();
-    await user.save();
+    await storeA.save(user);
     return user;
   }
 
@@ -57,7 +57,7 @@ describe("RootStore hydration (Integration)", () => {
     if (data.author) {
       post.author = data.author;
     }
-    await post.save();
+    await storeA.save(post);
     return post;
   }
 
@@ -79,7 +79,7 @@ describe("RootStore hydration (Integration)", () => {
     if (data.user) {
       profile.user = data.user;
     }
-    await profile.save();
+    await storeA.save(profile);
     return profile;
   }
 
@@ -146,7 +146,7 @@ describe("RootStore hydration (Integration)", () => {
 
       // Store A updates user name
       userA.name = "John Updated";
-      await userA.save();
+      await storeA.save(userA);
 
       // Store B re-hydrates (only users needed)
       const users2 = await storeB.watchEntity(User);
@@ -303,11 +303,11 @@ describe("RootStore hydration (Integration)", () => {
       // Create referral users linked to primary user
       const referral1 = await createUserInStoreA(referral1Id, { name: "Referral 1" });
       referral1.referredBy = user;
-      await referral1.save();
+      await storeA.save(referral1);
 
       const referral2 = await createUserInStoreA(referral2Id, { name: "Referral 2" });
       referral2.referredBy = user;
-      await referral2.save();
+      await storeA.save(referral2);
 
       // Store B hydrates using nested query with WHERE clause
       await storeB.query({
@@ -343,7 +343,7 @@ describe("RootStore hydration (Integration)", () => {
         user: user,
       });
       user.profile = profile;
-      await user.save();
+      await storeA.save(user);
 
       // Store B hydrates Profile FIRST (before User)
       const profiles = await storeB.watchEntity(Profile);
@@ -374,7 +374,7 @@ describe("RootStore hydration (Integration)", () => {
         user: user,
       });
       user.profile = profile;
-      await user.save();
+      await storeA.save(user);
 
       // Store B hydrates
       await storeB.query({

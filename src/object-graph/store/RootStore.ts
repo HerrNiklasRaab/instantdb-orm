@@ -4,6 +4,7 @@ import { getEntityNames, isValidEntityName, getEntityClass } from "./EntityRegis
 import { getEntityMeta } from "./EntityMeta";
 import { EntityHydrator } from "./EntityHydrator";
 import { getEntityNameFromClass } from "../decorators";
+import type { TxChunk } from "../persistence/types";
 import type {
   RawEntityData,
   RootStoreConfig,
@@ -11,10 +12,7 @@ import type {
   QueryResult,
 } from "./types";
 
-type ModelConstructor<T extends Model = Model> = new (
-  id: string,
-  store?: RootStore | null
-) => T;
+type ModelConstructor<T extends Model = Model> = new (id: string) => T;
 
 export class RootStore {
   private identityMaps = new Map<string, IdentityMap<Model>>();
@@ -27,9 +25,56 @@ export class RootStore {
     this.initializeIdentityMaps();
   }
 
-  /** Create a new entity with store reference */
+  /** Create a new entity */
   create<T extends Model>(EntityClass: ModelConstructor<T>, id: string): T {
-    return new EntityClass(id, this);
+    return new EntityClass(id);
+  }
+
+  /** Save entity changes to the database */
+  async save(entity: Model): Promise<void> {
+    if (!entity._tracker.hasChanges()) {
+      return;
+    }
+
+    const entityName = entity.entityName;
+    const changes = entity._tracker.getChanges();
+    let tx: TxChunk = this.db.tx[entityName][entity.id];
+
+    // Scalar updates
+    if (changes.scalars.size > 0) {
+      const updateData: Record<string, unknown> = {};
+      for (const [field, value] of changes.scalars) {
+        updateData[field] = value instanceof Date ? value.toISOString() : value;
+      }
+      tx = tx.update(updateData);
+    }
+
+    // Link operations
+    for (const [linkName, ids] of changes.links) {
+      const label = this.getLinkLabel(entityName, linkName);
+      tx = tx.link({ [label]: ids.length === 1 ? ids[0] : ids });
+    }
+
+    // Unlink operations
+    for (const [linkName, ids] of changes.unlinks) {
+      const label = this.getLinkLabel(entityName, linkName);
+      tx = tx.unlink({ [label]: ids.length === 1 ? ids[0] : ids });
+    }
+
+    await this.db.transact([tx]);
+    entity._tracker.reset();
+  }
+
+  /** Delete an entity (soft delete) */
+  async delete(entity: Model): Promise<void> {
+    entity.deletedAt = new Date();
+    await this.save(entity);
+  }
+
+  private getLinkLabel(entityName: string, linkName: string): string {
+    const meta = getEntityMeta(entityName);
+    const rel = meta.relationshipFields.find((r) => r.linkName === linkName);
+    return rel?.fieldName ?? linkName;
   }
 
   private initializeIdentityMaps(): void {

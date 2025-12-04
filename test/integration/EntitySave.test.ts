@@ -86,14 +86,14 @@ describe("Entity Save (Integration)", () => {
       user.name = "Test User";
       user.createdAt = new Date();
       user.updatedAt = new Date();
-      await user.save();
+      await store.save(user);
 
       // Set up initial relationship and save
       post.author = user;
       post.title = "Test Post";
       post.createdAt = new Date();
       post.updatedAt = new Date();
-      await post.save();
+      await store.save(post);
 
       // Now remove it
       post.author = null;
@@ -122,17 +122,17 @@ describe("Entity Save (Integration)", () => {
       user.name = "Test User";
       user.createdAt = new Date();
       user.updatedAt = new Date();
-      await user.save();
+      await store.save(user);
 
       // Save post with required fields
       post.title = "Test Post";
       post.createdAt = new Date();
       post.updatedAt = new Date();
-      await post.save();
+      await store.save(post);
 
       // Set up initial relationship and save
       user.posts.push(post);
-      await user.save();
+      await store.save(user);
 
       // Now remove it
       user.posts.pop();
@@ -147,7 +147,7 @@ describe("Entity Save (Integration)", () => {
       const user = createUser(userId);
       await flushMicrotasks();
 
-      await user.save();
+      await store.save(user);
 
       // Verify nothing was saved to DB (entity shouldn't exist)
       const result = await db.query({ users: { $: { where: { id: userId } } } });
@@ -162,7 +162,7 @@ describe("Entity Save (Integration)", () => {
       user.name = "New Name";
       user.createdAt = new Date();
       user.updatedAt = new Date();
-      await user.save();
+      await store.save(user);
 
       // Verify in database
       const result = await db.query({ users: { $: { where: { id: userId } } } });
@@ -182,14 +182,14 @@ describe("Entity Save (Integration)", () => {
       user.name = "Test User";
       user.createdAt = new Date();
       user.updatedAt = new Date();
-      await user.save();
+      await store.save(user);
 
       // Then link post to user
       post.title = "Test Post";
       post.createdAt = new Date();
       post.updatedAt = new Date();
       post.author = user;
-      await post.save();
+      await store.save(post);
 
       // Verify relationship in database
       const result = await db.query({
@@ -214,14 +214,14 @@ describe("Entity Save (Integration)", () => {
       user.name = "Test User";
       user.createdAt = new Date();
       user.updatedAt = new Date();
-      await user.save();
+      await store.save(user);
 
       // Set up and save initial relationship
       post.title = "Test Post";
       post.createdAt = new Date();
       post.updatedAt = new Date();
       post.author = user;
-      await post.save();
+      await store.save(post);
 
       // Verify link exists (has-one returns object, not array)
       let result = await db.query({
@@ -234,7 +234,7 @@ describe("Entity Save (Integration)", () => {
 
       // Now remove the relationship
       post.author = null;
-      await post.save();
+      await store.save(post);
 
       // Verify unlinked (author should be null/undefined when unlinked)
       result = await db.query({
@@ -255,7 +255,7 @@ describe("Entity Save (Integration)", () => {
       user.name = "Test";
       user.createdAt = new Date();
       user.updatedAt = testDate;
-      await user.save();
+      await store.save(user);
 
       // Verify date was saved correctly
       const result = await db.query({ users: { $: { where: { id: userId } } } });
@@ -275,7 +275,7 @@ describe("Entity Save (Integration)", () => {
       user.updatedAt = new Date();
       expect(user.isDirty()).toBe(true);
 
-      await user.save();
+      await store.save(user);
 
       expect(user.isDirty()).toBe(false);
     });
@@ -288,7 +288,7 @@ describe("Entity Save (Integration)", () => {
       user.name = "First Change";
       user.createdAt = new Date();
       user.updatedAt = new Date();
-      await user.save();
+      await store.save(user);
 
       expect(user.isDirty()).toBe(false);
 

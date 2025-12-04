@@ -26,7 +26,7 @@ export class EntityHydrator {
     const identityMap = getIdentityMap(entityName);
 
     const entity = identityMap.getOrCreate(rawData.id, () => {
-      return new EntityClass(rawData.id, this.store) as EntityInstanceFor<K>;
+      return new EntityClass(rawData.id) as EntityInstanceFor<K>;
     });
 
     this.updateEntityFields(entity, entityName, rawData, getIdentityMap);

@@ -55,7 +55,7 @@ describe("Soft Delete (Integration)", () => {
     await db.transact([tx]);
   }
 
-  describe("entity.delete()", () => {
+  describe("store.delete()", () => {
     it("sets deletedAt and persists to database", async () => {
       const userId = id();
 
@@ -68,7 +68,7 @@ describe("Soft Delete (Integration)", () => {
 
       expect(user.deletedAt).toBeNull();
 
-      await user.delete();
+      await rootStore.delete(user);
 
       expect(user.deletedAt).toBeInstanceOf(Date);
 
