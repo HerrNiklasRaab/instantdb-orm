@@ -63,6 +63,28 @@ describe("RootStore hydration (Integration)", () => {
     return post;
   }
 
+  // Helper to create post through Store A
+  async function createPostInStoreB(
+    entityId: string,
+    data: Partial<{
+      title: string;
+      content: string;
+      author: User;
+    }>
+  ): Promise<Post> {
+    const post = new Post(entityId, {
+      title: data.title ?? "Test Post",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    post.content = data.content;
+    if (data.author) {
+      post.author = data.author;
+    }
+    await storeB.save(post);
+    return post;
+  }
+
   // Helper to create profile through Store A
   async function createProfileInStoreA(
     entityId: string,
@@ -291,44 +313,54 @@ describe("RootStore hydration (Integration)", () => {
   });
 
   describe("deeply nested query hydration", () => {
-    it("hydrates 3-level nested relationships with where clause (User → referrals → referrals)", async () => {
+    it("hydrates 3-level nested relationships with 3 different entities (Post → User → Profile)", async () => {
       const userId = id();
-      const referral1Id = id();
-      const referral2Id = id();
+      const profileId = id();
+      const postId = id();
+      const postId2 = id();
 
-      // Create User (the referrer)
-      const user = await createUserInStoreA(userId, { name: "Primary User" });
+      // Create User with Profile
+      const user = await createUserInStoreA(userId, { name: "John" });
+      const profile = await createProfileInStoreA(profileId, { bio: "Hello", user });
+      user.profile = profile;
+      await storeA.save(user);
 
-      // Create referral users linked to primary user
-      const referral1 = await createUserInStoreA(referral1Id, { name: "Referral 1" });
-      referral1.referredBy = user;
-      await storeA.save(referral1);
+      // Create Post linked to User
+      await createPostInStoreA(postId, { author: user });
+      await createPostInStoreB(postId2, { author: user });
 
-      const referral2 = await createUserInStoreA(referral2Id, { name: "Referral 2" });
-      referral2.referredBy = user;
-      await storeA.save(referral2);
-
-      // Store B hydrates using nested query with WHERE clause
+      // Query 3 levels deep: Post → author (User) → profile (Profile)
       await storeB.query({
-        users: {
-          $: { where: { id: userId } },
-          referrals: {},
+        posts: {
+          $: { where: { id: postId } },
+          author: {
+            profile: {},
+          },
         },
       });
 
       // Get hydrated entities
+      const hydratedPost = storeB.getById(Post, postId);
+      const hydratedPost2 = storeB.getById(Post, postId2);
       const hydratedUser = storeB.getById(User, userId);
-      const hydratedReferral1 = storeB.getById(User, referral1Id);
-      const hydratedReferral2 = storeB.getById(User, referral2Id);
+      const hydratedProfile = storeB.getById(Profile, profileId);
 
-      // User → referrals
-      expect(hydratedUser!.referrals).toContain(hydratedReferral1);
-      expect(hydratedUser!.referrals).toContain(hydratedReferral2);
-      expect(hydratedUser!.referrals.length).toBe(2);
+      // Verify all 3 entities hydrated
+      expect(hydratedPost).toBeDefined();
+      expect(hydratedUser).toBeDefined();
+      expect(hydratedProfile).toBeDefined();
 
-      // Verify reverse relationships
-      expect(hydratedReferral1!.referredBy).toBe(hydratedUser);
-      expect(hydratedReferral2!.referredBy).toBe(hydratedUser);
+      // Verify relationships: Post → User
+      expect(hydratedPost!.author).toBe(hydratedUser);
+
+      // Verify relationships: User → Profile (bidirectional)
+      expect(hydratedUser!.profile).toBe(hydratedProfile);
+      expect(hydratedProfile!.user).toBe(hydratedUser);
+
+      // Verify reverse: User → Posts (includes post2 even though it wasn't in query)
+      expect(hydratedUser!.posts).toContain(hydratedPost);
+      expect(hydratedUser!.posts).toContain(hydratedPost2);
+      expect(hydratedUser!.posts.length).toBe(2);
     });
 
     it("resolves one-to-one when Profile synced before User", async () => {

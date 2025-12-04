@@ -160,44 +160,55 @@ export class RootStore {
   }
 
   /** Subscribe to live updates for all entities of a class */
-  subscribeModel<T extends Model>(
+  async subscribeModel<T extends Model>(
     EntityClass: ModelClass<T>,
     callback: (entities: T[]) => void
-  ): { close(): void } {
+  ): Promise<{ entities: T[]; close(): void }> {
     const entityName = getEntityNameFromClass(EntityClass);
     const query = this.buildQueryWithRelationships(entityName);
 
     // Close existing subscription for this entity if any
     this.subscriptions.get(entityName)?.close();
 
-    const unsubscribe = this.db.subscribeQuery<QueryResult>(
-      query,
-      ({ error, data }) => {
-        if (error) {
-          console.error(`Subscription error for ${entityName}:`, error.message);
-          return;
-        }
-        if (data) {
-          const rawDataArray = (data[entityName] ?? []) as RawEntityData[];
-          const entities = this.hydrator.hydrateMany(
-            entityName,
-            rawDataArray,
-            this.getIdentityMapByName.bind(this)
-          ) as T[];
-          callback(entities);
-        }
-      }
-    );
+    return new Promise((resolve, reject) => {
+      let isFirstCallback = true;
 
-    const subscription = {
-      close: () => {
-        unsubscribe();
-        this.subscriptions.delete(entityName);
-      },
-    };
+      const unsubscribe = this.db.subscribeQuery<QueryResult>(
+        query,
+        ({ error, data }) => {
+          if (error) {
+            console.error(`Subscription error for ${entityName}:`, error.message);
+            if (isFirstCallback) {
+              reject(new Error(error.message));
+            }
+            return;
+          }
+          if (data) {
+            const rawDataArray = (data[entityName] ?? []) as RawEntityData[];
+            const entities = this.hydrator.hydrateMany(
+              entityName,
+              rawDataArray,
+              this.getIdentityMapByName.bind(this)
+            ) as T[];
 
-    this.subscriptions.set(entityName, subscription);
-    return subscription;
+            if (isFirstCallback) {
+              isFirstCallback = false;
+              const subscription = {
+                entities,
+                close: () => {
+                  unsubscribe();
+                  this.subscriptions.delete(entityName);
+                },
+              };
+              this.subscriptions.set(entityName, subscription);
+              resolve(subscription);
+            }
+
+            callback(entities);
+          }
+        }
+      );
+    });
   }
 
   private buildQueryWithRelationships(
@@ -272,7 +283,7 @@ export class RootStore {
    * Automatically hydrates results on each update.
    * Returns an unsubscribe function.
    */
-  subscribe(queryObj: Record<string, unknown>): Unsubscribe {
+  subscribeQuery(queryObj: Record<string, unknown>): Unsubscribe {
     return this.db.subscribeQuery<QueryResult>(queryObj, ({ error, data }) => {
       if (error) {
         console.error("Subscription error:", error.message);

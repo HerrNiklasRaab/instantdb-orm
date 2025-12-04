@@ -181,11 +181,9 @@ describe("Soft Delete (Integration)", () => {
       await createTestUserInDb(userId, false);
       await createTestPostInDb(postId, userId, false);
 
-      // Set up reactive subscriptions
-      rootStore.subscribeModel(User, () => { });
-      rootStore.subscribeModel(Post, () => { });
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Set up reactive subscriptions - await ensures initial data is loaded
+      await rootStore.subscribeModel(User, () => { });
+      await rootStore.subscribeModel(Post, () => { });
 
       const user = rootStore.getById(User, userId);
       const post = rootStore.getById(Post, postId);
@@ -198,7 +196,8 @@ describe("Soft Delete (Integration)", () => {
       // Mark user as deleted in DB
       await markAsDeletedInDb("users", userId);
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait for reactive sync to process the deletion
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // User should be removed via reactive sync
       expect(rootStore.getById(User, userId)).toBeUndefined();
