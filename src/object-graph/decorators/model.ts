@@ -1,5 +1,5 @@
 import {
-  ENTITY_REGISTRY,
+  MODEL_REGISTRY,
   registerDiscriminator,
 } from "../store/EntityRegistry";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
@@ -7,17 +7,17 @@ import { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 // Re-export for backwards compatibility
 export { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 
-// Import Model lazily to avoid circular dependency
-type ModelConstructor = new (...args: any[]) => { id: string };
+// Local type to avoid circular dependency with Model.ts
+type ModelClassType = new (...args: any[]) => { id: string };
 
 /** Get entity name from a class (set by @model decorator) */
 export function getEntityNameFromClass(
-  EntityClass: ModelConstructor
+  ModelClass: ModelClassType
 ): string {
-  const stored = (EntityClass as any)[ENTITY_NAME_KEY];
+  const stored = (ModelClass as any)[ENTITY_NAME_KEY];
   if (!stored) {
     throw new Error(
-      `Entity class ${EntityClass.name} has no entity name. Did you add @model decorator?`
+      `Model class ${ModelClass.name} has no entity name. Did you add @model decorator?`
     );
   }
   return stored;
@@ -28,12 +28,12 @@ export function getEntityNameFromClass(
  * For STI, this determines the shared table name.
  * Uses name comparison to avoid circular import with Model.ts.
  */
-function findRootEntityClass(target: ModelConstructor): ModelConstructor {
+function findRootModelClass(target: ModelClassType): ModelClassType {
   let current: Function = target;
   while (current && current.name !== "Model") {
     const parent = Object.getPrototypeOf(current);
     if (parent?.name === "Model") {
-      return current as ModelConstructor;
+      return current as ModelClassType;
     }
     current = parent;
   }
@@ -44,7 +44,7 @@ function findRootEntityClass(target: ModelConstructor): ModelConstructor {
  * Reads discriminator value from 'type' getter on the class prototype.
  * The type must be defined as a getter: `get type() { return "value"; }`
  */
-function getDiscriminatorValue(target: ModelConstructor): string | undefined {
+function getDiscriminatorValue(target: ModelClassType): string | undefined {
   const descriptor = Object.getOwnPropertyDescriptor(target.prototype, "type");
   if (!descriptor) return undefined;
 
@@ -58,7 +58,7 @@ function getDiscriminatorValue(target: ModelConstructor): string | undefined {
 }
 
 /**
- * Registers an entity class in the registry.
+ * Registers a model class in the registry.
  * Derives entity name from class name: User → "users"
  * For STI subclasses, derives entity name from root domain class.
  *
@@ -74,8 +74,8 @@ function getDiscriminatorValue(target: ModelConstructor): string | undefined {
  *   get type() { return "chess"; }
  * }
  */
-export function model<T extends ModelConstructor>(target: T): T {
-  const rootClass = findRootEntityClass(target);
+export function model<T extends ModelClassType>(target: T): T {
+  const rootClass = findRootModelClass(target);
   const isSubclass = rootClass !== target;
 
   // Derive entity name from ROOT class (STI: all subclasses share same table)
@@ -84,14 +84,14 @@ export function model<T extends ModelConstructor>(target: T): T {
 
   if (isSubclass) {
     // STI subclass - only register discriminator mapping
-    // Don't overwrite ENTITY_REGISTRY (hydrator uses discriminator to resolve class)
+    // Don't overwrite MODEL_REGISTRY (hydrator uses discriminator to resolve class)
     const discriminatorValue = getDiscriminatorValue(target);
     if (discriminatorValue) {
       registerDiscriminator(entityName, discriminatorValue, target as any);
     }
   } else {
     // Root class or non-STI class - register in main registry
-    ENTITY_REGISTRY.set(entityName, target as any);
+    MODEL_REGISTRY.set(entityName, target as any);
   }
 
   return target;

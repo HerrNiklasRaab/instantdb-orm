@@ -1,16 +1,16 @@
 export { RootStore } from "./RootStore";
 export {
-  ENTITY_REGISTRY,
-  getEntityClass,
+  MODEL_REGISTRY,
+  getModelClass,
   isValidEntityName,
   getEntityNames,
-  getRegisteredEntityNames,
-  isRegisteredEntity,
+  getRegisteredModelNames,
+  isRegisteredModel,
   configureEntityMeta,
   type SchemaConfig,
   type EntityName,
-  type EntityInstanceFor,
-  type EntityClassFor,
+  type ModelInstanceFor,
+  type ModelClassFor,
 } from "./EntityRegistry";
 export { EntityHydrator, type GetIdentityMap } from "./EntityHydrator";
 export type {
@@ -18,5 +18,5 @@ export type {
   QueryResult,
   RootStoreConfig,
   InstantDBClient,
-  EntityConstructor,
+  ModelConstructor,
 } from "./types";

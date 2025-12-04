@@ -16,4 +16,4 @@ export interface RootStoreConfig {
   db: InstantDBClient;
 }
 
-export type EntityConstructor<T extends Model = Model> = new (id: string) => T;
+export type ModelConstructor<T extends Model = Model> = new (id: string) => T;

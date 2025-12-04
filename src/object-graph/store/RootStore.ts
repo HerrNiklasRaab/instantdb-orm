@@ -1,6 +1,6 @@
 import { IdentityMap } from "../IdentityMap";
 import type { Model } from "../Model";
-import { getEntityNames, isValidEntityName, getEntityClass } from "./EntityRegistry";
+import { getEntityNames, isValidEntityName, getModelClass } from "./EntityRegistry";
 import { getEntityMeta } from "./EntityMeta";
 import { EntityHydrator } from "./EntityHydrator";
 import { getEntityNameFromClass } from "../decorators";
@@ -181,8 +181,8 @@ export class RootStore {
     const entityNames = getEntityNames();
     await Promise.all(
       entityNames.map((name) => {
-        const EntityClass = getEntityClass(name);
-        return this.watchEntity(EntityClass);
+        const ModelClass = getModelClass(name);
+        return this.watchEntity(ModelClass);
       })
     );
   }

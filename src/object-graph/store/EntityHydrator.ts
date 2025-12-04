@@ -2,11 +2,11 @@ import { runInAction } from "mobx";
 import type { IdentityMap } from "../IdentityMap";
 import type { Model } from "../Model";
 import {
-  getEntityClass,
-  getEntityClassForDiscriminator,
+  getModelClass,
+  getModelClassForDiscriminator,
   hasDiscriminatorMapping,
   type EntityName,
-  type EntityInstanceFor,
+  type ModelInstanceFor,
 } from "./EntityRegistry";
 import { getEntityMeta, getPropertyName } from "./EntityMeta";
 import type { RawEntityData } from "./types";
@@ -14,7 +14,7 @@ import { RootStore } from "./RootStore";
 
 export type GetIdentityMap = <K extends EntityName>(
   entityName: K
-) => IdentityMap<EntityInstanceFor<K>>;
+) => IdentityMap<ModelInstanceFor<K>>;
 
 export class EntityHydrator {
   constructor(private store: RootStore) { }
@@ -23,8 +23,8 @@ export class EntityHydrator {
     entityName: K,
     rawData: RawEntityData,
     getIdentityMap: GetIdentityMap
-  ): EntityInstanceFor<K> | null {
-    const EntityClass = this.resolveEntityClass(entityName, rawData);
+  ): ModelInstanceFor<K> | null {
+    const ModelClass = this.resolveModelClass(entityName, rawData);
     const identityMap = getIdentityMap(entityName);
     const meta = getEntityMeta(entityName);
 
@@ -40,7 +40,7 @@ export class EntityHydrator {
             : value;
         }
       }
-      return Reflect.construct(EntityClass, [rawData.id, dataArg]) as EntityInstanceFor<K>;
+      return Reflect.construct(ModelClass, [rawData.id, dataArg]) as ModelInstanceFor<K>;
     });
 
     this.updateModelFields(model, entityName, rawData, getIdentityMap);
@@ -63,10 +63,10 @@ export class EntityHydrator {
     entityName: K,
     rawDataArray: RawEntityData[],
     getIdentityMap: GetIdentityMap
-  ): EntityInstanceFor<K>[] {
+  ): ModelInstanceFor<K>[] {
     return rawDataArray
       .map((rawData) => this.hydrate(entityName, rawData, getIdentityMap))
-      .filter((model): model is EntityInstanceFor<K> => model !== null);
+      .filter((model): model is ModelInstanceFor<K> => model !== null);
   }
 
   private updateModelFields(
@@ -196,13 +196,13 @@ export class EntityHydrator {
   }
 
   /**
-   * Resolves the concrete entity class to instantiate.
+   * Resolves the concrete model class to instantiate.
    * For STI entities, uses 'type' discriminator to find the correct subclass.
    */
-  private resolveEntityClass(
+  private resolveModelClass(
     entityName: string,
     rawData: RawEntityData
-  ): ReturnType<typeof getEntityClass> {
+  ): ReturnType<typeof getModelClass> {
     if (hasDiscriminatorMapping(entityName)) {
       const discriminatorValue = rawData.type as string | undefined;
 
@@ -212,7 +212,7 @@ export class EntityHydrator {
         );
       }
 
-      const SubClass = getEntityClassForDiscriminator(
+      const SubClass = getModelClassForDiscriminator(
         entityName,
         discriminatorValue
       );
@@ -226,7 +226,7 @@ export class EntityHydrator {
       return SubClass;
     }
 
-    return getEntityClass(entityName);
+    return getModelClass(entityName);
   }
 
   private setReverseRelationship(
