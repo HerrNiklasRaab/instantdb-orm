@@ -1,4 +1,4 @@
-import { makeObservable, observable } from "mobx";
+import { observable } from "mobx";
 import { model } from "../../src/object-graph";
 import { Match } from "./Match";
 
@@ -29,16 +29,12 @@ export class SkiMatch extends Match {
     super(id, data);
     this._resort = data.resort;
     this._skillLevel = data.skillLevel;
-    makeObservable<
-      SkiMatch,
-      "_createdAt" | "_deletedAt" | "_resort" | "_skillLevel"
-    >(this, {
+    this.init({
       _createdAt: observable,
       _deletedAt: observable,
       _resort: observable,
       _skillLevel: observable,
       requester: observable.ref,
     });
-    this._initTracker();
   }
 }

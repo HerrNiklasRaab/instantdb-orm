@@ -1,3 +1,4 @@
+import { makeObservable } from "mobx";
 import { type EntityName } from "./store/EntityMeta";
 import { ChangeTracker } from "./persistence/ChangeTracker";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
@@ -6,20 +7,13 @@ export abstract class Model {
   abstract readonly id: string;
   abstract deletedAt: Date | null;
 
-  /** @internal Tracks changes for persistence (lazy initialized) */
-  private _trackerInstance: ChangeTracker | null = null;
-
-  /** @internal Force tracker initialization (call after makeObservable) */
-  _initTracker(): void {
-    void this._tracker;
-  }
-
   /** @internal */
-  get _tracker(): ChangeTracker {
-    if (!this._trackerInstance) {
-      this._trackerInstance = new ChangeTracker(this, this.entityName);
-    }
-    return this._trackerInstance;
+  _tracker: ChangeTracker | null = null;
+
+  /** Call at end of subclass constructor after setting fields. Wraps makeObservable + tracker init. */
+  protected init(annotations: Record<string, unknown>): void {
+    makeObservable(this, annotations as never);
+    this._tracker = new ChangeTracker(this, this.entityName);
   }
 
   get entityName(): EntityName {
@@ -33,6 +27,6 @@ export abstract class Model {
   }
 
   isDirty(): boolean {
-    return this._tracker.hasChanges();
+    return this._tracker!.hasChanges();
   }
 }

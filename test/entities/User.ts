@@ -1,4 +1,4 @@
-import { makeObservable, observable } from "mobx";
+import { observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { Profile } from "./Profile";
 import type { Post } from "./Post";
@@ -69,7 +69,7 @@ export class User extends Model {
     this._name = data.name;
     this._createdAt = data.createdAt;
     this._updatedAt = data.updatedAt;
-    makeObservable<User, "_name" | "_createdAt" | "_updatedAt" | "_deletedAt" | "_posts">(this, {
+    this.init({
       _name: observable,
       _createdAt: observable,
       _updatedAt: observable,
@@ -82,6 +82,5 @@ export class User extends Model {
       chessMatchs: observable.shallow,
       skiMatchs: observable.shallow,
     });
-    this._initTracker();
   }
 }

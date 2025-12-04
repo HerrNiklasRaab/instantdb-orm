@@ -1,4 +1,4 @@
-import { makeObservable, observable } from "mobx";
+import { observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { User } from "./User";
 
@@ -24,7 +24,7 @@ export class Post extends Model {
     this.title = data.title;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
-    makeObservable(this, {
+    this.init({
       title: observable,
       content: observable,
       createdAt: observable,
@@ -32,6 +32,5 @@ export class Post extends Model {
       deletedAt: observable,
       author: observable.ref,
     });
-    this._initTracker();
   }
 }

@@ -28,12 +28,12 @@ export class RootStore {
 
   /** Save model changes to the database */
   async save(model: Model): Promise<void> {
-    if (!model._tracker.hasChanges()) {
+    if (!model._tracker!.hasChanges()) {
       return;
     }
 
     const entityName = model.entityName;
-    const changes = model._tracker.getChanges();
+    const changes = model._tracker!.getChanges();
     let tx: TxChunk = this.db.tx[entityName][model.id];
 
     // Scalar updates
@@ -58,7 +58,7 @@ export class RootStore {
     }
 
     await this.db.transact([tx]);
-    model._tracker.reset();
+    model._tracker!.reset();
   }
 
   /** Delete a model (soft delete) */
@@ -296,7 +296,7 @@ export class RootStore {
 
   async query(queryObj: Record<string, unknown>): Promise<void> {
     const expandedQuery = this.buildQueryWithRelationships(queryObj);
-    const result = (await this.db.query(queryObj)) as QueryResult;
+    const result = (await this.db.query(expandedQuery)) as QueryResult;
     this.hydrateResult(result);
   }
 

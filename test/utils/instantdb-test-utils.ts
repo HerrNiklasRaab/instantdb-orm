@@ -13,8 +13,12 @@ import schema from "../instant.schema";
 import "../entities/User";
 import "../entities/Profile";
 import "../entities/Post";
+// STI entities (single table with type discriminator)
 import "../entities/ChessMatchRequest";
 import "../entities/SkiMatchRequest";
+// MTI entities (separate tables)
+import "../entities/ChessMatch";
+import "../entities/SkiMatch";
 
 // Re-export id() for generating UUIDs in tests
 export { id };

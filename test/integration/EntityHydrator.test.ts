@@ -313,6 +313,30 @@ describe("RootStore hydration (Integration)", () => {
   });
 
   describe("deeply nested query hydration", () => {
+    /**
+     * Tests recursive query expansion and identity map wiring via ID lookup.
+     *
+     * This test validates two critical behaviors:
+     *
+     * 1. **Recursive query expansion** (`buildQueryWithRelationships`):
+     *    When querying `posts { author { profile } }`, the method recursively expands
+     *    User's relationships. The expanded query becomes:
+     *    ```
+     *    posts {
+     *      author {
+     *        profile { ... }
+     *        posts { $: { fields: ["id"] } }  // Added by recursive expansion
+     *        ...other User relationships
+     *      }
+     *    }
+     *    ```
+     *
+     * 2. **Identity map wiring via ID lookup**:
+     *    - post2 is pre-hydrated into identity map via `queryModel(Post)`
+     *    - When User is hydrated, it receives `posts: [{ id: post2Id }]` (ID only, no full data)
+     *    - The hydrator looks up post2 in the identity map and wires it to `user.posts`
+     *    - Without recursive expansion, User wouldn't request posts data, so post2 wouldn't be wired
+     */
     it("hydrates 3-level nested relationships with 3 different entities (Post → User → Profile)", async () => {
       const userId = id();
       const profileId = id();
@@ -325,13 +349,16 @@ describe("RootStore hydration (Integration)", () => {
       user.profile = profile;
       await storeA.save(user);
 
-      // Create Post linked to User
+      // Create two posts linked to the same User
       await createPostInStoreA(postId, { author: user });
       await createPostInStoreB(postId2, { author: user });
 
+      // Pre-hydrate posts into identity map (post2 will be looked up by ID later)
       await storeB.queryModel(Post);
 
       // Query 3 levels deep: Post → author (User) → profile (Profile)
+      // The recursive expansion adds { posts: { $: { fields: ["id"] } } } to User,
+      // which returns posts: [{ id: postId }, { id: post2Id }] (IDs only for circular refs)
       await storeB.query({
         posts: {
           $: { where: { id: postId } },
@@ -341,25 +368,23 @@ describe("RootStore hydration (Integration)", () => {
         },
       });
 
-      // Get hydrated entities
       const hydratedPost = storeB.getById(Post, postId);
       const hydratedPost2 = storeB.getById(Post, postId2);
       const hydratedUser = storeB.getById(User, userId);
       const hydratedProfile = storeB.getById(Profile, profileId);
 
-      // Verify all 3 entities hydrated
+      // Verify all 3 entity types hydrated
       expect(hydratedPost).toBeDefined();
       expect(hydratedUser).toBeDefined();
       expect(hydratedProfile).toBeDefined();
 
-      // Verify relationships: Post → User
+      // Verify forward relationships from query: Post → User → Profile
       expect(hydratedPost!.author).toBe(hydratedUser);
-
-      // Verify relationships: User → Profile (bidirectional)
       expect(hydratedUser!.profile).toBe(hydratedProfile);
       expect(hydratedProfile!.user).toBe(hydratedUser);
 
-      // Verify reverse: User → Posts (includes post2 even though it wasn't in query)
+      // Verify identity map wiring: User.posts includes post2 (wired via ID lookup)
+      // post2 was NOT in the query, but was pre-hydrated and wired via ID lookup
       expect(hydratedUser!.posts).toContain(hydratedPost);
       expect(hydratedUser!.posts).toContain(hydratedPost2);
       expect(hydratedUser!.posts.length).toBe(2);
