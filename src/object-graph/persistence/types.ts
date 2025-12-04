@@ -7,7 +7,7 @@ export interface TxChunk {
   ruleParams(params: Record<string, unknown>): TxChunk;
 }
 
-type TxProxy = {
+export type TxProxy = {
   [entityName: string]: {
     [id: string]: TxChunk;
   };

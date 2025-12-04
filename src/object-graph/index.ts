@@ -20,4 +20,12 @@ export {
   type ModelConstructor,
   type GetIdentityMap,
 } from "./store";
-export { type InstantDBClient } from "./persistence";
+export {
+  type InstantDBClient,
+  type TxChunk,
+  type TxProxy,
+  type TransactionResult,
+  type SubscriptionCallback,
+  type Unsubscribe,
+  type QueryOptions,
+} from "./persistence";
