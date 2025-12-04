@@ -3,20 +3,21 @@ export { Model } from "./Model";
 export { model } from "./decorators";
 export {
   RootStore,
-  EntityHydrator,
-  ENTITY_REGISTRY,
-  getEntityClass,
+  ModelHydrator,
+  ModelRegistry,
+  modelRegistry,
+  getModelClass,
   isValidEntityName,
   getEntityNames,
   configureEntityMeta,
   type SchemaConfig,
   type EntityName,
-  type EntityInstanceFor,
-  type EntityClassFor,
+  type ModelInstanceFor,
+  type ModelClassFor,
   type RawEntityData,
   type QueryResult,
   type RootStoreConfig,
-  type EntityConstructor,
+  type ModelConstructor,
   type GetIdentityMap,
 } from "./store";
 export { type InstantDBClient } from "./persistence";

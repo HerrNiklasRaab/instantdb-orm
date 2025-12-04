@@ -5,9 +5,9 @@ import {
   getModelClass,
   getModelClassForDiscriminator,
   hasDiscriminatorMapping,
-  type EntityName,
-  type ModelInstanceFor,
-} from "./EntityRegistry";
+} from "./ModelRegistry";
+import type { EntityName } from "./EntityMeta";
+import type { ModelInstanceFor } from "./types";
 import { getEntityMeta, getPropertyName } from "./EntityMeta";
 import type { RawEntityData } from "./types";
 import { RootStore } from "./RootStore";
@@ -16,7 +16,7 @@ export type GetIdentityMap = <K extends EntityName>(
   entityName: K
 ) => IdentityMap<ModelInstanceFor<K>>;
 
-export class EntityHydrator {
+export class ModelHydrator {
   constructor(private store: RootStore) { }
 
   hydrate<K extends EntityName>(

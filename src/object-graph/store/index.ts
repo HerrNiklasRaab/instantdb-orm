@@ -1,22 +1,30 @@
 export { RootStore } from "./RootStore";
 export {
-  MODEL_REGISTRY,
+  ModelRegistry,
+  modelRegistry,
   getModelClass,
-  isValidEntityName,
-  getEntityNames,
+  getModelClassForDiscriminator,
+  hasDiscriminatorMapping,
   getRegisteredModelNames,
   isRegisteredModel,
+} from "./ModelRegistry";
+export {
+  getEntityMeta,
+  getEntityNames,
+  isValidEntityName,
   configureEntityMeta,
-  type SchemaConfig,
+  type EntityMeta,
   type EntityName,
-  type ModelInstanceFor,
-  type ModelClassFor,
-} from "./EntityRegistry";
-export { EntityHydrator, type GetIdentityMap } from "./EntityHydrator";
+  type RelationshipFieldMeta,
+  type SchemaConfig,
+} from "./EntityMeta";
+export { ModelHydrator, type GetIdentityMap } from "./ModelHydrator";
 export type {
   RawEntityData,
   QueryResult,
   RootStoreConfig,
   InstantDBClient,
   ModelConstructor,
+  ModelInstanceFor,
+  ModelClassFor,
 } from "./types";

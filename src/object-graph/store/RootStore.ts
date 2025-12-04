@@ -1,8 +1,8 @@
 import { IdentityMap } from "../IdentityMap";
 import type { Model } from "../Model";
-import { getEntityNames, isValidEntityName, getModelClass } from "./EntityRegistry";
-import { getEntityMeta } from "./EntityMeta";
-import { EntityHydrator } from "./EntityHydrator";
+import { getEntityNames, isValidEntityName, getEntityMeta } from "./EntityMeta";
+import { getModelClass } from "./ModelRegistry";
+import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
 import type { TxChunk } from "../persistence/types";
 import type {
@@ -16,12 +16,12 @@ type ModelClass<T extends Model = Model> = new (...args: any[]) => T;
 
 export class RootStore {
   private identityMaps = new Map<string, IdentityMap<Model>>();
-  private hydrator: EntityHydrator;
+  private hydrator: ModelHydrator;
   readonly db: InstantDBClient;
 
   constructor(config: RootStoreConfig) {
     this.db = config.db;
-    this.hydrator = new EntityHydrator(this);
+    this.hydrator = new ModelHydrator(this);
     this.initializeIdentityMaps();
   }
 

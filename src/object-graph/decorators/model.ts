@@ -1,7 +1,4 @@
-import {
-  MODEL_REGISTRY,
-  registerDiscriminator,
-} from "../store/EntityRegistry";
+import { modelRegistry } from "../store/ModelRegistry";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 
 // Re-export for backwards compatibility
@@ -84,14 +81,14 @@ export function model<T extends ModelClassType>(target: T): T {
 
   if (isSubclass) {
     // STI subclass - only register discriminator mapping
-    // Don't overwrite MODEL_REGISTRY (hydrator uses discriminator to resolve class)
+    // Don't overwrite main registry (hydrator uses discriminator to resolve class)
     const discriminatorValue = getDiscriminatorValue(target);
     if (discriminatorValue) {
-      registerDiscriminator(entityName, discriminatorValue, target as any);
+      modelRegistry.registerDiscriminator(entityName, discriminatorValue, target as any);
     }
   } else {
     // Root class or non-STI class - register in main registry
-    MODEL_REGISTRY.set(entityName, target as any);
+    modelRegistry.register(entityName, target as any);
   }
 
   return target;
