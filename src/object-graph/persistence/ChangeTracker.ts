@@ -1,7 +1,7 @@
 import { observe } from "mobx";
 import type { IEntity } from "../IdentityMap";
 import type { EntityName } from "../store/EntityMeta";
-import { getEntityMeta } from "../store/EntityMeta";
+import { getEntityMeta, getPropertyName } from "../store/EntityMeta";
 
 export interface TrackedChanges {
   scalars: Map<string, unknown>;
@@ -38,9 +38,10 @@ export class ChangeTracker {
     const meta = getEntityMeta(this.entityName);
     const record = this.entity as unknown as Record<string, unknown>;
 
-    // Capture relationship state
+    // Capture relationship state (use private backing field if exists)
     for (const rel of meta.relationshipFields) {
-      const value = record[rel.fieldName];
+      const propName = getPropertyName(this.entity, rel.fieldName);
+      const value = record[propName];
       if (rel.isToOne()) {
         const entityRef = value as IEntity | null;
         this.originalRelationships.set(rel.fieldName, entityRef?.id ?? null);
@@ -58,16 +59,18 @@ export class ChangeTracker {
     const meta = getEntityMeta(this.entityName);
     const record = this.entity as unknown as Record<string, unknown>;
 
-    // Observe scalar field changes
+    // Observe scalar field changes (use private backing field if exists)
     for (const fieldName of meta.scalarFields) {
       if (fieldName === "id") continue;
+      const propName = getPropertyName(this.entity, fieldName);
 
       try {
         const disposer = observe(
           this.entity as object,
-          fieldName as never,
+          propName as never,
           (change) => {
             if (change.type === "update") {
+              // Store with schema field name as key
               this.dirtyScalars.set(fieldName, change.newValue);
             }
           }
@@ -78,14 +81,16 @@ export class ChangeTracker {
       }
     }
 
-    // Observe relationship changes
+    // Observe relationship changes (use private backing field if exists)
     for (const rel of meta.relationshipFields) {
+      const propName = getPropertyName(this.entity, rel.fieldName);
+
       if (rel.isToOne()) {
         // observable.ref - observe the reference change
         try {
           const disposer = observe(
             this.entity as object,
-            rel.fieldName as never,
+            propName as never,
             (change) => {
               if (change.type === "update") {
                 const newEntity = change.newValue as IEntity | null;
@@ -102,7 +107,7 @@ export class ChangeTracker {
         }
       } else {
         // observable.shallow - observe array changes
-        const array = record[rel.fieldName] as IEntity[] | undefined;
+        const array = record[propName] as IEntity[] | undefined;
         if (array && Array.isArray(array)) {
           try {
             const disposer = observe(array, () => {
@@ -132,7 +137,9 @@ export class ChangeTracker {
       scalars = new Map<string, unknown>();
       for (const fieldName of meta.scalarFields) {
         if (fieldName === "id") continue;
-        scalars.set(fieldName, record[fieldName]);
+        // Read from private backing field if exists, key by schema name
+        const propName = getPropertyName(this.entity, fieldName);
+        scalars.set(fieldName, record[propName]);
       }
     } else {
       scalars = new Map(this.dirtyScalars);

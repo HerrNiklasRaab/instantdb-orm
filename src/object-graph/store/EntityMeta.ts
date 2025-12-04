@@ -170,3 +170,13 @@ export function isValidEntityName(name: string): name is EntityName {
 
 // For backwards compatibility - re-export (now mutable internally)
 export { ENTITY_META };
+
+/**
+ * Resolves the actual property name on an entity for a given schema field.
+ * Supports private backing field convention: if `_fieldName` exists, use it.
+ * Otherwise, use `fieldName`.
+ */
+export function getPropertyName(entity: object, schemaField: string): string {
+  const privateName = "_" + schemaField;
+  return privateName in entity ? privateName : schemaField;
+}

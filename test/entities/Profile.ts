@@ -15,21 +15,28 @@ export class Profile extends Model {
   avatarUrl?: string = undefined;
   deletedAt: Date | null = null;
 
-  // Relationships
-  user: User | null = null;
+  // Private backing field for to-one relationship
+  private _user: User | null = null;
+
+  get user(): User | null {
+    return this._user;
+  }
+  set user(value: User | null) {
+    this._user = value;
+  }
 
   constructor(id: string, createdAt: Date, updatedAt: Date) {
     super();
     this.id = id;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
-    makeObservable(this, {
+    makeObservable<Profile, "_user">(this, {
       bio: observable,
       avatarUrl: observable,
       createdAt: observable,
       updatedAt: observable,
       deletedAt: observable,
-      user: observable.ref,
+      _user: observable.ref,
     });
     this._initTracker();
   }

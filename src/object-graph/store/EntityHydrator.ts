@@ -6,7 +6,7 @@ import {
   type EntityName,
   type EntityInstanceFor,
 } from "./EntityRegistry";
-import { getEntityMeta } from "./EntityMeta";
+import { getEntityMeta, getPropertyName } from "./EntityMeta";
 import type { RawEntityData } from "./types";
 import { RootStore } from "./RootStore";
 
@@ -77,11 +77,13 @@ export class EntityHydrator {
 
     runInAction(() => {
       // Update ALL scalar fields from raw data (handles re-hydration of existing entities)
+      // Use private backing field if exists (e.g., _name for schema field "name")
       for (const field of meta.scalarFields) {
         if (field === "id") continue; // Don't update id
         const value = rawData[field];
         if (value !== undefined) {
-          record[field] = meta.isDateField(field) && value != null
+          const propName = getPropertyName(entity, field);
+          record[propName] = meta.isDateField(field) && value != null
             ? new Date(value as string | number)
             : value;
         }
@@ -120,6 +122,9 @@ export class EntityHydrator {
 
       const targetMap = getIdentityMap(rel.targetEntity);
 
+      // Use private backing field if exists
+      const propName = getPropertyName(entity, rel.fieldName);
+
       if (rel.isToOne()) {
         // has-one: InstantDB returns [{ id: '...' }] or { id: '...' } for has-one relationships
         const firstItem = nestedArray[0] as RawEntityData | undefined;
@@ -139,7 +144,7 @@ export class EntityHydrator {
           }
 
           if (targetEntity) {
-            record[rel.fieldName] = targetEntity;
+            record[propName] = targetEntity;
 
             // Set up bidirectional relationship
             this.setReverseRelationship(entity, targetEntity, rel);
@@ -147,7 +152,7 @@ export class EntityHydrator {
         }
       } else {
         // has-many: Clear and rebuild the array
-        const existingArray = record[rel.fieldName] as Model[];
+        const existingArray = record[propName] as Model[];
         if (Array.isArray(existingArray)) {
           existingArray.length = 0; // Clear existing
 
@@ -199,14 +204,16 @@ export class EntityHydrator {
     if (!reverseRel) return;
 
     const targetRecord = targetEntity as unknown as Record<string, unknown>;
+    // Use private backing field if exists
+    const propName = getPropertyName(targetEntity, reverseRel.fieldName);
 
     if (reverseRel.isToMany()) {
-      const array = targetRecord[reverseRel.fieldName] as Model[];
+      const array = targetRecord[propName] as Model[];
       if (Array.isArray(array) && !array.includes(entity)) {
         array.push(entity);
       }
     } else {
-      targetRecord[reverseRel.fieldName] = entity;
+      targetRecord[propName] = entity;
     }
   }
 }
