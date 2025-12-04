@@ -27,17 +27,18 @@ export class EntityHydrator {
     const meta = getEntityMeta(entityName);
 
     const entity = identityMap.getOrCreate(rawData.id, () => {
-      // Build constructor args: id + required fields in schema order
-      const args = [
-        rawData.id,
-        ...meta.requiredFields.map((field) => {
-          const value = rawData[field];
-          return meta.isDateField(field) && value != null
+      // Build data object with all scalar fields (order-independent)
+      const dataArg: Record<string, unknown> = {};
+      for (const field of meta.scalarFields) {
+        if (field === "id") continue;
+        const value = rawData[field];
+        if (value !== undefined) {
+          dataArg[field] = meta.isDateField(field) && value != null
             ? new Date(value as string | number)
             : value;
-        }),
-      ];
-      return Reflect.construct(EntityClass, args) as EntityInstanceFor<K>;
+        }
+      }
+      return Reflect.construct(EntityClass, [rawData.id, dataArg]) as EntityInstanceFor<K>;
     });
 
     this.updateEntityFields(entity, entityName, rawData, getIdentityMap);

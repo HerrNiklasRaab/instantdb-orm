@@ -19,11 +19,11 @@ describe("Entity Save (Integration)", () => {
 
   // Helper to create entities with default values
   function createUser(userId: string, name = "Test User"): User {
-    return new User(userId, name, new Date(), new Date());
+    return new User(userId, { name, createdAt: new Date(), updatedAt: new Date() });
   }
 
   function createPost(postId: string, title = "Test Post"): Post {
-    return new Post(postId, title, new Date(), new Date());
+    return new Post(postId, { title, createdAt: new Date(), updatedAt: new Date() });
   }
 
   describe("isDirty() - new entity behavior", () => {
@@ -229,7 +229,7 @@ describe("Entity Save (Integration)", () => {
     it("converts Date to ISO string", async () => {
       const userId = id();
       const testDate = new Date("2024-06-15T10:30:00.000Z");
-      const user = new User(userId, "Test", new Date(), testDate);
+      const user = new User(userId, { name: "Test", createdAt: new Date(), updatedAt: testDate });
       await store.save(user);
 
       // Verify date was saved correctly

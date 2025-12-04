@@ -18,12 +18,12 @@ export class Post extends Model {
   // Relationships
   author: User | null = null;
 
-  constructor(id: string, title: string, createdAt: Date, updatedAt: Date) {
+  constructor(id: string, data: { title: string; createdAt: Date; updatedAt: Date }) {
     super();
     this.id = id;
-    this.title = title;
-    this.createdAt = createdAt;
-    this.updatedAt = updatedAt;
+    this.title = data.title;
+    this.createdAt = data.createdAt;
+    this.updatedAt = data.updatedAt;
     makeObservable(this, {
       title: observable,
       content: observable,

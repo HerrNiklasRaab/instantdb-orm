@@ -29,12 +29,11 @@ describe("RootStore hydration (Integration)", () => {
       updatedAt: Date;
     }>
   ): Promise<User> {
-    const user = new User(
-      entityId,
-      data.name ?? "Test User",
-      data.createdAt ?? new Date(),
-      data.updatedAt ?? new Date()
-    );
+    const user = new User(entityId, {
+      name: data.name ?? "Test User",
+      createdAt: data.createdAt ?? new Date(),
+      updatedAt: data.updatedAt ?? new Date(),
+    });
     await storeA.save(user);
     return user;
   }
@@ -48,12 +47,11 @@ describe("RootStore hydration (Integration)", () => {
       author: User;
     }>
   ): Promise<Post> {
-    const post = new Post(
-      entityId,
-      data.title ?? "Test Post",
-      new Date(),
-      new Date()
-    );
+    const post = new Post(entityId, {
+      title: data.title ?? "Test Post",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
     post.content = data.content;
     if (data.author) {
       post.author = data.author;
@@ -71,7 +69,7 @@ describe("RootStore hydration (Integration)", () => {
       user: User;
     }>
   ): Promise<Profile> {
-    const profile = new Profile(entityId, new Date(), new Date());
+    const profile = new Profile(entityId, { createdAt: new Date(), updatedAt: new Date() });
     profile.bio = data.bio;
     profile.avatarUrl = data.avatarUrl;
     if (data.user) {
@@ -388,6 +386,48 @@ describe("RootStore hydration (Integration)", () => {
       // Verify bidirectional one-to-one
       expect(hydratedUser!.profile).toBe(hydratedProfile);
       expect(hydratedProfile!.user).toBe(hydratedUser);
+    });
+  });
+
+  describe("constructor order independence", () => {
+    it("hydrates correctly regardless of schema field order", async () => {
+      const userId = id();
+      const testDate = new Date("2024-06-15T10:30:00.000Z");
+
+      // Create user directly in DB with fields in arbitrary order
+      await db.transact([
+        db.tx.users[userId].update({
+          // Note: order here doesn't matter because it's an object
+          updatedAt: testDate.toISOString(),
+          name: "Order Test User",
+          createdAt: testDate.toISOString(),
+        }),
+      ]);
+
+      // Store B hydrates the user
+      const users = await storeB.watchEntity(User);
+      const user = users.find((u) => u.id === userId);
+
+      // Verify all fields are correctly hydrated
+      expect(user).toBeDefined();
+      expect(user!.name).toBe("Order Test User");
+      expect(user!.createdAt).toEqual(testDate);
+      expect(user!.updatedAt).toEqual(testDate);
+    });
+
+    it("user-created entities work with any property order in data object", () => {
+      const userId = id();
+      const now = new Date();
+
+      // Create with properties in different order than schema
+      const user1 = new User(userId, { updatedAt: now, name: "User1", createdAt: now });
+      const user2 = new User(id(), { createdAt: now, updatedAt: now, name: "User2" });
+      const user3 = new User(id(), { name: "User3", createdAt: now, updatedAt: now });
+
+      // All should work correctly
+      expect(user1.name).toBe("User1");
+      expect(user2.name).toBe("User2");
+      expect(user3.name).toBe("User3");
     });
   });
 });

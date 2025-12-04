@@ -57,12 +57,12 @@ export class User extends Model {
     this._posts = value;
   }
 
-  constructor(id: string, name: string, createdAt: Date, updatedAt: Date) {
+  constructor(id: string, data: { name: string; createdAt: Date; updatedAt: Date }) {
     super();
     this.id = id;
-    this._name = name;
-    this._createdAt = createdAt;
-    this._updatedAt = updatedAt;
+    this._name = data.name;
+    this._createdAt = data.createdAt;
+    this._updatedAt = data.updatedAt;
     makeObservable<User, "_name" | "_createdAt" | "_updatedAt" | "_deletedAt" | "_posts">(this, {
       _name: observable,
       _createdAt: observable,

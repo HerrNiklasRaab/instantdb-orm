@@ -25,11 +25,11 @@ export class Profile extends Model {
     this._user = value;
   }
 
-  constructor(id: string, createdAt: Date, updatedAt: Date) {
+  constructor(id: string, data: { createdAt: Date; updatedAt: Date }) {
     super();
     this.id = id;
-    this.createdAt = createdAt;
-    this.updatedAt = updatedAt;
+    this.createdAt = data.createdAt;
+    this.updatedAt = data.updatedAt;
     makeObservable<Profile, "_user">(this, {
       bio: observable,
       avatarUrl: observable,
