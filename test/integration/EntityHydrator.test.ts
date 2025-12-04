@@ -30,9 +30,8 @@ describe("RootStore hydration (Integration)", () => {
       updatedAt: Date;
     }>
   ): Promise<User> {
-    const user = new User(entityId);
-    storeA.getIdentityMap(User).set(user);
-    await flushMicrotasks(); // Wait for tracking to initialize
+    const user = storeA.create(User, entityId);
+    await flushMicrotasks();
     user.name = data.name ?? "Test User";
     user.createdAt = data.createdAt ?? new Date();
     user.updatedAt = data.updatedAt ?? new Date();
@@ -49,9 +48,8 @@ describe("RootStore hydration (Integration)", () => {
       author: User;
     }>
   ): Promise<Post> {
-    const post = new Post(entityId);
-    storeA.getIdentityMap(Post).set(post);
-    await flushMicrotasks(); // Wait for tracking to initialize
+    const post = storeA.create(Post, entityId);
+    await flushMicrotasks();
     post.title = data.title ?? "Test Post";
     post.content = data.content;
     post.createdAt = new Date();
@@ -72,8 +70,7 @@ describe("RootStore hydration (Integration)", () => {
       user: User;
     }>
   ): Promise<Profile> {
-    const profile = new Profile(entityId);
-    storeA.getIdentityMap(Profile).set(profile);
+    const profile = storeA.create(Profile, entityId);
     await flushMicrotasks();
     profile.bio = data.bio;
     profile.avatarUrl = data.avatarUrl;
@@ -141,14 +138,13 @@ describe("RootStore hydration (Integration)", () => {
       const userId = id();
 
       // Store A creates user
-      await createUserInStoreA(userId, { name: "John" });
+      const userA = await createUserInStoreA(userId, { name: "John" });
 
       // Store B hydrates first time (only users needed)
       const users1 = await storeB.watchEntity(User);
       const user1 = users1.find((u) => u.id === userId);
 
       // Store A updates user name
-      const userA = storeA.getById(User, userId)!;
       userA.name = "John Updated";
       await userA.save();
 

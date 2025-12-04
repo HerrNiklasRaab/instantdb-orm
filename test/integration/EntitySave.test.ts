@@ -5,26 +5,38 @@ import {
   flushMicrotasks,
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
+import { RootStore } from "../../src/object-graph/store/RootStore";
 import { User } from "../entities/User";
 import { Post } from "../entities/Post";
 
 describe("Entity Save (Integration)", () => {
   let db: TestInstantDBClient;
+  let store: RootStore;
 
   beforeEach(() => {
     db = setupTestDatabase();
+    store = new RootStore({ db });
   });
+
+  // Helper to create entities
+  function createUser(userId: string): User {
+    return store.create(User, userId);
+  }
+
+  function createPost(postId: string): Post {
+    return store.create(Post, postId);
+  }
 
   describe("isDirty() - scalar changes", () => {
     it("returns false for unchanged entity", async () => {
-      const user = new User(id());
+      const user = createUser(id());
       await flushMicrotasks();
 
       expect(user.isDirty()).toBe(false);
     });
 
     it("returns true after changing string field", async () => {
-      const user = new User(id());
+      const user = createUser(id());
       await flushMicrotasks();
 
       user.name = "New Name";
@@ -33,7 +45,7 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after changing date field", async () => {
-      const user = new User(id());
+      const user = createUser(id());
       await flushMicrotasks();
 
       user.updatedAt = new Date("2024-06-01");
@@ -42,7 +54,7 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after changing multiple fields", async () => {
-      const user = new User(id());
+      const user = createUser(id());
       await flushMicrotasks();
 
       user.name = "New Name";
@@ -54,8 +66,8 @@ describe("Entity Save (Integration)", () => {
 
   describe("isDirty() - relationship changes", () => {
     it("returns true after assigning one-to-one relationship", async () => {
-      const post = new Post(id());
-      const user = new User(id());
+      const post = createPost(id());
+      const user = createUser(id());
       await flushMicrotasks();
 
       post.author = user;
@@ -66,8 +78,8 @@ describe("Entity Save (Integration)", () => {
     it("returns true after removing one-to-one relationship", async () => {
       const postId = id();
       const userId = id();
-      const post = new Post(postId);
-      const user = new User(userId);
+      const post = createPost(postId);
+      const user = createUser(userId);
       await flushMicrotasks();
 
       // First save the user with all required fields
@@ -90,8 +102,8 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after adding to one-to-many relationship", async () => {
-      const user = new User(id());
-      const post = new Post(id());
+      const user = createUser(id());
+      const post = createPost(id());
       await flushMicrotasks();
 
       user.posts.push(post);
@@ -102,8 +114,8 @@ describe("Entity Save (Integration)", () => {
     it("returns true after removing from one-to-many relationship", async () => {
       const userId = id();
       const postId = id();
-      const user = new User(userId);
-      const post = new Post(postId);
+      const user = createUser(userId);
+      const post = createPost(postId);
       await flushMicrotasks();
 
       // Save user first
@@ -132,7 +144,7 @@ describe("Entity Save (Integration)", () => {
   describe("save() - basic flow", () => {
     it("does nothing when entity is not dirty", async () => {
       const userId = id();
-      const user = new User(userId);
+      const user = createUser(userId);
       await flushMicrotasks();
 
       await user.save();
@@ -144,7 +156,7 @@ describe("Entity Save (Integration)", () => {
 
     it("persists scalar changes to database", async () => {
       const userId = id();
-      const user = new User(userId);
+      const user = createUser(userId);
       await flushMicrotasks();
 
       user.name = "New Name";
@@ -162,8 +174,8 @@ describe("Entity Save (Integration)", () => {
     it("persists relationship link to database", async () => {
       const postId = id();
       const userId = id();
-      const post = new Post(postId);
-      const user = new User(userId);
+      const post = createPost(postId);
+      const user = createUser(userId);
       await flushMicrotasks();
 
       // First save the user
@@ -194,8 +206,8 @@ describe("Entity Save (Integration)", () => {
     it("persists relationship unlink to database", async () => {
       const postId = id();
       const userId = id();
-      const post = new Post(postId);
-      const user = new User(userId);
+      const post = createPost(postId);
+      const user = createUser(userId);
       await flushMicrotasks();
 
       // First save the user
@@ -236,7 +248,7 @@ describe("Entity Save (Integration)", () => {
 
     it("converts Date to ISO string", async () => {
       const userId = id();
-      const user = new User(userId);
+      const user = createUser(userId);
       await flushMicrotasks();
 
       const testDate = new Date("2024-06-15T10:30:00.000Z");
@@ -255,7 +267,7 @@ describe("Entity Save (Integration)", () => {
   describe("save() - state after save", () => {
     it("isDirty returns false after successful save", async () => {
       const userId = id();
-      const user = new User(userId);
+      const user = createUser(userId);
       await flushMicrotasks();
 
       user.name = "New Name";
@@ -270,7 +282,7 @@ describe("Entity Save (Integration)", () => {
 
     it("new changes are tracked after save", async () => {
       const userId = id();
-      const user = new User(userId);
+      const user = createUser(userId);
       await flushMicrotasks();
 
       user.name = "First Change";

@@ -1,5 +1,5 @@
 import { makeObservable, observable } from "mobx";
-import { Model, model } from "../../src/object-graph";
+import { Model, model, type RootStore } from "../../src/object-graph";
 import type { Profile } from "./Profile";
 import type { Post } from "./Post";
 
@@ -18,8 +18,8 @@ export class User extends Model {
   referredBy: User | null = null;
   referrals: User[] = [];
 
-  constructor(id: string) {
-    super();
+  constructor(id: string, store: RootStore | null = null) {
+    super(store);
     this.id = id;
     makeObservable(this, {
       name: observable,
@@ -31,6 +31,6 @@ export class User extends Model {
       referredBy: observable.ref,
       referrals: observable.shallow,
     });
-    this.initializeTracking();
+    this._initTracker();
   }
 }

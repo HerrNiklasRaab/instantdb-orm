@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import { setDatabase } from "../../src/object-graph/persistence/DatabaseProvider";
 import { User } from "../entities/User";
 import { Post } from "../entities/Post";
 import {
@@ -16,7 +15,6 @@ describe("Soft Delete (Integration)", () => {
 
   beforeEach(() => {
     db = setupTestDatabase();
-    setDatabase(db);
     rootStore = new RootStore({ db });
   });
 
@@ -65,8 +63,7 @@ describe("Soft Delete (Integration)", () => {
       await createTestUserInDb(userId);
 
       // Create entity and set up for deletion
-      const user = new User(userId);
-      rootStore.getIdentityMap(User).set(user);
+      const user = rootStore.create(User, userId);
       await flushMicrotasks();
 
       expect(user.deletedAt).toBeNull();

@@ -19,9 +19,4 @@ export {
   type EntityConstructor,
   type GetIdentityMap,
 } from "./store";
-export {
-  setDatabase,
-  getDatabase,
-  initializeTracking,
-  type InstantDBClient,
-} from "./persistence";
+export { type InstantDBClient } from "./persistence";

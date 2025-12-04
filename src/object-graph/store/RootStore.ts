@@ -11,19 +11,25 @@ import type {
   QueryResult,
 } from "./types";
 
-type ModelConstructor<T extends Model = Model> = new (id: string) => T;
+type ModelConstructor<T extends Model = Model> = new (
+  id: string,
+  store?: RootStore | null
+) => T;
 
 export class RootStore {
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private hydrator: EntityHydrator;
-  private db: InstantDBClient;
+  readonly db: InstantDBClient;
 
   constructor(config: RootStoreConfig) {
     this.db = config.db;
-    this.hydrator = new EntityHydrator({
-      onDeletedEntity: this.cleanupRelationships.bind(this),
-    });
+    this.hydrator = new EntityHydrator(this);
     this.initializeIdentityMaps();
+  }
+
+  /** Create a new entity with store reference */
+  create<T extends Model>(EntityClass: ModelConstructor<T>, id: string): T {
+    return new EntityClass(id, this);
   }
 
   private initializeIdentityMaps(): void {
@@ -32,7 +38,7 @@ export class RootStore {
     }
   }
 
-  private cleanupRelationships(deletedEntityType: string, deletedEntity: Model): void {
+  cleanupRelationships(deletedEntityType: string, deletedEntity: Model): void {
     // Find all entity types that have relationships pointing to the deleted entity type
     for (const entityName of getEntityNames()) {
       const meta = getEntityMeta(entityName);

@@ -6,7 +6,6 @@ import type {
   Unsubscribe,
   TransactionResult,
 } from "../../src/object-graph/persistence/types";
-import { setDatabase } from "../../src/object-graph/persistence/DatabaseProvider";
 import { configureEntityMeta } from "../../src/object-graph";
 import schema from "../instant.schema";
 
@@ -90,15 +89,13 @@ export function testId(prefix: string = "test"): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-// Setup helper that initializes DB and injects it
+// Setup helper that initializes DB and configures entity metadata
 export function setupTestDatabase(): TestInstantDBClient {
   // Configure the entity system with test schema
   // Note: Entities are auto-registered via @model decorator on import
   configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
 
-  const client = initTestDatabase();
-  setDatabase(client);
-  return client;
+  return initTestDatabase();
 }
 
 // Helper to wait for async operations and MobX reactions

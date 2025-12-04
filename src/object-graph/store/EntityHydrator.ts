@@ -8,24 +8,14 @@ import {
 } from "./EntityRegistry";
 import { getEntityMeta } from "./EntityMeta";
 import type { RawEntityData } from "./types";
+import { RootStore } from "./RootStore";
 
 export type GetIdentityMap = <K extends EntityName>(
   entityName: K
 ) => IdentityMap<EntityInstanceFor<K>>;
 
-// Callback for when a deleted entity is encountered during hydration
-export type OnDeletedEntityCallback = (entityName: EntityName, entity: Model) => void;
-
-export interface EntityHydratorConfig {
-  onDeletedEntity?: OnDeletedEntityCallback;
-}
-
 export class EntityHydrator {
-  private onDeletedEntity?: OnDeletedEntityCallback;
-
-  constructor(config?: EntityHydratorConfig) {
-    this.onDeletedEntity = config?.onDeletedEntity;
-  }
+  constructor(private store: RootStore) { }
 
   hydrate<K extends EntityName>(
     entityName: K,
@@ -36,7 +26,7 @@ export class EntityHydrator {
     const identityMap = getIdentityMap(entityName);
 
     const entity = identityMap.getOrCreate(rawData.id, () => {
-      return new EntityClass(rawData.id) as EntityInstanceFor<K>;
+      return new EntityClass(rawData.id, this.store) as EntityInstanceFor<K>;
     });
 
     this.updateEntityFields(entity, entityName, rawData, getIdentityMap);
@@ -44,7 +34,7 @@ export class EntityHydrator {
     // Check if entity is soft-deleted
     if (entity.deletedAt != null) {
       // Clean up relationships and remove from identity map
-      this.onDeletedEntity?.(entityName, entity);
+      this.store.cleanupRelationships(entityName, entity);
       identityMap.delete(rawData.id);
       return null;
     }

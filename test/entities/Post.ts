@@ -1,5 +1,5 @@
 import { makeObservable, observable } from "mobx";
-import { Model, model } from "../../src/object-graph";
+import { Model, model, type RootStore } from "../../src/object-graph";
 import type { User } from "./User";
 
 @model
@@ -15,8 +15,8 @@ export class Post extends Model {
   // Relationships
   author: User | null = null;
 
-  constructor(id: string) {
-    super();
+  constructor(id: string, store: RootStore | null = null) {
+    super(store);
     this.id = id;
     makeObservable(this, {
       title: observable,
@@ -26,6 +26,6 @@ export class Post extends Model {
       deletedAt: observable,
       author: observable.ref,
     });
-    this.initializeTracking();
+    this._initTracker();
   }
 }
