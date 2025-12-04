@@ -6,18 +6,24 @@ import type { User } from "./User";
 export class Post extends Model {
   readonly id: string;
 
-  title: string = undefined!;
+  // Required fields (passed in constructor)
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+
+  // Optional fields (with defaults)
   content?: string = undefined;
-  createdAt: Date = undefined!;
-  updatedAt: Date = undefined!;
   deletedAt: Date | null = null;
 
   // Relationships
   author: User | null = null;
 
-  constructor(id: string) {
+  constructor(id: string, title: string, createdAt: Date, updatedAt: Date) {
     super();
     this.id = id;
+    this.title = title;
+    this.createdAt = createdAt;
+    this.updatedAt = updatedAt;
     makeObservable(this, {
       title: observable,
       content: observable,

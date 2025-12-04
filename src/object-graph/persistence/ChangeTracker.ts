@@ -14,6 +14,7 @@ export class ChangeTracker {
   private dirtyScalars = new Map<string, unknown>();
   private originalRelationships = new Map<string, string | string[] | null>();
   private currentRelationships = new Map<string, string | string[] | null>();
+  private _isNew = true;
 
   constructor(
     private entity: IEntity,
@@ -21,6 +22,16 @@ export class ChangeTracker {
   ) {
     this.captureOriginalState();
     this.setupObservers();
+  }
+
+  /** Returns true if entity has never been saved */
+  isNew(): boolean {
+    return this._isNew;
+  }
+
+  /** Mark entity as not new (already exists in database) */
+  markNotNew(): void {
+    this._isNew = false;
   }
 
   private captureOriginalState(): void {
@@ -110,8 +121,22 @@ export class ChangeTracker {
 
   getChanges(): TrackedChanges {
     const meta = getEntityMeta(this.entityName);
+    const record = this.entity as unknown as Record<string, unknown>;
     const links = new Map<string, string[]>();
     const unlinks = new Map<string, string[]>();
+
+    // For new entities, return ALL scalar fields (excluding id)
+    // For existing entities, return only dirty scalars
+    let scalars: Map<string, unknown>;
+    if (this._isNew) {
+      scalars = new Map<string, unknown>();
+      for (const fieldName of meta.scalarFields) {
+        if (fieldName === "id") continue;
+        scalars.set(fieldName, record[fieldName]);
+      }
+    } else {
+      scalars = new Map(this.dirtyScalars);
+    }
 
     // Calculate link/unlink changes
     for (const rel of meta.relationshipFields) {
@@ -163,13 +188,17 @@ export class ChangeTracker {
     }
 
     return {
-      scalars: new Map(this.dirtyScalars),
+      scalars,
       links,
       unlinks,
     };
   }
 
   hasChanges(): boolean {
+    // New entities always have changes (need to be inserted)
+    if (this._isNew) {
+      return true;
+    }
     const changes = this.getChanges();
     return (
       changes.scalars.size > 0 ||
@@ -179,6 +208,7 @@ export class ChangeTracker {
   }
 
   reset(): void {
+    this._isNew = false;
     this.dirtyScalars.clear();
     this.captureOriginalState();
   }

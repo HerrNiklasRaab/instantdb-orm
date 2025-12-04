@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   setupTestDatabase,
   id,
-  flushMicrotasks,
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
@@ -18,44 +17,54 @@ describe("Entity Save (Integration)", () => {
     store = new RootStore({ db });
   });
 
-  // Helper to create entities
-  function createUser(userId: string): User {
-    return store.create(User, userId);
+  // Helper to create entities with default values
+  function createUser(userId: string, name = "Test User"): User {
+    return new User(userId, name, new Date(), new Date());
   }
 
-  function createPost(postId: string): Post {
-    return store.create(Post, postId);
+  function createPost(postId: string, title = "Test Post"): Post {
+    return new Post(postId, title, new Date(), new Date());
   }
 
-  describe("isDirty() - scalar changes", () => {
-    it("returns false for unchanged entity", async () => {
+  describe("isDirty() - new entity behavior", () => {
+    it("new entity is dirty (needs to be inserted)", () => {
       const user = createUser(id());
-      await flushMicrotasks();
-
-      expect(user.isDirty()).toBe(false);
+      expect(user.isDirty()).toBe(true);
     });
 
-    it("returns true after changing string field", async () => {
+    it("hydrated entity is not dirty", async () => {
+      const userId = id();
+      const user = createUser(userId);
+      await store.save(user);
+
+      // Hydrate from DB
+      const [hydratedUser] = await store.watchEntity(User);
+      expect(hydratedUser!.isDirty()).toBe(false);
+    });
+  });
+
+  describe("isDirty() - scalar changes", () => {
+    it("returns true after changing string field on saved entity", async () => {
       const user = createUser(id());
-      await flushMicrotasks();
+      await store.save(user);
 
       user.name = "New Name";
 
       expect(user.isDirty()).toBe(true);
     });
 
-    it("returns true after changing date field", async () => {
+    it("returns true after changing date field on saved entity", async () => {
       const user = createUser(id());
-      await flushMicrotasks();
+      await store.save(user);
 
       user.updatedAt = new Date("2024-06-01");
 
       expect(user.isDirty()).toBe(true);
     });
 
-    it("returns true after changing multiple fields", async () => {
+    it("returns true after changing multiple fields on saved entity", async () => {
       const user = createUser(id());
-      await flushMicrotasks();
+      await store.save(user);
 
       user.name = "New Name";
       user.updatedAt = new Date();
@@ -65,10 +74,9 @@ describe("Entity Save (Integration)", () => {
   });
 
   describe("isDirty() - relationship changes", () => {
-    it("returns true after assigning one-to-one relationship", async () => {
+    it("returns true after assigning one-to-one relationship", () => {
       const post = createPost(id());
       const user = createUser(id());
-      await flushMicrotasks();
 
       post.author = user;
 
@@ -76,23 +84,12 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after removing one-to-one relationship", async () => {
-      const postId = id();
-      const userId = id();
-      const post = createPost(postId);
-      const user = createUser(userId);
-      await flushMicrotasks();
+      const post = createPost(id());
+      const user = createUser(id());
 
-      // First save the user with all required fields
-      user.name = "Test User";
-      user.createdAt = new Date();
-      user.updatedAt = new Date();
+      // Save both entities and set up relationship
       await store.save(user);
-
-      // Set up initial relationship and save
       post.author = user;
-      post.title = "Test Post";
-      post.createdAt = new Date();
-      post.updatedAt = new Date();
       await store.save(post);
 
       // Now remove it
@@ -101,10 +98,9 @@ describe("Entity Save (Integration)", () => {
       expect(post.isDirty()).toBe(true);
     });
 
-    it("returns true after adding to one-to-many relationship", async () => {
+    it("returns true after adding to one-to-many relationship", () => {
       const user = createUser(id());
       const post = createPost(id());
-      await flushMicrotasks();
 
       user.posts.push(post);
 
@@ -112,25 +108,12 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after removing from one-to-many relationship", async () => {
-      const userId = id();
-      const postId = id();
-      const user = createUser(userId);
-      const post = createPost(postId);
-      await flushMicrotasks();
+      const user = createUser(id());
+      const post = createPost(id());
 
-      // Save user first
-      user.name = "Test User";
-      user.createdAt = new Date();
-      user.updatedAt = new Date();
+      // Save entities with relationship
       await store.save(user);
-
-      // Save post with required fields
-      post.title = "Test Post";
-      post.createdAt = new Date();
-      post.updatedAt = new Date();
       await store.save(post);
-
-      // Set up initial relationship and save
       user.posts.push(post);
       await store.save(user);
 
@@ -142,26 +125,42 @@ describe("Entity Save (Integration)", () => {
   });
 
   describe("save() - basic flow", () => {
-    it("does nothing when entity is not dirty", async () => {
+    it("new entity is persisted on first save", async () => {
       const userId = id();
       const user = createUser(userId);
-      await flushMicrotasks();
+
+      // New entity should be dirty (needs to be inserted)
+      expect(user.isDirty()).toBe(true);
 
       await store.save(user);
 
-      // Verify nothing was saved to DB (entity shouldn't exist)
+      // Verify entity was saved to DB
       const result = await db.query({ users: { $: { where: { id: userId } } } });
-      expect((result as { users?: unknown[] }).users ?? []).toHaveLength(0);
+      expect((result as { users?: unknown[] }).users ?? []).toHaveLength(1);
+
+      // After save, entity should no longer be dirty
+      expect(user.isDirty()).toBe(false);
+    });
+
+    it("does nothing when hydrated entity is not modified", async () => {
+      const userId = id();
+
+      // First create the entity in DB
+      const user = createUser(userId);
+      await store.save(user);
+
+      // Hydrate the entity from DB (simulates app restart or sync)
+      const [hydratedUser] = await store.watchEntity(User);
+      expect(hydratedUser).toBeDefined();
+      expect(hydratedUser!.isDirty()).toBe(false);
+
+      // Save should do nothing (no changes)
+      await store.save(hydratedUser!);
     });
 
     it("persists scalar changes to database", async () => {
       const userId = id();
-      const user = createUser(userId);
-      await flushMicrotasks();
-
-      user.name = "New Name";
-      user.createdAt = new Date();
-      user.updatedAt = new Date();
+      const user = createUser(userId, "New Name");
       await store.save(user);
 
       // Verify in database
@@ -176,18 +175,9 @@ describe("Entity Save (Integration)", () => {
       const userId = id();
       const post = createPost(postId);
       const user = createUser(userId);
-      await flushMicrotasks();
 
-      // First save the user
-      user.name = "Test User";
-      user.createdAt = new Date();
-      user.updatedAt = new Date();
+      // Save user first, then link and save post
       await store.save(user);
-
-      // Then link post to user
-      post.title = "Test Post";
-      post.createdAt = new Date();
-      post.updatedAt = new Date();
       post.author = user;
       await store.save(post);
 
@@ -198,7 +188,6 @@ describe("Entity Save (Integration)", () => {
           author: {},
         },
       });
-      // InstantDB returns has-one relationships as single objects, not arrays
       const savedPost = (result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0];
       expect(savedPost?.author?.id).toBe(userId);
     });
@@ -208,22 +197,13 @@ describe("Entity Save (Integration)", () => {
       const userId = id();
       const post = createPost(postId);
       const user = createUser(userId);
-      await flushMicrotasks();
 
-      // First save the user
-      user.name = "Test User";
-      user.createdAt = new Date();
-      user.updatedAt = new Date();
+      // Save user, link to post and save
       await store.save(user);
-
-      // Set up and save initial relationship
-      post.title = "Test Post";
-      post.createdAt = new Date();
-      post.updatedAt = new Date();
       post.author = user;
       await store.save(post);
 
-      // Verify link exists (has-one returns object, not array)
+      // Verify link exists
       let result = await db.query({
         posts: {
           $: { where: { id: postId } },
@@ -236,7 +216,7 @@ describe("Entity Save (Integration)", () => {
       post.author = null;
       await store.save(post);
 
-      // Verify unlinked (author should be null/undefined when unlinked)
+      // Verify unlinked
       result = await db.query({
         posts: {
           $: { where: { id: postId } },
@@ -248,13 +228,8 @@ describe("Entity Save (Integration)", () => {
 
     it("converts Date to ISO string", async () => {
       const userId = id();
-      const user = createUser(userId);
-      await flushMicrotasks();
-
       const testDate = new Date("2024-06-15T10:30:00.000Z");
-      user.name = "Test";
-      user.createdAt = new Date();
-      user.updatedAt = testDate;
+      const user = new User(userId, "Test", new Date(), testDate);
       await store.save(user);
 
       // Verify date was saved correctly
@@ -268,26 +243,15 @@ describe("Entity Save (Integration)", () => {
     it("isDirty returns false after successful save", async () => {
       const userId = id();
       const user = createUser(userId);
-      await flushMicrotasks();
 
-      user.name = "New Name";
-      user.createdAt = new Date();
-      user.updatedAt = new Date();
       expect(user.isDirty()).toBe(true);
-
       await store.save(user);
-
       expect(user.isDirty()).toBe(false);
     });
 
     it("new changes are tracked after save", async () => {
       const userId = id();
       const user = createUser(userId);
-      await flushMicrotasks();
-
-      user.name = "First Change";
-      user.createdAt = new Date();
-      user.updatedAt = new Date();
       await store.save(user);
 
       expect(user.isDirty()).toBe(false);

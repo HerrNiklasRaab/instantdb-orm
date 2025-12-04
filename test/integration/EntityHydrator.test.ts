@@ -3,7 +3,6 @@ import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   setupTestDatabase,
   id,
-  flushMicrotasks,
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
@@ -30,11 +29,12 @@ describe("RootStore hydration (Integration)", () => {
       updatedAt: Date;
     }>
   ): Promise<User> {
-    const user = storeA.create(User, entityId);
-    await flushMicrotasks();
-    user.name = data.name ?? "Test User";
-    user.createdAt = data.createdAt ?? new Date();
-    user.updatedAt = data.updatedAt ?? new Date();
+    const user = new User(
+      entityId,
+      data.name ?? "Test User",
+      data.createdAt ?? new Date(),
+      data.updatedAt ?? new Date()
+    );
     await storeA.save(user);
     return user;
   }
@@ -48,12 +48,13 @@ describe("RootStore hydration (Integration)", () => {
       author: User;
     }>
   ): Promise<Post> {
-    const post = storeA.create(Post, entityId);
-    await flushMicrotasks();
-    post.title = data.title ?? "Test Post";
+    const post = new Post(
+      entityId,
+      data.title ?? "Test Post",
+      new Date(),
+      new Date()
+    );
     post.content = data.content;
-    post.createdAt = new Date();
-    post.updatedAt = new Date();
     if (data.author) {
       post.author = data.author;
     }
@@ -70,12 +71,9 @@ describe("RootStore hydration (Integration)", () => {
       user: User;
     }>
   ): Promise<Profile> {
-    const profile = storeA.create(Profile, entityId);
-    await flushMicrotasks();
+    const profile = new Profile(entityId, new Date(), new Date());
     profile.bio = data.bio;
     profile.avatarUrl = data.avatarUrl;
-    profile.createdAt = new Date();
-    profile.updatedAt = new Date();
     if (data.user) {
       profile.user = data.user;
     }

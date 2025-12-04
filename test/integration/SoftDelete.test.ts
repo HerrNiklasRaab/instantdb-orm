@@ -5,7 +5,6 @@ import { Post } from "../entities/Post";
 import {
   setupTestDatabase,
   id,
-  flushMicrotasks,
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 
@@ -62,9 +61,8 @@ describe("Soft Delete (Integration)", () => {
       // First create the user in database
       await createTestUserInDb(userId);
 
-      // Create entity and set up for deletion
-      const user = rootStore.create(User, userId);
-      await flushMicrotasks();
+      // Create entity for deletion
+      const user = new User(userId, "Test User", new Date(), new Date());
 
       expect(user.deletedAt).toBeNull();
 

@@ -24,12 +24,26 @@ export class EntityHydrator {
   ): EntityInstanceFor<K> | null {
     const EntityClass = getEntityClass(entityName);
     const identityMap = getIdentityMap(entityName);
+    const meta = getEntityMeta(entityName);
 
     const entity = identityMap.getOrCreate(rawData.id, () => {
-      return new EntityClass(rawData.id) as EntityInstanceFor<K>;
+      // Build constructor args: id + required fields in schema order
+      const args = [
+        rawData.id,
+        ...meta.requiredFields.map((field) => {
+          const value = rawData[field];
+          return meta.isDateField(field) && value != null
+            ? new Date(value as string | number)
+            : value;
+        }),
+      ];
+      return Reflect.construct(EntityClass, args) as EntityInstanceFor<K>;
     });
 
     this.updateEntityFields(entity, entityName, rawData, getIdentityMap);
+
+    // Mark entity as not new and clear dirty state (it exists in database)
+    entity._tracker.reset();
 
     // Check if entity is soft-deleted
     if (entity.deletedAt != null) {
@@ -60,24 +74,20 @@ export class EntityHydrator {
   ): void {
     const record = entity as unknown as Record<string, unknown>;
     const meta = getEntityMeta(entityName);
-    const relationshipFieldNames = meta.getRelationshipFieldNames();
 
     runInAction(() => {
-      // First pass: hydrate scalar fields
-      for (const [key, value] of Object.entries(rawData)) {
-        if (key === "id") continue;
-
-        // Skip relationship fields - they will be processed separately
-        if (relationshipFieldNames.has(key)) continue;
-
-        if (meta.isDateField(key) && value != null) {
-          record[key] = new Date(value as string | number);
-        } else {
-          record[key] = value;
+      // Update ALL scalar fields from raw data (handles re-hydration of existing entities)
+      for (const field of meta.scalarFields) {
+        if (field === "id") continue; // Don't update id
+        const value = rawData[field];
+        if (value !== undefined) {
+          record[field] = meta.isDateField(field) && value != null
+            ? new Date(value as string | number)
+            : value;
         }
       }
 
-      // Second pass: resolve relationships from nested data
+      // Resolve relationships from nested data
       this.resolveRelationshipsFromNestedData(
         entity,
         entityName,

@@ -12,7 +12,7 @@ import type {
   QueryResult,
 } from "./types";
 
-type ModelConstructor<T extends Model = Model> = new (id: string) => T;
+type ModelClass<T extends Model = Model> = new (...args: any[]) => T;
 
 export class RootStore {
   private identityMaps = new Map<string, IdentityMap<Model>>();
@@ -23,11 +23,6 @@ export class RootStore {
     this.db = config.db;
     this.hydrator = new EntityHydrator(this);
     this.initializeIdentityMaps();
-  }
-
-  /** Create a new entity */
-  create<T extends Model>(EntityClass: ModelConstructor<T>, id: string): T {
-    return new EntityClass(id);
   }
 
   /** Save entity changes to the database */
@@ -127,28 +122,28 @@ export class RootStore {
 
   /** Get identity map for an entity class */
   getIdentityMap<T extends Model>(
-    EntityClass: ModelConstructor<T>
+    EntityClass: ModelClass<T>
   ): IdentityMap<T> {
     const entityName = getEntityNameFromClass(EntityClass);
     return this.getIdentityMapByName(entityName) as IdentityMap<T>;
   }
 
   /** Get all entities of a class */
-  getAll<T extends Model>(EntityClass: ModelConstructor<T>): T[] {
-    return this.getIdentityMap(EntityClass).values();
+  getAll<T extends Model>(EntityClass: ModelClass<T>): T[] {
+    return this.getIdentityMap(EntityClass).values() as T[];
   }
 
   /** Get entity by ID */
   getById<T extends Model>(
-    EntityClass: ModelConstructor<T>,
+    EntityClass: ModelClass<T>,
     id: string
   ): T | undefined {
-    return this.getIdentityMap(EntityClass).get(id);
+    return this.getIdentityMap(EntityClass).get(id) as T | undefined;
   }
 
   /** Watch and hydrate all entities of a class */
   async watchEntity<T extends Model>(
-    EntityClass: ModelConstructor<T>
+    EntityClass: ModelClass<T>
   ): Promise<T[]> {
     const entityName = getEntityNameFromClass(EntityClass);
     const query = this.buildQueryWithRelationships(entityName);

@@ -7,9 +7,12 @@ import type { Post } from "./Post";
 export class User extends Model {
   readonly id: string;
 
-  name: string = undefined!;
-  createdAt: Date = undefined!;
-  updatedAt: Date = undefined!;
+  // Required fields (passed in constructor)
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+
+  // Optional fields (with defaults)
   deletedAt: Date | null = null;
 
   // Relationships
@@ -18,9 +21,12 @@ export class User extends Model {
   referredBy: User | null = null;
   referrals: User[] = [];
 
-  constructor(id: string) {
+  constructor(id: string, name: string, createdAt: Date, updatedAt: Date) {
     super();
     this.id = id;
+    this.name = name;
+    this.createdAt = createdAt;
+    this.updatedAt = updatedAt;
     makeObservable(this, {
       name: observable,
       createdAt: observable,

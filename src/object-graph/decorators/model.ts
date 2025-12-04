@@ -1,7 +1,7 @@
 import { ENTITY_REGISTRY } from "../store/EntityRegistry";
 import type { Model as ModelClass } from "../Model";
 
-type ModelConstructor = new (id: string) => ModelClass;
+type ModelConstructor = new (...args: any[]) => ModelClass;
 
 /** Symbol to store entity name on the class */
 export const ENTITY_NAME_KEY = Symbol("entityName");

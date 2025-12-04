@@ -6,18 +6,23 @@ import type { User } from "./User";
 export class Profile extends Model {
   readonly id: string;
 
+  // Required fields (passed in constructor)
+  createdAt: Date;
+  updatedAt: Date;
+
+  // Optional fields (with defaults)
   bio?: string = undefined;
   avatarUrl?: string = undefined;
-  createdAt: Date = undefined!;
-  updatedAt: Date = undefined!;
   deletedAt: Date | null = null;
 
   // Relationships
   user: User | null = null;
 
-  constructor(id: string) {
+  constructor(id: string, createdAt: Date, updatedAt: Date) {
     super();
     this.id = id;
+    this.createdAt = createdAt;
+    this.updatedAt = updatedAt;
     makeObservable(this, {
       bio: observable,
       avatarUrl: observable,

@@ -4,6 +4,7 @@ export type EntityName = string;
 // Schema types for configuration
 interface AttrDef {
   valueType: string;
+  required?: boolean;
 }
 
 interface EntityDef {
@@ -51,6 +52,8 @@ export class RelationshipFieldMeta {
 export class EntityMeta {
   readonly schemaName: EntityName;
   readonly scalarFields: string[];
+  readonly requiredFields: string[];
+  readonly optionalFields: string[];
   readonly relationshipFields: RelationshipFieldMeta[];
   readonly dateFields: Set<string>;
 
@@ -61,8 +64,22 @@ export class EntityMeta {
     const attrs = entityDef?.attrs ?? {};
 
     this.scalarFields = Object.keys(attrs);
+    this.requiredFields = this.extractRequiredFields(attrs);
+    this.optionalFields = this.extractOptionalFields(attrs);
     this.dateFields = this.extractDateFields(attrs);
     this.relationshipFields = this.extractRelationshipFields(schema);
+  }
+
+  private extractRequiredFields(attrs: Record<string, AttrDef>): string[] {
+    return Object.entries(attrs)
+      .filter(([, attrDef]) => attrDef.required !== false)
+      .map(([fieldName]) => fieldName);
+  }
+
+  private extractOptionalFields(attrs: Record<string, AttrDef>): string[] {
+    return Object.entries(attrs)
+      .filter(([, attrDef]) => attrDef.required === false)
+      .map(([fieldName]) => fieldName);
   }
 
   private extractDateFields(attrs: Record<string, AttrDef>): Set<string> {
