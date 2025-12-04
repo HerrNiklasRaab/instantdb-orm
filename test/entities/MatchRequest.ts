@@ -3,10 +3,10 @@ import type { User } from "./User";
 
 // Abstract base - NOT decorated with @model (children are)
 export abstract class MatchRequest extends Model {
-  readonly id: string;
+  declare readonly id: string;
   abstract readonly type: string; // discriminator
 
-  private _createdAt: Date;
+  declare private _createdAt: Date;
   private _deletedAt: Date | null = null;
 
   // Relationship to User

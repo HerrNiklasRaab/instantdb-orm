@@ -13,6 +13,8 @@ import schema from "../instant.schema";
 import "../entities/User";
 import "../entities/Profile";
 import "../entities/Post";
+import "../entities/ChessMatchRequest";
+import "../entities/SkiMatchRequest";
 
 // Re-export id() for generating UUIDs in tests
 export { id };

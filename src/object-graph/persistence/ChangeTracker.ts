@@ -1,5 +1,5 @@
 import { observe } from "mobx";
-import type { IModel } from "../IdentityMap";
+import type { Model } from "../Model";
 import type { EntityName } from "../store/EntityMeta";
 import { getEntityMeta, getPropertyName } from "../store/EntityMeta";
 
@@ -17,7 +17,7 @@ export class ChangeTracker {
   private _isNew = true;
 
   constructor(
-    private model: IModel,
+    private model: Model,
     private entityName: EntityName
   ) {
     this.captureOriginalState();
@@ -43,11 +43,11 @@ export class ChangeTracker {
       const propName = getPropertyName(this.model, rel.fieldName);
       const value = record[propName];
       if (rel.isToOne()) {
-        const modelRef = value as IModel | null;
+        const modelRef = value as Model | null;
         this.originalRelationships.set(rel.fieldName, modelRef?.id ?? null);
         this.currentRelationships.set(rel.fieldName, modelRef?.id ?? null);
       } else {
-        const models = (value as IModel[] | undefined) ?? [];
+        const models = (value as Model[] | undefined) ?? [];
         const ids = models.map((m) => m.id);
         this.originalRelationships.set(rel.fieldName, [...ids]);
         this.currentRelationships.set(rel.fieldName, [...ids]);
@@ -93,7 +93,7 @@ export class ChangeTracker {
             propName as never,
             (change) => {
               if (change.type === "update") {
-                const newModel = change.newValue as IModel | null;
+                const newModel = change.newValue as Model | null;
                 this.currentRelationships.set(
                   rel.fieldName,
                   newModel?.id ?? null
@@ -107,7 +107,7 @@ export class ChangeTracker {
         }
       } else {
         // observable.shallow - observe array changes
-        const array = record[propName] as IModel[] | undefined;
+        const array = record[propName] as Model[] | undefined;
         if (array && Array.isArray(array)) {
           try {
             const disposer = observe(array, () => {

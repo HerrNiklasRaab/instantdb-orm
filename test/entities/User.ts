@@ -2,6 +2,7 @@ import { makeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { Profile } from "./Profile";
 import type { Post } from "./Post";
+import type { MatchRequest } from "./MatchRequest";
 
 @model
 export class User extends Model {
@@ -46,6 +47,7 @@ export class User extends Model {
   profile: Profile | null = null;  // public to-one
   referredBy: User | null = null;  // public to-one
   referrals: User[] = [];          // public to-many
+  matchRequests: MatchRequest[] = [];  // reverse of matchRequests.requester
 
   // Private backing field for to-many relationship
   private _posts: Post[] = [];
@@ -72,6 +74,7 @@ export class User extends Model {
       _posts: observable.shallow,
       referredBy: observable.ref,
       referrals: observable.shallow,
+      matchRequests: observable.shallow,
     });
     this._initTracker();
   }

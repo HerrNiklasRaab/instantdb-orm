@@ -1,11 +1,6 @@
 import { observable, action, makeObservable } from "mobx";
 import type { Model } from "./Model";
 
-// Interface for models that can be tracked (minimal interface for persistence)
-export interface IModel {
-  readonly id: string;
-}
-
 export class IdentityMap<T extends Model> {
   private cache: Map<string, T> = new Map();
 

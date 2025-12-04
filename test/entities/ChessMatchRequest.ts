@@ -4,10 +4,12 @@ import { MatchRequest } from "./MatchRequest";
 
 @model
 export class ChessMatchRequest extends MatchRequest {
-  readonly type = "chess" as const;
+  get type(): "chess" {
+    return "chess";
+  }
 
-  private _timeControl: string;
-  private _rated: boolean;
+  declare private _timeControl: string;
+  declare private _rated: boolean;
 
   get timeControl(): string {
     return this._timeControl;

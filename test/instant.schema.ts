@@ -74,6 +74,18 @@ const _schema = i.schema({
         label: "referrals",
       },
     },
+    matchRequestsRequester: {
+      forward: {
+        on: "matchRequests",
+        has: "one",
+        label: "requester",
+      },
+      reverse: {
+        on: "users",
+        has: "many",
+        label: "matchRequests",
+      },
+    },
   },
   rooms: {},
 });

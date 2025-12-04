@@ -3,6 +3,8 @@ import type { IdentityMap } from "../IdentityMap";
 import type { Model } from "../Model";
 import {
   getEntityClass,
+  getEntityClassForDiscriminator,
+  hasDiscriminatorMapping,
   type EntityName,
   type EntityInstanceFor,
 } from "./EntityRegistry";
@@ -22,7 +24,7 @@ export class EntityHydrator {
     rawData: RawEntityData,
     getIdentityMap: GetIdentityMap
   ): EntityInstanceFor<K> | null {
-    const EntityClass = getEntityClass(entityName);
+    const EntityClass = this.resolveEntityClass(entityName, rawData);
     const identityMap = getIdentityMap(entityName);
     const meta = getEntityMeta(entityName);
 
@@ -80,7 +82,7 @@ export class EntityHydrator {
       // Update ALL scalar fields from raw data (handles re-hydration of existing models)
       // Use private backing field if exists (e.g., _name for schema field "name")
       for (const field of meta.scalarFields) {
-        if (field === "id") continue; // Don't update id
+        if (field === "id" || field === "type") continue; // Don't update id or type discriminator
         const value = rawData[field];
         if (value !== undefined) {
           const propName = getPropertyName(model, field);
@@ -191,6 +193,40 @@ export class EntityHydrator {
   private hasFullEntityData(rawData: RawEntityData): boolean {
     const keys = Object.keys(rawData);
     return keys.length > 1 || (keys.length === 1 && keys[0] !== "id");
+  }
+
+  /**
+   * Resolves the concrete entity class to instantiate.
+   * For STI entities, uses 'type' discriminator to find the correct subclass.
+   */
+  private resolveEntityClass(
+    entityName: string,
+    rawData: RawEntityData
+  ): ReturnType<typeof getEntityClass> {
+    if (hasDiscriminatorMapping(entityName)) {
+      const discriminatorValue = rawData.type as string | undefined;
+
+      if (!discriminatorValue) {
+        throw new Error(
+          `Entity '${entityName}' uses STI but record ${rawData.id} has no 'type' field.`
+        );
+      }
+
+      const SubClass = getEntityClassForDiscriminator(
+        entityName,
+        discriminatorValue
+      );
+      if (!SubClass) {
+        throw new Error(
+          `Unknown discriminator '${discriminatorValue}' for entity '${entityName}'. ` +
+            `Did you register a @model class with 'readonly type = "${discriminatorValue}"'?`
+        );
+      }
+
+      return SubClass;
+    }
+
+    return getEntityClass(entityName);
   }
 
   private setReverseRelationship(

@@ -1,6 +1,6 @@
 import { type EntityName } from "./store/EntityMeta";
 import { ChangeTracker } from "./persistence/ChangeTracker";
-import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model";
+import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
 
 export abstract class Model {
   abstract readonly id: string;

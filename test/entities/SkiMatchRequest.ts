@@ -4,10 +4,12 @@ import { MatchRequest } from "./MatchRequest";
 
 @model
 export class SkiMatchRequest extends MatchRequest {
-  readonly type = "ski" as const;
+  get type(): "ski" {
+    return "ski";
+  }
 
-  private _resort: string;
-  private _skillLevel: string;
+  declare private _resort: string;
+  declare private _skillLevel: string;
 
   get resort(): string {
     return this._resort;
