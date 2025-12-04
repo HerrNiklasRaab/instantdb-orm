@@ -108,7 +108,7 @@ describe("RootStore hydration (Integration)", () => {
       });
 
       // Store B hydrates and verifies (only users needed)
-      const users = await storeB.watchEntity(User);
+      const users = await storeB.queryModel(User);
       const user = users.find((u) => u.id === userId);
 
       expect(user).toBeDefined();
@@ -126,7 +126,7 @@ describe("RootStore hydration (Integration)", () => {
       });
 
       // Store B hydrates and verifies dates are Date objects (only users needed)
-      const users = await storeB.watchEntity(User);
+      const users = await storeB.queryModel(User);
       const user = users.find((u) => u.id === userId);
 
       expect(user!.createdAt).toBeInstanceOf(Date);
@@ -140,7 +140,7 @@ describe("RootStore hydration (Integration)", () => {
       const userA = await createUserInStoreA(userId, { name: "John" });
 
       // Store B hydrates first time (only users needed)
-      const users1 = await storeB.watchEntity(User);
+      const users1 = await storeB.queryModel(User);
       const user1 = users1.find((u) => u.id === userId);
 
       // Store A updates user name
@@ -148,7 +148,7 @@ describe("RootStore hydration (Integration)", () => {
       await storeA.save(userA);
 
       // Store B re-hydrates (only users needed)
-      const users2 = await storeB.watchEntity(User);
+      const users2 = await storeB.queryModel(User);
       const user2 = users2.find((u) => u.id === userId);
 
       expect(user1).toBe(user2); // Same instance
@@ -166,7 +166,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInStoreA(postId, { author: user });
 
       // Store B hydrates and verifies relationship
-      await storeB.watchAll();
+      await storeB.queryAll();
       const hydratedUser = storeB.getById(User, userId);
       const hydratedPost = storeB.getById(Post, postId);
 
@@ -182,7 +182,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInStoreA(postId, { author: user });
 
       // Store B hydrates and verifies reverse relationship
-      await storeB.watchAll();
+      await storeB.queryAll();
       const hydratedUser = storeB.getById(User, userId);
       const hydratedPost = storeB.getById(Post, postId);
 
@@ -199,7 +199,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInDbWithDanglingLink(postId, fakeUserId);
 
       // Store B hydrates - should handle dangling reference gracefully (only posts needed)
-      const posts = await storeB.watchEntity(Post);
+      const posts = await storeB.queryModel(Post);
       const post = posts.find((p) => p.id === postId);
 
       expect(post!.author).toBeNull();
@@ -215,7 +215,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInDbWithDanglingLink(postId, userId);
 
       // Store B hydrates post first (before user exists) - only posts needed
-      const posts = await storeB.watchEntity(Post);
+      const posts = await storeB.queryModel(Post);
       const post = posts.find((p) => p.id === postId);
       expect(post!.author).toBeNull();
 
@@ -223,7 +223,7 @@ describe("RootStore hydration (Integration)", () => {
       await createUserInStoreA(userId, { name: "John" });
 
       // Store B re-hydrates everything to pick up the new user
-      await storeB.watchAll();
+      await storeB.queryAll();
       const user = storeB.getById(User, userId);
 
       // Post's author should now be resolved
@@ -242,7 +242,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInStoreA(postId2, { title: "Post 2", author: user });
 
       // Store B hydrates and verifies all relationships
-      await storeB.watchAll();
+      await storeB.queryAll();
       const hydratedUser = storeB.getById(User, userId);
       const post1 = storeB.getById(Post, postId1);
       const post2 = storeB.getById(Post, postId2);
@@ -263,7 +263,7 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInStoreA(postId, {});
 
       // Store B hydrates and verifies no relationship (only posts needed)
-      const posts = await storeB.watchEntity(Post);
+      const posts = await storeB.queryModel(Post);
       const post = posts.find((p) => p.id === postId);
 
       expect(post!.author).toBeNull();
@@ -278,9 +278,9 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInStoreA(postId, { author: user });
 
       // Store B hydrates multiple times
-      await storeB.watchAll();
-      await storeB.watchAll();
-      await storeB.watchAll();
+      await storeB.queryAll();
+      await storeB.queryAll();
+      await storeB.queryAll();
 
       const hydratedUser = storeB.getById(User, userId);
       const hydratedPost = storeB.getById(Post, postId);
@@ -345,14 +345,14 @@ describe("RootStore hydration (Integration)", () => {
       await storeA.save(user);
 
       // Store B hydrates Profile FIRST (before User)
-      const profiles = await storeB.watchEntity(Profile);
+      const profiles = await storeB.queryModel(Profile);
       const hydratedProfile = profiles.find((p) => p.id === profileId);
 
       // Profile.user should be null because User hasn't been hydrated yet
       expect(hydratedProfile!.user).toBeNull();
 
       // Now Store B hydrates User
-      await storeB.watchEntity(User);
+      await storeB.queryModel(User);
       const hydratedUser = storeB.getById(User, userId);
 
       // Bidirectional wiring should have set both directions
@@ -408,7 +408,7 @@ describe("RootStore hydration (Integration)", () => {
       ]);
 
       // Store B hydrates the user
-      const users = await storeB.watchEntity(User);
+      const users = await storeB.queryModel(User);
       const user = users.find((u) => u.id === userId);
 
       // Verify all fields are correctly hydrated

@@ -85,8 +85,8 @@ describe("Soft Delete (Integration)", () => {
       // Create a deleted user in DB
       await createTestUserInDb(userId, true);
 
-      // Hydrate via watchEntity
-      const users = await rootStore.watchEntity(User);
+      // Hydrate via queryModel
+      const users = await rootStore.queryModel(User);
 
       // Deleted user should not be in results
       expect(users.find((u) => u.id === userId)).toBeUndefined();
@@ -102,14 +102,14 @@ describe("Soft Delete (Integration)", () => {
       await createTestUserInDb(userId, false);
 
       // First hydration - user should be present
-      await rootStore.watchEntity(User);
+      await rootStore.queryModel(User);
       expect(rootStore.getById(User, userId)).toBeDefined();
 
       // Simulate deletion from another device
       await markAsDeletedInDb("users", userId);
 
       // Re-hydrate - user should be removed
-      await rootStore.watchEntity(User);
+      await rootStore.queryModel(User);
       expect(rootStore.getById(User, userId)).toBeUndefined();
     });
 
@@ -122,7 +122,7 @@ describe("Soft Delete (Integration)", () => {
       await createTestUserInDb(userId2, true);
 
       // Hydrate
-      const users = await rootStore.watchEntity(User);
+      const users = await rootStore.queryModel(User);
 
       // Only non-deleted user should be present
       expect(users.find((u) => u.id === userId1)).toBeDefined();
@@ -142,8 +142,8 @@ describe("Soft Delete (Integration)", () => {
       await createTestPostInDb(postId, userId);
 
       // Hydrate - deleted user should trigger cleanup
-      await rootStore.watchEntity(User);
-      await rootStore.watchEntity(Post);
+      await rootStore.queryModel(User);
+      await rootStore.queryModel(Post);
 
       const post = rootStore.getById(Post, postId);
       expect(post).toBeDefined();
@@ -162,8 +162,8 @@ describe("Soft Delete (Integration)", () => {
       await createTestPostInDb(postId2, userId, false);
 
       // Hydrate all entities
-      await rootStore.watchEntity(User);
-      await rootStore.watchEntity(Post);
+      await rootStore.queryModel(User);
+      await rootStore.queryModel(Post);
 
       const user = rootStore.getById(User, userId);
       expect(user).toBeDefined();
@@ -173,7 +173,7 @@ describe("Soft Delete (Integration)", () => {
       expect(user?.posts[0]?.id).toBe(postId2);
     });
 
-    it("cleans up relationships when entity becomes deleted", async () => {
+    it("cleans up relationships when entity becomes deleted also test subscribing and real time sync", async () => {
       const userId = id();
       const postId = id();
 
@@ -181,9 +181,11 @@ describe("Soft Delete (Integration)", () => {
       await createTestUserInDb(userId, false);
       await createTestPostInDb(postId, userId, false);
 
-      // First hydration - both entities present, relationship intact
-      await rootStore.watchEntity(User);
-      await rootStore.watchEntity(Post);
+      // Set up reactive subscriptions
+      rootStore.subscribeModel(User, () => { });
+      rootStore.subscribeModel(Post, () => { });
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const user = rootStore.getById(User, userId);
       const post = rootStore.getById(Post, postId);
@@ -196,10 +198,9 @@ describe("Soft Delete (Integration)", () => {
       // Mark user as deleted in DB
       await markAsDeletedInDb("users", userId);
 
-      // Wait for sync to propagate the deletion
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // User should be removed
+      // User should be removed via reactive sync
       expect(rootStore.getById(User, userId)).toBeUndefined();
 
       // Post's author reference should be cleaned up

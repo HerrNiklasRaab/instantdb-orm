@@ -142,8 +142,8 @@ export class RootStore {
     return this.getIdentityMap(EntityClass).get(id) as T | undefined;
   }
 
-  /** Watch and hydrate all entities of a class */
-  async watchEntity<T extends Model>(
+  /** One-time query and hydrate all entities of a class */
+  async queryModel<T extends Model>(
     EntityClass: ModelClass<T>
   ): Promise<T[]> {
     const entityName = getEntityNameFromClass(EntityClass);
@@ -157,6 +157,47 @@ export class RootStore {
       rawDataArray,
       this.getIdentityMapByName.bind(this)
     ) as T[];
+  }
+
+  /** Subscribe to live updates for all entities of a class */
+  subscribeModel<T extends Model>(
+    EntityClass: ModelClass<T>,
+    callback: (entities: T[]) => void
+  ): { close(): void } {
+    const entityName = getEntityNameFromClass(EntityClass);
+    const query = this.buildQueryWithRelationships(entityName);
+
+    // Close existing subscription for this entity if any
+    this.subscriptions.get(entityName)?.close();
+
+    const unsubscribe = this.db.subscribeQuery<QueryResult>(
+      query,
+      ({ error, data }) => {
+        if (error) {
+          console.error(`Subscription error for ${entityName}:`, error.message);
+          return;
+        }
+        if (data) {
+          const rawDataArray = (data[entityName] ?? []) as RawEntityData[];
+          const entities = this.hydrator.hydrateMany(
+            entityName,
+            rawDataArray,
+            this.getIdentityMapByName.bind(this)
+          ) as T[];
+          callback(entities);
+        }
+      }
+    );
+
+    const subscription = {
+      close: () => {
+        unsubscribe();
+        this.subscriptions.delete(entityName);
+      },
+    };
+
+    this.subscriptions.set(entityName, subscription);
+    return subscription;
   }
 
   private buildQueryWithRelationships(
@@ -178,14 +219,35 @@ export class RootStore {
     };
   }
 
-  async watchAll(): Promise<void> {
+  /** One-time query and hydrate all registered entity classes */
+  async queryAll(): Promise<void> {
     const entityNames = getEntityNames();
     await Promise.all(
       entityNames.map((name) => {
         const ModelClass = getModelClass(name);
-        return this.watchEntity(ModelClass);
+        return this.queryModel(ModelClass);
       })
     );
+  }
+
+  /** Subscribe to live updates for all registered entity classes */
+  subscribeAll(callback?: () => void): { close(): void } {
+    const entityNames = getEntityNames();
+
+    for (const name of entityNames) {
+      const ModelClass = getModelClass(name);
+      this.subscribeModel(ModelClass, () => {
+        callback?.();
+      });
+    }
+
+    return {
+      close: () => {
+        for (const sub of this.subscriptions.values()) {
+          sub.close();
+        }
+      },
+    };
   }
 
   async query(queryObj: Record<string, unknown>): Promise<void> {

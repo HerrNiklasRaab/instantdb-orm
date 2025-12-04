@@ -38,7 +38,7 @@ describe("Entity Save (Integration)", () => {
       await store.save(user);
 
       // Hydrate from DB
-      const [hydratedUser] = await store.watchEntity(User);
+      const [hydratedUser] = await store.queryModel(User);
       expect(hydratedUser!.isDirty()).toBe(false);
     });
   });
@@ -150,7 +150,7 @@ describe("Entity Save (Integration)", () => {
       await store.save(user);
 
       // Hydrate the entity from DB (simulates app restart or sync)
-      const [hydratedUser] = await store.watchEntity(User);
+      const [hydratedUser] = await store.queryModel(User);
       expect(hydratedUser).toBeDefined();
       expect(hydratedUser!.isDirty()).toBe(false);
 
