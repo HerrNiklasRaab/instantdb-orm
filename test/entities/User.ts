@@ -3,6 +3,8 @@ import { Model, model } from "../../src/object-graph";
 import type { Profile } from "./Profile";
 import type { Post } from "./Post";
 import type { MatchRequest } from "./MatchRequest";
+import type { ChessMatch } from "./ChessMatch";
+import type { SkiMatch } from "./SkiMatch";
 
 @model
 export class User extends Model {
@@ -47,7 +49,9 @@ export class User extends Model {
   profile: Profile | null = null;  // public to-one
   referredBy: User | null = null;  // public to-one
   referrals: User[] = [];          // public to-many
-  matchRequests: MatchRequest[] = [];  // reverse of matchRequests.requester
+  matchRequests: MatchRequest[] = [];  // STI: reverse of matchRequests.requester
+  chessMatchs: ChessMatch[] = [];      // MTI: reverse of chessMatchs.requester
+  skiMatchs: SkiMatch[] = [];          // MTI: reverse of skiMatchs.requester
 
   // Private backing field for to-many relationship
   private _posts: Post[] = [];
@@ -75,6 +79,8 @@ export class User extends Model {
       referredBy: observable.ref,
       referrals: observable.shallow,
       matchRequests: observable.shallow,
+      chessMatchs: observable.shallow,
+      skiMatchs: observable.shallow,
     });
     this._initTracker();
   }

@@ -36,6 +36,19 @@ const _schema = i.schema({
       // Soft delete
       deletedAt: i.date().indexed().optional(),
     }),
+    // MTI: Each concrete class has its own table (separate from STI matchRequests)
+    chessMatchs: i.entity({
+      createdAt: i.date().indexed(),
+      timeControl: i.string(),
+      rated: i.boolean(),
+      deletedAt: i.date().indexed().optional(),
+    }),
+    skiMatchs: i.entity({
+      createdAt: i.date().indexed(),
+      resort: i.string(),
+      skillLevel: i.string(),
+      deletedAt: i.date().indexed().optional(),
+    }),
   },
   links: {
     usersProfile: {
@@ -84,6 +97,31 @@ const _schema = i.schema({
         on: "users",
         has: "many",
         label: "matchRequests",
+      },
+    },
+    // MTI links: each concrete table has its own relationship
+    chessMatchsRequester: {
+      forward: {
+        on: "chessMatchs",
+        has: "one",
+        label: "requester",
+      },
+      reverse: {
+        on: "users",
+        has: "many",
+        label: "chessMatchs",
+      },
+    },
+    skiMatchsRequester: {
+      forward: {
+        on: "skiMatchs",
+        has: "one",
+        label: "requester",
+      },
+      reverse: {
+        on: "users",
+        has: "many",
+        label: "skiMatchs",
       },
     },
   },

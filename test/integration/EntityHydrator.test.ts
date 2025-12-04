@@ -8,6 +8,9 @@ import {
 import { User } from "../entities/User";
 import { Post } from "../entities/Post";
 import { Profile } from "../entities/Profile";
+// Import MTI entities to register them with model registry
+import "../entities/ChessMatch";
+import "../entities/SkiMatch";
 
 describe("RootStore hydration (Integration)", () => {
   let db: TestInstantDBClient;

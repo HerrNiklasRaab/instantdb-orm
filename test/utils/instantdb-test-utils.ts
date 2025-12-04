@@ -139,6 +139,21 @@ export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Helper to wait for a condition to become true (for subscription-based tests)
+export async function waitFor(
+  condition: () => boolean,
+  timeoutMs: number = 5000,
+  intervalMs: number = 50
+): Promise<void> {
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`waitFor timeout after ${timeoutMs}ms`);
+    }
+    await wait(intervalMs);
+  }
+}
+
 // Cleanup helper to delete test entities by IDs
 export async function cleanupTestEntities(
   db: TestInstantDBClient,

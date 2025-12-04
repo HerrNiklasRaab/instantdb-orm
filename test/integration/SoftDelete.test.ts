@@ -196,8 +196,8 @@ describe("Soft Delete (Integration)", () => {
       // Mark user as deleted in DB
       await markAsDeletedInDb("users", userId);
 
-      // Re-hydrate users - should clean up relationships
-      await rootStore.watchEntity(User);
+      // Wait for sync to propagate the deletion
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // User should be removed
       expect(rootStore.getById(User, userId)).toBeUndefined();

@@ -4,7 +4,7 @@ import { getEntityNames, isValidEntityName, getEntityMeta } from "./EntityMeta";
 import { getModelClass } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
-import type { TxChunk } from "../persistence/types";
+import type { TxChunk, Unsubscribe } from "../persistence/types";
 import type {
   RawEntityData,
   RootStoreConfig,
@@ -16,6 +16,7 @@ type ModelClass<T extends Model = Model> = new (...args: any[]) => T;
 
 export class RootStore {
   private identityMaps = new Map<string, IdentityMap<Model>>();
+  private subscriptions = new Map<string, { close(): void }>();
   private hydrator: ModelHydrator;
   readonly db: InstantDBClient;
 
@@ -202,5 +203,22 @@ export class RootStore {
         );
       }
     }
+  }
+
+  /**
+   * Subscribe to a query with live updates.
+   * Automatically hydrates results on each update.
+   * Returns an unsubscribe function.
+   */
+  subscribe(queryObj: Record<string, unknown>): Unsubscribe {
+    return this.db.subscribeQuery<QueryResult>(queryObj, ({ error, data }) => {
+      if (error) {
+        console.error("Subscription error:", error.message);
+        return;
+      }
+      if (data) {
+        this.hydrateResult(data);
+      }
+    });
   }
 }

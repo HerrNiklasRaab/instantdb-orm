@@ -80,11 +80,17 @@ export function model<T extends ModelClassType>(target: T): T {
   (target as any)[ENTITY_NAME_KEY] = entityName;
 
   if (isSubclass) {
-    // STI subclass - only register discriminator mapping
-    // Don't overwrite main registry (hydrator uses discriminator to resolve class)
     const discriminatorValue = getDiscriminatorValue(target);
     if (discriminatorValue) {
+      // STI: has type getter → register discriminator mapping
+      // All subclasses share same table via discriminator
       modelRegistry.registerDiscriminator(entityName, discriminatorValue, target as any);
+    } else {
+      // MTI: no type getter → register with own entity name
+      // Each concrete class gets its own table
+      const ownEntityName = deriveEntityName(target.name);
+      (target as any)[ENTITY_NAME_KEY] = ownEntityName;
+      modelRegistry.register(ownEntityName, target as any);
     }
   } else {
     // Root class or non-STI class - register in main registry
