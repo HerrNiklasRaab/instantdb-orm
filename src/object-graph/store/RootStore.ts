@@ -147,7 +147,7 @@ export class RootStore {
     EntityClass: ModelClass<T>
   ): Promise<T[]> {
     const entityName = getEntityNameFromClass(EntityClass);
-    const query = this.buildQueryWithRelationships(entityName);
+    const query = this.buildQueryWithRelationships({ [entityName]: {} });
     const result = (await this.db.query(query)) as QueryResult;
 
     const rawDataArray = (result[entityName] ?? []) as RawEntityData[];
@@ -165,7 +165,7 @@ export class RootStore {
     callback: (entities: T[]) => void
   ): Promise<{ entities: T[]; close(): void }> {
     const entityName = getEntityNameFromClass(EntityClass);
-    const query = this.buildQueryWithRelationships(entityName);
+    const query = this.buildQueryWithRelationships({ [entityName]: {} });
 
     // Close existing subscription for this entity if any
     this.subscriptions.get(entityName)?.close();
@@ -212,22 +212,55 @@ export class RootStore {
   }
 
   private buildQueryWithRelationships(
-    entityName: string
+    queryObj: Record<string, unknown>,
+    visited: Set<string> = new Set()
   ): Record<string, unknown> {
-    const meta = getEntityMeta(entityName);
-    const relationshipSubqueries: Record<string, unknown> = {};
+    const expanded: Record<string, unknown> = {};
 
-    // Add relationship subqueries - only request IDs
-    for (const rel of meta.relationshipFields) {
-      relationshipSubqueries[rel.fieldName] = { $: { fields: ["id"] } };
+    for (const [key, value] of Object.entries(queryObj)) {
+      // Skip $ (query options like where, limit, etc.)
+      if (key === "$") {
+        expanded[key] = value;
+        continue;
+      }
+
+      // Check if this key is a valid entity name
+      if (!isValidEntityName(key)) {
+        expanded[key] = value;
+        continue;
+      }
+
+      // Prevent infinite recursion for circular relationships
+      if (visited.has(key)) {
+        expanded[key] = { $: { fields: ["id"] } };
+        continue;
+      }
+      visited.add(key);
+
+      // Get entity metadata
+      const meta = getEntityMeta(key);
+      const subquery =
+        typeof value === "object" && value !== null
+          ? { ...(value as Record<string, unknown>) }
+          : {};
+
+      // Add all relationship subqueries for this entity
+      for (const rel of meta.relationshipFields) {
+        if (!(rel.fieldName in subquery)) {
+          subquery[rel.fieldName] = { $: { fields: ["id"] } };
+        } else {
+          // Recursively expand existing relationship subquery
+          subquery[rel.fieldName] = this.buildQueryWithRelationships(
+            { [rel.targetEntity]: subquery[rel.fieldName] },
+            new Set(visited)
+          )[rel.targetEntity];
+        }
+      }
+
+      expanded[key] = subquery;
     }
 
-    return {
-      [entityName]:
-        Object.keys(relationshipSubqueries).length > 0
-          ? relationshipSubqueries
-          : {},
-    };
+    return expanded;
   }
 
   /** One-time query and hydrate all registered entity classes */
@@ -262,6 +295,7 @@ export class RootStore {
   }
 
   async query(queryObj: Record<string, unknown>): Promise<void> {
+    const expandedQuery = this.buildQueryWithRelationships(queryObj);
     const result = (await this.db.query(queryObj)) as QueryResult;
     this.hydrateResult(result);
   }

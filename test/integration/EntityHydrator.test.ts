@@ -329,6 +329,8 @@ describe("RootStore hydration (Integration)", () => {
       await createPostInStoreA(postId, { author: user });
       await createPostInStoreB(postId2, { author: user });
 
+      await storeB.queryModel(Post);
+
       // Query 3 levels deep: Post → author (User) → profile (Profile)
       await storeB.query({
         posts: {

@@ -132,18 +132,12 @@ export class ModelHydrator {
         // has-one: InstantDB returns [{ id: '...' }] or { id: '...' } for has-one relationships
         const firstItem = nestedArray[0] as RawEntityData | undefined;
         if (firstItem?.id) {
-          // If nested data has more than just id, recursively hydrate it first
-          let targetModel = targetMap.get(firstItem.id);
-          if (!targetModel && this.hasFullEntityData(firstItem)) {
-            const hydrated = this.hydrate(
-              rel.targetEntity,
-              firstItem,
-              getIdentityMap
-            );
-            // Skip if model was deleted (hydrate returns null)
-            if (hydrated) {
-              targetModel = hydrated;
-            }
+          // Full data → hydrate, ID only (circular refs) → lookup in identity map
+          let targetModel: Model | null = null;
+          if (this.hasFullEntityData(firstItem)) {
+            targetModel = this.hydrate(rel.targetEntity, firstItem, getIdentityMap);
+          } else {
+            targetModel = targetMap.get(firstItem.id) ?? null;
           }
 
           if (targetModel) {
@@ -160,18 +154,12 @@ export class ModelHydrator {
           existingArray.length = 0; // Clear existing
 
           for (const item of nestedArray as RawEntityData[]) {
-            // If nested data has more than just id, recursively hydrate it first
-            let targetModel = targetMap.get(item.id);
-            if (!targetModel && this.hasFullEntityData(item)) {
-              const hydrated = this.hydrate(
-                rel.targetEntity,
-                item,
-                getIdentityMap
-              );
-              // Skip if model was deleted (hydrate returns null)
-              if (hydrated) {
-                targetModel = hydrated;
-              }
+            // Full data → hydrate, ID only (circular refs) → lookup in identity map
+            let targetModel: Model | null = null;
+            if (this.hasFullEntityData(item)) {
+              targetModel = this.hydrate(rel.targetEntity, item, getIdentityMap);
+            } else {
+              targetModel = targetMap.get(item.id) ?? null;
             }
 
             if (targetModel && !existingArray.includes(targetModel)) {
