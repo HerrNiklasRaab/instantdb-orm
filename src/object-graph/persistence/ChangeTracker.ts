@@ -1,5 +1,5 @@
 import { observe } from "mobx";
-import type { IEntity } from "../IdentityMap";
+import type { IModel } from "../IdentityMap";
 import type { EntityName } from "../store/EntityMeta";
 import { getEntityMeta, getPropertyName } from "../store/EntityMeta";
 
@@ -17,7 +17,7 @@ export class ChangeTracker {
   private _isNew = true;
 
   constructor(
-    private entity: IEntity,
+    private model: IModel,
     private entityName: EntityName
   ) {
     this.captureOriginalState();
@@ -36,19 +36,19 @@ export class ChangeTracker {
 
   private captureOriginalState(): void {
     const meta = getEntityMeta(this.entityName);
-    const record = this.entity as unknown as Record<string, unknown>;
+    const record = this.model as unknown as Record<string, unknown>;
 
     // Capture relationship state (use private backing field if exists)
     for (const rel of meta.relationshipFields) {
-      const propName = getPropertyName(this.entity, rel.fieldName);
+      const propName = getPropertyName(this.model, rel.fieldName);
       const value = record[propName];
       if (rel.isToOne()) {
-        const entityRef = value as IEntity | null;
-        this.originalRelationships.set(rel.fieldName, entityRef?.id ?? null);
-        this.currentRelationships.set(rel.fieldName, entityRef?.id ?? null);
+        const modelRef = value as IModel | null;
+        this.originalRelationships.set(rel.fieldName, modelRef?.id ?? null);
+        this.currentRelationships.set(rel.fieldName, modelRef?.id ?? null);
       } else {
-        const entities = (value as IEntity[] | undefined) ?? [];
-        const ids = entities.map((e) => e.id);
+        const models = (value as IModel[] | undefined) ?? [];
+        const ids = models.map((m) => m.id);
         this.originalRelationships.set(rel.fieldName, [...ids]);
         this.currentRelationships.set(rel.fieldName, [...ids]);
       }
@@ -57,16 +57,16 @@ export class ChangeTracker {
 
   private setupObservers(): void {
     const meta = getEntityMeta(this.entityName);
-    const record = this.entity as unknown as Record<string, unknown>;
+    const record = this.model as unknown as Record<string, unknown>;
 
     // Observe scalar field changes (use private backing field if exists)
     for (const fieldName of meta.scalarFields) {
       if (fieldName === "id") continue;
-      const propName = getPropertyName(this.entity, fieldName);
+      const propName = getPropertyName(this.model, fieldName);
 
       try {
         const disposer = observe(
-          this.entity as object,
+          this.model as object,
           propName as never,
           (change) => {
             if (change.type === "update") {
@@ -83,20 +83,20 @@ export class ChangeTracker {
 
     // Observe relationship changes (use private backing field if exists)
     for (const rel of meta.relationshipFields) {
-      const propName = getPropertyName(this.entity, rel.fieldName);
+      const propName = getPropertyName(this.model, rel.fieldName);
 
       if (rel.isToOne()) {
         // observable.ref - observe the reference change
         try {
           const disposer = observe(
-            this.entity as object,
+            this.model as object,
             propName as never,
             (change) => {
               if (change.type === "update") {
-                const newEntity = change.newValue as IEntity | null;
+                const newModel = change.newValue as IModel | null;
                 this.currentRelationships.set(
                   rel.fieldName,
-                  newEntity?.id ?? null
+                  newModel?.id ?? null
                 );
               }
             }
@@ -107,7 +107,7 @@ export class ChangeTracker {
         }
       } else {
         // observable.shallow - observe array changes
-        const array = record[propName] as IEntity[] | undefined;
+        const array = record[propName] as IModel[] | undefined;
         if (array && Array.isArray(array)) {
           try {
             const disposer = observe(array, () => {
@@ -126,7 +126,7 @@ export class ChangeTracker {
 
   getChanges(): TrackedChanges {
     const meta = getEntityMeta(this.entityName);
-    const record = this.entity as unknown as Record<string, unknown>;
+    const record = this.model as unknown as Record<string, unknown>;
     const links = new Map<string, string[]>();
     const unlinks = new Map<string, string[]>();
 
@@ -138,7 +138,7 @@ export class ChangeTracker {
       for (const fieldName of meta.scalarFields) {
         if (fieldName === "id") continue;
         // Read from private backing field if exists, key by schema name
-        const propName = getPropertyName(this.entity, fieldName);
+        const propName = getPropertyName(this.model, fieldName);
         scalars.set(fieldName, record[propName]);
       }
     } else {

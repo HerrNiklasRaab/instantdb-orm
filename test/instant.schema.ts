@@ -24,6 +24,18 @@ const _schema = i.schema({
       updatedAt: i.date().indexed(),
       deletedAt: i.date().indexed().optional(),
     }),
+    matchRequests: i.entity({
+      type: i.string(), // discriminator: 'chess' | 'ski'
+      createdAt: i.date().indexed(),
+      // Chess-specific (optional)
+      timeControl: i.string().optional(),
+      rated: i.boolean().optional(),
+      // Ski-specific (optional)
+      resort: i.string().optional(),
+      skillLevel: i.string().optional(),
+      // Soft delete
+      deletedAt: i.date().indexed().optional(),
+    }),
   },
   links: {
     usersProfile: {

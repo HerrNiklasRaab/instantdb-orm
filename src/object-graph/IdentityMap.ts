@@ -1,8 +1,8 @@
 import { observable, action, makeObservable } from "mobx";
 import type { Model } from "./Model";
 
-// Interface for entities that can be tracked (minimal interface for persistence)
-export interface IEntity {
+// Interface for models that can be tracked (minimal interface for persistence)
+export interface IModel {
   readonly id: string;
 }
 
@@ -26,9 +26,9 @@ export class IdentityMap<T extends Model> {
     return this.cache.has(id);
   }
 
-  set(entity: T): T {
-    this.cache.set(entity.id, entity);
-    return entity;
+  set(model: T): T {
+    this.cache.set(model.id, model);
+    return model;
   }
 
   getOrCreate(id: string, factory: () => T): T {
@@ -36,9 +36,9 @@ export class IdentityMap<T extends Model> {
     if (existing) {
       return existing;
     }
-    const entity = factory();
-    this.cache.set(id, entity);
-    return entity;
+    const model = factory();
+    this.cache.set(id, model);
+    return model;
   }
 
   delete(id: string): boolean {

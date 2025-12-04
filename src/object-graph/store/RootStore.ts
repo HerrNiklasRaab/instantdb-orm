@@ -25,15 +25,15 @@ export class RootStore {
     this.initializeIdentityMaps();
   }
 
-  /** Save entity changes to the database */
-  async save(entity: Model): Promise<void> {
-    if (!entity._tracker.hasChanges()) {
+  /** Save model changes to the database */
+  async save(model: Model): Promise<void> {
+    if (!model._tracker.hasChanges()) {
       return;
     }
 
-    const entityName = entity.entityName;
-    const changes = entity._tracker.getChanges();
-    let tx: TxChunk = this.db.tx[entityName][entity.id];
+    const entityName = model.entityName;
+    const changes = model._tracker.getChanges();
+    let tx: TxChunk = this.db.tx[entityName][model.id];
 
     // Scalar updates
     if (changes.scalars.size > 0) {
@@ -57,13 +57,13 @@ export class RootStore {
     }
 
     await this.db.transact([tx]);
-    entity._tracker.reset();
+    model._tracker.reset();
   }
 
-  /** Delete an entity (soft delete) */
-  async delete(entity: Model): Promise<void> {
-    entity.deletedAt = new Date();
-    await this.save(entity);
+  /** Delete a model (soft delete) */
+  async delete(model: Model): Promise<void> {
+    model.deletedAt = new Date();
+    await this.save(model);
   }
 
   private getLinkLabel(entityName: string, linkName: string): string {
@@ -78,7 +78,7 @@ export class RootStore {
     }
   }
 
-  cleanupRelationships(deletedEntityType: string, deletedEntity: Model): void {
+  cleanupRelationships(deletedEntityType: string, deletedModel: Model): void {
     // Find all entity types that have relationships pointing to the deleted entity type
     for (const entityName of getEntityNames()) {
       const meta = getEntityMeta(entityName);
@@ -88,20 +88,20 @@ export class RootStore {
         if (rel.targetEntity !== deletedEntityType) continue;
 
         // Check all instances of this entity type
-        for (const entity of identityMap.values()) {
-          const entityRecord = entity as unknown as Record<string, unknown>;
-          const fieldValue = entityRecord[rel.fieldName];
+        for (const model of identityMap.values()) {
+          const modelRecord = model as unknown as Record<string, unknown>;
+          const fieldValue = modelRecord[rel.fieldName];
 
           if (rel.isToOne()) {
-            // Forward reference (one-to-one): set to null if it points to deleted entity
-            if (fieldValue === deletedEntity) {
-              entityRecord[rel.fieldName] = null;
+            // Forward reference (one-to-one): set to null if it points to deleted model
+            if (fieldValue === deletedModel) {
+              modelRecord[rel.fieldName] = null;
             }
           } else {
             // Reverse reference (one-to-many): remove from array
             const arr = fieldValue as Model[] | undefined;
             if (Array.isArray(arr)) {
-              const index = arr.indexOf(deletedEntity);
+              const index = arr.indexOf(deletedModel);
               if (index !== -1) {
                 arr.splice(index, 1);
               }

@@ -26,7 +26,7 @@ export class EntityHydrator {
     const identityMap = getIdentityMap(entityName);
     const meta = getEntityMeta(entityName);
 
-    const entity = identityMap.getOrCreate(rawData.id, () => {
+    const model = identityMap.getOrCreate(rawData.id, () => {
       // Build data object with all scalar fields (order-independent)
       const dataArg: Record<string, unknown> = {};
       for (const field of meta.scalarFields) {
@@ -41,20 +41,20 @@ export class EntityHydrator {
       return Reflect.construct(EntityClass, [rawData.id, dataArg]) as EntityInstanceFor<K>;
     });
 
-    this.updateEntityFields(entity, entityName, rawData, getIdentityMap);
+    this.updateModelFields(model, entityName, rawData, getIdentityMap);
 
-    // Mark entity as not new and clear dirty state (it exists in database)
-    entity._tracker.reset();
+    // Mark model as not new and clear dirty state (it exists in database)
+    model._tracker.reset();
 
-    // Check if entity is soft-deleted
-    if (entity.deletedAt != null) {
+    // Check if model is soft-deleted
+    if (model.deletedAt != null) {
       // Clean up relationships and remove from identity map
-      this.store.cleanupRelationships(entityName, entity);
+      this.store.cleanupRelationships(entityName, model);
       identityMap.delete(rawData.id);
       return null;
     }
 
-    return entity;
+    return model;
   }
 
   hydrateMany<K extends EntityName>(
@@ -64,26 +64,26 @@ export class EntityHydrator {
   ): EntityInstanceFor<K>[] {
     return rawDataArray
       .map((rawData) => this.hydrate(entityName, rawData, getIdentityMap))
-      .filter((entity): entity is EntityInstanceFor<K> => entity !== null);
+      .filter((model): model is EntityInstanceFor<K> => model !== null);
   }
 
-  private updateEntityFields(
-    entity: Model,
+  private updateModelFields(
+    model: Model,
     entityName: EntityName,
     rawData: RawEntityData,
     getIdentityMap: GetIdentityMap
   ): void {
-    const record = entity as unknown as Record<string, unknown>;
+    const record = model as unknown as Record<string, unknown>;
     const meta = getEntityMeta(entityName);
 
     runInAction(() => {
-      // Update ALL scalar fields from raw data (handles re-hydration of existing entities)
+      // Update ALL scalar fields from raw data (handles re-hydration of existing models)
       // Use private backing field if exists (e.g., _name for schema field "name")
       for (const field of meta.scalarFields) {
         if (field === "id") continue; // Don't update id
         const value = rawData[field];
         if (value !== undefined) {
-          const propName = getPropertyName(entity, field);
+          const propName = getPropertyName(model, field);
           record[propName] = meta.isDateField(field) && value != null
             ? new Date(value as string | number)
             : value;
@@ -92,7 +92,7 @@ export class EntityHydrator {
 
       // Resolve relationships from nested data
       this.resolveRelationshipsFromNestedData(
-        entity,
+        model,
         entityName,
         rawData,
         getIdentityMap
@@ -101,13 +101,13 @@ export class EntityHydrator {
   }
 
   private resolveRelationshipsFromNestedData(
-    entity: Model,
+    model: Model,
     entityName: EntityName,
     rawData: RawEntityData,
     getIdentityMap: GetIdentityMap
   ): void {
     const meta = getEntityMeta(entityName);
-    const record = entity as unknown as Record<string, unknown>;
+    const record = model as unknown as Record<string, unknown>;
 
     for (const rel of meta.relationshipFields) {
       const nestedData = rawData[rel.fieldName];
@@ -124,31 +124,31 @@ export class EntityHydrator {
       const targetMap = getIdentityMap(rel.targetEntity);
 
       // Use private backing field if exists
-      const propName = getPropertyName(entity, rel.fieldName);
+      const propName = getPropertyName(model, rel.fieldName);
 
       if (rel.isToOne()) {
         // has-one: InstantDB returns [{ id: '...' }] or { id: '...' } for has-one relationships
         const firstItem = nestedArray[0] as RawEntityData | undefined;
         if (firstItem?.id) {
           // If nested data has more than just id, recursively hydrate it first
-          let targetEntity = targetMap.get(firstItem.id);
-          if (!targetEntity && this.hasFullEntityData(firstItem)) {
+          let targetModel = targetMap.get(firstItem.id);
+          if (!targetModel && this.hasFullEntityData(firstItem)) {
             const hydrated = this.hydrate(
               rel.targetEntity,
               firstItem,
               getIdentityMap
             );
-            // Skip if entity was deleted (hydrate returns null)
+            // Skip if model was deleted (hydrate returns null)
             if (hydrated) {
-              targetEntity = hydrated;
+              targetModel = hydrated;
             }
           }
 
-          if (targetEntity) {
-            record[propName] = targetEntity;
+          if (targetModel) {
+            record[propName] = targetModel;
 
             // Set up bidirectional relationship
-            this.setReverseRelationship(entity, targetEntity, rel);
+            this.setReverseRelationship(model, targetModel, rel);
           }
         }
       } else {
@@ -159,24 +159,24 @@ export class EntityHydrator {
 
           for (const item of nestedArray as RawEntityData[]) {
             // If nested data has more than just id, recursively hydrate it first
-            let targetEntity = targetMap.get(item.id);
-            if (!targetEntity && this.hasFullEntityData(item)) {
+            let targetModel = targetMap.get(item.id);
+            if (!targetModel && this.hasFullEntityData(item)) {
               const hydrated = this.hydrate(
                 rel.targetEntity,
                 item,
                 getIdentityMap
               );
-              // Skip if entity was deleted (hydrate returns null)
+              // Skip if model was deleted (hydrate returns null)
               if (hydrated) {
-                targetEntity = hydrated;
+                targetModel = hydrated;
               }
             }
 
-            if (targetEntity && !existingArray.includes(targetEntity)) {
-              existingArray.push(targetEntity);
+            if (targetModel && !existingArray.includes(targetModel)) {
+              existingArray.push(targetModel);
 
               // Set up bidirectional relationship
-              this.setReverseRelationship(entity, targetEntity, rel);
+              this.setReverseRelationship(model, targetModel, rel);
             }
           }
         }
@@ -194,27 +194,27 @@ export class EntityHydrator {
   }
 
   private setReverseRelationship(
-    entity: Model,
-    targetEntity: Model,
+    model: Model,
+    targetModel: Model,
     rel: { fieldName: string; targetEntity: EntityName; cardinality: "one" | "many"; isForward: boolean; linkName: string }
   ): void {
-    // Find the reverse relationship on the target entity
+    // Find the reverse relationship on the target model
     const targetMeta = getEntityMeta(rel.targetEntity);
     const reverseRel = targetMeta.findReverseRelationship(rel.linkName, rel.fieldName);
 
     if (!reverseRel) return;
 
-    const targetRecord = targetEntity as unknown as Record<string, unknown>;
+    const targetRecord = targetModel as unknown as Record<string, unknown>;
     // Use private backing field if exists
-    const propName = getPropertyName(targetEntity, reverseRel.fieldName);
+    const propName = getPropertyName(targetModel, reverseRel.fieldName);
 
     if (reverseRel.isToMany()) {
       const array = targetRecord[propName] as Model[];
-      if (Array.isArray(array) && !array.includes(entity)) {
-        array.push(entity);
+      if (Array.isArray(array) && !array.includes(model)) {
+        array.push(model);
       }
     } else {
-      targetRecord[propName] = entity;
+      targetRecord[propName] = model;
     }
   }
 }
