@@ -40,7 +40,7 @@ export class ModelHydrator {
             : value;
         }
       }
-      return Reflect.construct(ModelClass, [rawData.id, dataArg]) as ModelInstanceFor<K>;
+      return Reflect.construct(ModelClass, [dataArg, rawData.id]) as ModelInstanceFor<K>;
     });
 
     this.updateModelFields(model, entityName, rawData, getIdentityMap);

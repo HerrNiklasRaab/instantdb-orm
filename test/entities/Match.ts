@@ -4,7 +4,6 @@ import type { User } from "./User";
 // Abstract base for MTI - NOT decorated with @model (concrete children are)
 // Unlike STI's MatchRequest, this has NO type discriminator
 export abstract class Match extends Model {
-  declare readonly id: string;
 
   declare private _createdAt: Date;
   private _deletedAt: Date | null = null;
@@ -26,9 +25,8 @@ export abstract class Match extends Model {
     this._deletedAt = value;
   }
 
-  constructor(id: string, data: { createdAt: Date }) {
-    super();
-    this.id = id;
+  constructor(data: { createdAt: Date }, id?: string) {
+    super(id);
     this._createdAt = data.createdAt;
   }
 }

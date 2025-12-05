@@ -8,8 +8,6 @@ import type { SkiMatch } from "./SkiMatch";
 
 @model
 export class User extends Model {
-  readonly id: string;
-
   // Private backing fields (ORM reads/writes these directly)
   private _name: string;
   private _createdAt: Date;
@@ -63,9 +61,8 @@ export class User extends Model {
     this._posts = value;
   }
 
-  constructor(id: string, data: { name: string; createdAt: Date; updatedAt: Date }) {
-    super();
-    this.id = id;
+  constructor(data: { name: string; createdAt: Date; updatedAt: Date }, id?: string) {
+    super(id);
     this._name = data.name;
     this._createdAt = data.createdAt;
     this._updatedAt = data.updatedAt;

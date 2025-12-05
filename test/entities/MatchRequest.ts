@@ -3,7 +3,6 @@ import type { User } from "./User";
 
 // Abstract base - NOT decorated with @model (children are)
 export abstract class MatchRequest extends Model {
-  declare readonly id: string;
   abstract readonly type: string; // discriminator
 
   declare private _createdAt: Date;
@@ -26,9 +25,8 @@ export abstract class MatchRequest extends Model {
     this._deletedAt = value;
   }
 
-  constructor(id: string, data: { createdAt: Date }) {
-    super();
-    this.id = id;
+  constructor(data: { createdAt: Date }, id?: string) {
+    super(id);
     this._createdAt = data.createdAt;
   }
 }

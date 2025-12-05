@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   setupTestDatabase,
-  id,
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
@@ -22,14 +21,13 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
   // Helper functions
   async function createChessMatchInStoreA(
-    entityId: string,
     data: Partial<{
       createdAt: Date;
       timeControl: string;
       rated: boolean;
-    }>
+    }> = {}
   ): Promise<ChessMatch> {
-    const match = new ChessMatch(entityId, {
+    const match = new ChessMatch({
       createdAt: data.createdAt ?? new Date(),
       timeControl: data.timeControl ?? "5+0",
       rated: data.rated ?? true,
@@ -39,14 +37,13 @@ describe("Multi-Table Inheritance (Integration)", () => {
   }
 
   async function createSkiMatchInStoreA(
-    entityId: string,
     data: Partial<{
       createdAt: Date;
       resort: string;
       skillLevel: string;
-    }>
+    }> = {}
   ): Promise<SkiMatch> {
-    const match = new SkiMatch(entityId, {
+    const match = new SkiMatch({
       createdAt: data.createdAt ?? new Date(),
       resort: data.resort ?? "Aspen",
       skillLevel: data.skillLevel ?? "intermediate",
@@ -56,14 +53,13 @@ describe("Multi-Table Inheritance (Integration)", () => {
   }
 
   async function createUserInStoreA(
-    entityId: string,
     data: Partial<{
       name: string;
       createdAt: Date;
       updatedAt: Date;
-    }>
+    }> = {}
   ): Promise<User> {
-    const user = new User(entityId, {
+    const user = new User({
       name: data.name ?? "Test User",
       createdAt: data.createdAt ?? new Date(),
       updatedAt: data.updatedAt ?? new Date(),
@@ -74,47 +70,42 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
   describe("hydration from separate tables", () => {
     it("hydrates ChessMatch from chessMatchs table with correct class instance", async () => {
-      const chessId = id();
-      await createChessMatchInStoreA(chessId, {
+      const chessA = await createChessMatchInStoreA({
         timeControl: "10+5",
         rated: false,
       });
 
       await storeB.query({ chessMatchs: {} });
 
-      const chess = storeB.getById(ChessMatch, chessId);
+      const chess = storeB.getById(ChessMatch, chessA.id);
       expect(chess).toBeInstanceOf(ChessMatch);
       expect(chess!.timeControl).toBe("10+5");
       expect(chess!.rated).toBe(false);
     });
 
     it("hydrates SkiMatch from skiMatchs table with correct class instance", async () => {
-      const skiId = id();
-      await createSkiMatchInStoreA(skiId, {
+      const skiA = await createSkiMatchInStoreA({
         resort: "Vail",
         skillLevel: "beginner",
       });
 
       await storeB.query({ skiMatchs: {} });
 
-      const ski = storeB.getById(SkiMatch, skiId);
+      const ski = storeB.getById(SkiMatch, skiA.id);
       expect(ski).toBeInstanceOf(SkiMatch);
       expect(ski!.resort).toBe("Vail");
       expect(ski!.skillLevel).toBe("beginner");
     });
 
     it("each entity type queries its own table independently", async () => {
-      const chessId = id();
-      const skiId = id();
-
-      await createChessMatchInStoreA(chessId, { timeControl: "3+2" });
-      await createSkiMatchInStoreA(skiId, { resort: "Whistler" });
+      const chessA = await createChessMatchInStoreA({ timeControl: "3+2" });
+      const skiA = await createSkiMatchInStoreA({ resort: "Whistler" });
 
       // Query only chessMatchs
       await storeB.query({ chessMatchs: {} });
 
-      const chess = storeB.getById(ChessMatch, chessId);
-      const ski = storeB.getById(SkiMatch, skiId);
+      const chess = storeB.getById(ChessMatch, chessA.id);
+      const ski = storeB.getById(SkiMatch, skiA.id);
 
       expect(chess).toBeInstanceOf(ChessMatch);
       expect(ski).toBeUndefined(); // Not queried yet
@@ -123,11 +114,8 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
   describe("relationships with MTI types", () => {
     it("sets forward relationship (ChessMatch → User) correctly", async () => {
-      const userId = id();
-      const chessId = id();
-
-      const user = await createUserInStoreA(userId, { name: "Alice" });
-      const chess = await createChessMatchInStoreA(chessId, {
+      const user = await createUserInStoreA({ name: "Alice" });
+      const chess = await createChessMatchInStoreA({
         timeControl: "5+0",
         rated: true,
       });
@@ -136,26 +124,22 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
       await storeB.query({ chessMatchs: { requester: {} } });
 
-      const hydratedChess = storeB.getById(ChessMatch, chessId);
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedChess = storeB.getById(ChessMatch, chess.id);
+      const hydratedUser = storeB.getById(User, user.id);
 
       expect(hydratedChess!.requester).toBe(hydratedUser);
     });
 
     it("sets reverse relationship (User → ChessMatchs) correctly", async () => {
-      const userId = id();
-      const chess1Id = id();
-      const chess2Id = id();
+      const user = await createUserInStoreA({ name: "Bob" });
 
-      const user = await createUserInStoreA(userId, { name: "Bob" });
-
-      const chess1 = await createChessMatchInStoreA(chess1Id, {
+      const chess1 = await createChessMatchInStoreA({
         timeControl: "1+0",
       });
       chess1.requester = user;
       await storeA.save(chess1);
 
-      const chess2 = await createChessMatchInStoreA(chess2Id, {
+      const chess2 = await createChessMatchInStoreA({
         timeControl: "15+10",
       });
       chess2.requester = user;
@@ -163,25 +147,21 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
       await storeB.query({ users: { chessMatchs: {} } });
 
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.chessMatchs.length).toBe(2);
       expect(hydratedUser!.chessMatchs).toContainEqual(expect.any(ChessMatch));
     });
 
     it("user can have both ChessMatchs and SkiMatchs (separate relationships)", async () => {
-      const userId = id();
-      const chessId = id();
-      const skiId = id();
+      const user = await createUserInStoreA({ name: "Charlie" });
 
-      const user = await createUserInStoreA(userId, { name: "Charlie" });
-
-      const chess = await createChessMatchInStoreA(chessId, {
+      const chess = await createChessMatchInStoreA({
         timeControl: "5+3",
       });
       chess.requester = user;
       await storeA.save(chess);
 
-      const ski = await createSkiMatchInStoreA(skiId, { resort: "Aspen" });
+      const ski = await createSkiMatchInStoreA({ resort: "Aspen" });
       ski.requester = user;
       await storeA.save(ski);
 
@@ -189,7 +169,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
         users: { chessMatchs: {}, skiMatchs: {} },
       });
 
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.chessMatchs.length).toBe(1);
       expect(hydratedUser!.skiMatchs.length).toBe(1);
       expect(hydratedUser!.chessMatchs[0]).toBeInstanceOf(ChessMatch);
@@ -208,58 +188,51 @@ describe("Multi-Table Inheritance (Integration)", () => {
     }
 
     it("removes deleted MTI entity from identity map (ChessMatch)", async () => {
-      const chessId = id();
-
       // Create entity
-      await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
 
       // Hydrate in store B
       await storeB.query({ chessMatchs: {} });
-      expect(storeB.getById(ChessMatch, chessId)).toBeDefined();
+      expect(storeB.getById(ChessMatch, chess.id)).toBeDefined();
 
       // Mark as deleted in DB
-      await markAsDeletedInDb("chessMatchs", chessId);
+      await markAsDeletedInDb("chessMatchs", chess.id);
 
       // Re-hydrate - should be removed
       await storeB.query({ chessMatchs: {} });
-      expect(storeB.getById(ChessMatch, chessId)).toBeUndefined();
+      expect(storeB.getById(ChessMatch, chess.id)).toBeUndefined();
     });
 
     it("removes deleted MTI entity from identity map (SkiMatch)", async () => {
-      const skiId = id();
-
       // Create entity
-      await createSkiMatchInStoreA(skiId, { resort: "Vail" });
+      const ski = await createSkiMatchInStoreA({ resort: "Vail" });
 
       // Hydrate in store B
       await storeB.query({ skiMatchs: {} });
-      expect(storeB.getById(SkiMatch, skiId)).toBeDefined();
+      expect(storeB.getById(SkiMatch, ski.id)).toBeDefined();
 
       // Mark as deleted in DB
-      await markAsDeletedInDb("skiMatchs", skiId);
+      await markAsDeletedInDb("skiMatchs", ski.id);
 
       // Re-hydrate - should be removed
       await storeB.query({ skiMatchs: {} });
-      expect(storeB.getById(SkiMatch, skiId)).toBeUndefined();
+      expect(storeB.getById(SkiMatch, ski.id)).toBeUndefined();
     });
 
     it("sets forward relationship to null when User is deleted (match.requester → null)", async () => {
-      const userId = id();
-      const chessId = id();
-
       // Create user and linked match
-      const user = await createUserInStoreA(userId, { name: "Alice" });
-      const chess = await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const user = await createUserInStoreA({ name: "Alice" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
       chess.requester = user;
       await storeA.save(chess);
 
       // Hydrate in store B
       await storeB.query({ chessMatchs: { requester: {} } });
-      const hydratedChess = storeB.getById(ChessMatch, chessId);
+      const hydratedChess = storeB.getById(ChessMatch, chess.id);
       expect(hydratedChess!.requester).toBeDefined();
 
       // Delete user in DB
-      await markAsDeletedInDb("users", userId);
+      await markAsDeletedInDb("users", user.id);
 
       // Re-hydrate - chess.requester should be null
       await storeB.query({ users: {} });
@@ -267,87 +240,75 @@ describe("Multi-Table Inheritance (Integration)", () => {
     });
 
     it("removes deleted ChessMatch from reverse array (user.chessMatchs)", async () => {
-      const userId = id();
-      const chess1Id = id();
-      const chess2Id = id();
-
       // Create user with 2 chess matches
-      const user = await createUserInStoreA(userId, { name: "Bob" });
-      const chess1 = await createChessMatchInStoreA(chess1Id, { timeControl: "3+2" });
+      const user = await createUserInStoreA({ name: "Bob" });
+      const chess1 = await createChessMatchInStoreA({ timeControl: "3+2" });
       chess1.requester = user;
       await storeA.save(chess1);
 
-      const chess2 = await createChessMatchInStoreA(chess2Id, { timeControl: "10+5" });
+      const chess2 = await createChessMatchInStoreA({ timeControl: "10+5" });
       chess2.requester = user;
       await storeA.save(chess2);
 
       // Hydrate
       await storeB.query({ users: { chessMatchs: {} } });
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.chessMatchs.length).toBe(2);
 
       // Delete one chess match
-      await markAsDeletedInDb("chessMatchs", chess1Id);
+      await markAsDeletedInDb("chessMatchs", chess1.id);
 
       // Re-hydrate - should only have 1 chess match
       await storeB.query({ chessMatchs: {} });
       expect(hydratedUser!.chessMatchs.length).toBe(1);
-      expect(hydratedUser!.chessMatchs[0]!.id).toBe(chess2Id);
+      expect(hydratedUser!.chessMatchs[0]!.id).toBe(chess2.id);
     });
 
     it("removes deleted SkiMatch from reverse array (user.skiMatchs)", async () => {
-      const userId = id();
-      const ski1Id = id();
-      const ski2Id = id();
-
       // Create user with 2 ski matches
-      const user = await createUserInStoreA(userId, { name: "Charlie" });
-      const ski1 = await createSkiMatchInStoreA(ski1Id, { resort: "Aspen" });
+      const user = await createUserInStoreA({ name: "Charlie" });
+      const ski1 = await createSkiMatchInStoreA({ resort: "Aspen" });
       ski1.requester = user;
       await storeA.save(ski1);
 
-      const ski2 = await createSkiMatchInStoreA(ski2Id, { resort: "Vail" });
+      const ski2 = await createSkiMatchInStoreA({ resort: "Vail" });
       ski2.requester = user;
       await storeA.save(ski2);
 
       // Hydrate
       await storeB.query({ users: { skiMatchs: {} } });
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.skiMatchs.length).toBe(2);
 
       // Delete one ski match
-      await markAsDeletedInDb("skiMatchs", ski1Id);
+      await markAsDeletedInDb("skiMatchs", ski1.id);
 
       // Re-hydrate - should only have 1 ski match
       await storeB.query({ skiMatchs: {} });
       expect(hydratedUser!.skiMatchs.length).toBe(1);
-      expect(hydratedUser!.skiMatchs[0]!.id).toBe(ski2Id);
+      expect(hydratedUser!.skiMatchs[0]!.id).toBe(ski2.id);
     });
 
     it("MTI deletions don't affect other MTI type arrays", async () => {
-      const userId = id();
-      const chessId = id();
-      const skiId = id();
-
       // Create user with ChessMatch + SkiMatch
-      const user = await createUserInStoreA(userId, { name: "Dave" });
+      const user = await createUserInStoreA({ name: "Dave" });
 
-      const chess = await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
       chess.requester = user;
       await storeA.save(chess);
 
-      const ski = await createSkiMatchInStoreA(skiId, { resort: "Aspen" });
+      const ski = await createSkiMatchInStoreA({ resort: "Aspen" });
       ski.requester = user;
       await storeA.save(ski);
 
       // Hydrate
       await storeB.query({ users: { chessMatchs: {}, skiMatchs: {} } });
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.chessMatchs.length).toBe(1);
       expect(hydratedUser!.skiMatchs.length).toBe(1);
 
       // Delete ChessMatch only
-      await markAsDeletedInDb("chessMatchs", chessId);
+      await markAsDeletedInDb("chessMatchs", chess.id);
 
       // Re-hydrate
       await storeB.query({ chessMatchs: {}, skiMatchs: {} });
@@ -360,12 +321,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
   describe("relationship removal", () => {
     it("clears forward 1:1 when set to null (chessMatch.requester = null)", async () => {
-      const userId = id();
-      const chessId = id();
-
       // Create linked entities
-      const user = await createUserInStoreA(userId, { name: "Eve" });
-      const chess = await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const user = await createUserInStoreA({ name: "Eve" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
       chess.requester = user;
       await storeA.save(chess);
 
@@ -375,23 +333,20 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
       // Verify in store B
       await storeB.query({ chessMatchs: { requester: {} } });
-      const hydratedChess = storeB.getById(ChessMatch, chessId);
+      const hydratedChess = storeB.getById(ChessMatch, chess.id);
       expect(hydratedChess!.requester).toBeNull();
     });
 
     it("removes from reverse 1:n when forward cleared (user.chessMatchs)", async () => {
-      const userId = id();
-      const chessId = id();
-
       // Create linked entities
-      const user = await createUserInStoreA(userId, { name: "Frank" });
-      const chess = await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const user = await createUserInStoreA({ name: "Frank" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
       chess.requester = user;
       await storeA.save(chess);
 
       // Hydrate and verify relationship
       await storeB.query({ users: { chessMatchs: {} } });
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.chessMatchs.length).toBe(1);
 
       // Clear relationship in store A
@@ -404,12 +359,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
     });
 
     it("clears forward 1:1 for SkiMatch (skiMatch.requester = null)", async () => {
-      const userId = id();
-      const skiId = id();
-
       // Create linked entities
-      const user = await createUserInStoreA(userId, { name: "Grace" });
-      const ski = await createSkiMatchInStoreA(skiId, { resort: "Whistler" });
+      const user = await createUserInStoreA({ name: "Grace" });
+      const ski = await createSkiMatchInStoreA({ resort: "Whistler" });
       ski.requester = user;
       await storeA.save(ski);
 
@@ -419,23 +371,20 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
       // Verify in store B
       await storeB.query({ skiMatchs: { requester: {} } });
-      const hydratedSki = storeB.getById(SkiMatch, skiId);
+      const hydratedSki = storeB.getById(SkiMatch, ski.id);
       expect(hydratedSki!.requester).toBeNull();
     });
 
     it("removes from reverse 1:n when forward cleared (user.skiMatchs)", async () => {
-      const userId = id();
-      const skiId = id();
-
       // Create linked entities
-      const user = await createUserInStoreA(userId, { name: "Henry" });
-      const ski = await createSkiMatchInStoreA(skiId, { resort: "Tahoe" });
+      const user = await createUserInStoreA({ name: "Henry" });
+      const ski = await createSkiMatchInStoreA({ resort: "Tahoe" });
       ski.requester = user;
       await storeA.save(ski);
 
       // Hydrate and verify relationship
       await storeB.query({ users: { skiMatchs: {} } });
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.skiMatchs.length).toBe(1);
 
       // Clear relationship in store A

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   setupTestDatabase,
-  id,
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
@@ -18,23 +17,22 @@ describe("Entity Save (Integration)", () => {
   });
 
   // Helper to create entities with default values
-  function createUser(userId: string, name = "Test User"): User {
-    return new User(userId, { name, createdAt: new Date(), updatedAt: new Date() });
+  function createUser(name = "Test User"): User {
+    return new User({ name, createdAt: new Date(), updatedAt: new Date() });
   }
 
-  function createPost(postId: string, title = "Test Post"): Post {
-    return new Post(postId, { title, createdAt: new Date(), updatedAt: new Date() });
+  function createPost(title = "Test Post"): Post {
+    return new Post({ title, createdAt: new Date(), updatedAt: new Date() });
   }
 
   describe("isDirty() - new entity behavior", () => {
     it("new entity is dirty (needs to be inserted)", () => {
-      const user = createUser(id());
+      const user = createUser();
       expect(user.isDirty()).toBe(true);
     });
 
     it("hydrated entity is not dirty", async () => {
-      const userId = id();
-      const user = createUser(userId);
+      const user = createUser();
       await store.save(user);
 
       // Hydrate from DB
@@ -45,7 +43,7 @@ describe("Entity Save (Integration)", () => {
 
   describe("isDirty() - scalar changes", () => {
     it("returns true after changing string field on saved entity", async () => {
-      const user = createUser(id());
+      const user = createUser();
       await store.save(user);
 
       user.name = "New Name";
@@ -54,7 +52,7 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after changing date field on saved entity", async () => {
-      const user = createUser(id());
+      const user = createUser();
       await store.save(user);
 
       user.updatedAt = new Date("2024-06-01");
@@ -63,7 +61,7 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after changing multiple fields on saved entity", async () => {
-      const user = createUser(id());
+      const user = createUser();
       await store.save(user);
 
       user.name = "New Name";
@@ -75,8 +73,8 @@ describe("Entity Save (Integration)", () => {
 
   describe("isDirty() - relationship changes", () => {
     it("returns true after assigning one-to-one relationship", () => {
-      const post = createPost(id());
-      const user = createUser(id());
+      const post = createPost();
+      const user = createUser();
 
       post.author = user;
 
@@ -84,8 +82,8 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after removing one-to-one relationship", async () => {
-      const post = createPost(id());
-      const user = createUser(id());
+      const post = createPost();
+      const user = createUser();
 
       // Save both entities and set up relationship
       await store.save(user);
@@ -99,8 +97,8 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after adding to one-to-many relationship", () => {
-      const user = createUser(id());
-      const post = createPost(id());
+      const user = createUser();
+      const post = createPost();
 
       user.posts.push(post);
 
@@ -108,8 +106,8 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("returns true after removing from one-to-many relationship", async () => {
-      const user = createUser(id());
-      const post = createPost(id());
+      const user = createUser();
+      const post = createPost();
 
       // Save entities with relationship
       await store.save(user);
@@ -126,8 +124,7 @@ describe("Entity Save (Integration)", () => {
 
   describe("save() - basic flow", () => {
     it("new entity is persisted on first save", async () => {
-      const userId = id();
-      const user = createUser(userId);
+      const user = createUser();
 
       // New entity should be dirty (needs to be inserted)
       expect(user.isDirty()).toBe(true);
@@ -135,7 +132,7 @@ describe("Entity Save (Integration)", () => {
       await store.save(user);
 
       // Verify entity was saved to DB
-      const result = await db.query({ users: { $: { where: { id: userId } } } });
+      const result = await db.query({ users: { $: { where: { id: user.id } } } });
       expect((result as { users?: unknown[] }).users ?? []).toHaveLength(1);
 
       // After save, entity should no longer be dirty
@@ -143,10 +140,8 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("does nothing when hydrated entity is not modified", async () => {
-      const userId = id();
-
       // First create the entity in DB
-      const user = createUser(userId);
+      const user = createUser();
       await store.save(user);
 
       // Hydrate the entity from DB (simulates app restart or sync)
@@ -159,22 +154,19 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("persists scalar changes to database", async () => {
-      const userId = id();
-      const user = createUser(userId, "New Name");
+      const user = createUser("New Name");
       await store.save(user);
 
       // Verify in database
-      const result = await db.query({ users: { $: { where: { id: userId } } } });
+      const result = await db.query({ users: { $: { where: { id: user.id } } } });
       const savedUser = (result as { users?: Array<{ name: string }> }).users?.[0];
       expect(savedUser).toBeDefined();
       expect(savedUser!.name).toBe("New Name");
     });
 
     it("persists relationship link to database", async () => {
-      const postId = id();
-      const userId = id();
-      const post = createPost(postId);
-      const user = createUser(userId);
+      const post = createPost();
+      const user = createUser();
 
       // Save user first, then link and save post
       await store.save(user);
@@ -184,19 +176,17 @@ describe("Entity Save (Integration)", () => {
       // Verify relationship in database
       const result = await db.query({
         posts: {
-          $: { where: { id: postId } },
+          $: { where: { id: post.id } },
           author: {},
         },
       });
       const savedPost = (result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0];
-      expect(savedPost?.author?.id).toBe(userId);
+      expect(savedPost?.author?.id).toBe(user.id);
     });
 
     it("persists relationship unlink to database", async () => {
-      const postId = id();
-      const userId = id();
-      const post = createPost(postId);
-      const user = createUser(userId);
+      const post = createPost();
+      const user = createUser();
 
       // Save user, link to post and save
       await store.save(user);
@@ -206,11 +196,11 @@ describe("Entity Save (Integration)", () => {
       // Verify link exists
       let result = await db.query({
         posts: {
-          $: { where: { id: postId } },
+          $: { where: { id: post.id } },
           author: {},
         },
       });
-      expect((result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0]?.author?.id).toBe(userId);
+      expect((result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0]?.author?.id).toBe(user.id);
 
       // Now remove the relationship
       post.author = null;
@@ -219,7 +209,7 @@ describe("Entity Save (Integration)", () => {
       // Verify unlinked
       result = await db.query({
         posts: {
-          $: { where: { id: postId } },
+          $: { where: { id: post.id } },
           author: {},
         },
       });
@@ -227,13 +217,12 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("converts Date to ISO string", async () => {
-      const userId = id();
       const testDate = new Date("2024-06-15T10:30:00.000Z");
-      const user = new User(userId, { name: "Test", createdAt: new Date(), updatedAt: testDate });
+      const user = new User({ name: "Test", createdAt: new Date(), updatedAt: testDate });
       await store.save(user);
 
       // Verify date was saved correctly
-      const result = await db.query({ users: { $: { where: { id: userId } } } });
+      const result = await db.query({ users: { $: { where: { id: user.id } } } });
       const savedUser = (result as { users?: Array<{ updatedAt: string }> }).users?.[0];
       expect(savedUser?.updatedAt).toBe(testDate.toISOString());
     });
@@ -241,8 +230,7 @@ describe("Entity Save (Integration)", () => {
 
   describe("save() - state after save", () => {
     it("isDirty returns false after successful save", async () => {
-      const userId = id();
-      const user = createUser(userId);
+      const user = createUser();
 
       expect(user.isDirty()).toBe(true);
       await store.save(user);
@@ -250,8 +238,7 @@ describe("Entity Save (Integration)", () => {
     });
 
     it("new changes are tracked after save", async () => {
-      const userId = id();
-      const user = createUser(userId);
+      const user = createUser();
       await store.save(user);
 
       expect(user.isDirty()).toBe(false);

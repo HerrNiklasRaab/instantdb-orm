@@ -4,11 +4,15 @@ import { ChangeTracker } from "./persistence/ChangeTracker";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
 
 export abstract class Model {
-  abstract readonly id: string;
+  readonly id: string;
   abstract deletedAt: Date | null;
 
   /** @internal */
   _tracker: ChangeTracker | null = null;
+
+  constructor(id?: string) {
+    this.id = id ?? crypto.randomUUID();
+  }
 
   /** Call at end of subclass constructor after setting fields. Wraps makeObservable + tracker init. */
   protected init(annotations: Record<string, unknown>): void {

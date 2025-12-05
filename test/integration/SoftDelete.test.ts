@@ -61,8 +61,8 @@ describe("Soft Delete (Integration)", () => {
       // First create the user in database
       await createTestUserInDb(userId);
 
-      // Create entity for deletion
-      const user = new User(userId, { name: "Test User", createdAt: new Date(), updatedAt: new Date() });
+      // Create entity for deletion with specific ID to match database
+      const user = new User({ name: "Test User", createdAt: new Date(), updatedAt: new Date() }, userId);
 
       expect(user.deletedAt).toBeNull();
 

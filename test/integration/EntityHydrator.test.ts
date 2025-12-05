@@ -25,14 +25,13 @@ describe("RootStore hydration (Integration)", () => {
 
   // Helper to create user through Store A (simulates another device creating data)
   async function createUserInStoreA(
-    entityId: string,
     data: Partial<{
       name: string;
       createdAt: Date;
       updatedAt: Date;
-    }>
+    }> = {}
   ): Promise<User> {
-    const user = new User(entityId, {
+    const user = new User({
       name: data.name ?? "Test User",
       createdAt: data.createdAt ?? new Date(),
       updatedAt: data.updatedAt ?? new Date(),
@@ -43,14 +42,13 @@ describe("RootStore hydration (Integration)", () => {
 
   // Helper to create post through Store A
   async function createPostInStoreA(
-    entityId: string,
     data: Partial<{
       title: string;
       content: string;
       author: User;
-    }>
+    }> = {}
   ): Promise<Post> {
-    const post = new Post(entityId, {
+    const post = new Post({
       title: data.title ?? "Test Post",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -63,16 +61,15 @@ describe("RootStore hydration (Integration)", () => {
     return post;
   }
 
-  // Helper to create post through Store A
+  // Helper to create post through Store B
   async function createPostInStoreB(
-    entityId: string,
     data: Partial<{
       title: string;
       content: string;
       author: User;
-    }>
+    }> = {}
   ): Promise<Post> {
-    const post = new Post(entityId, {
+    const post = new Post({
       title: data.title ?? "Test Post",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -87,14 +84,13 @@ describe("RootStore hydration (Integration)", () => {
 
   // Helper to create profile through Store A
   async function createProfileInStoreA(
-    entityId: string,
     data: Partial<{
       bio: string;
       avatarUrl: string;
       user: User;
-    }>
+    }> = {}
   ): Promise<Profile> {
-    const profile = new Profile(entityId, { createdAt: new Date(), updatedAt: new Date() });
+    const profile = new Profile({ createdAt: new Date(), updatedAt: new Date() });
     profile.bio = data.bio;
     profile.avatarUrl = data.avatarUrl;
     if (data.user) {
@@ -122,48 +118,41 @@ describe("RootStore hydration (Integration)", () => {
 
   describe("basic hydration", () => {
     it("hydrates scalar fields correctly", async () => {
-      const userId = id();
-
       // Store A creates user
-      await createUserInStoreA(userId, {
-        name: "John",
-      });
+      const userA = await createUserInStoreA({ name: "John" });
 
       // Store B hydrates and verifies (only users needed)
       const users = await storeB.queryModel(User);
-      const user = users.find((u) => u.id === userId);
+      const user = users.find((u) => u.id === userA.id);
 
       expect(user).toBeDefined();
       expect(user!.name).toBe("John");
     });
 
     it("converts date fields to Date objects", async () => {
-      const userId = id();
       const testDate = new Date("2024-01-01T00:00:00.000Z");
 
       // Store A creates user with specific dates
-      await createUserInStoreA(userId, {
+      const userA = await createUserInStoreA({
         createdAt: testDate,
         updatedAt: testDate,
       });
 
       // Store B hydrates and verifies dates are Date objects (only users needed)
       const users = await storeB.queryModel(User);
-      const user = users.find((u) => u.id === userId);
+      const user = users.find((u) => u.id === userA.id);
 
       expect(user!.createdAt).toBeInstanceOf(Date);
       expect(user!.updatedAt).toBeInstanceOf(Date);
     });
 
     it("uses identity map - same ID returns same instance", async () => {
-      const userId = id();
-
       // Store A creates user
-      const userA = await createUserInStoreA(userId, { name: "John" });
+      const userA = await createUserInStoreA({ name: "John" });
 
       // Store B hydrates first time (only users needed)
       const users1 = await storeB.queryModel(User);
-      const user1 = users1.find((u) => u.id === userId);
+      const user1 = users1.find((u) => u.id === userA.id);
 
       // Store A updates user name
       userA.name = "John Updated";
@@ -171,7 +160,7 @@ describe("RootStore hydration (Integration)", () => {
 
       // Store B re-hydrates (only users needed)
       const users2 = await storeB.queryModel(User);
-      const user2 = users2.find((u) => u.id === userId);
+      const user2 = users2.find((u) => u.id === userA.id);
 
       expect(user1).toBe(user2); // Same instance
       expect(user1!.name).toBe("John Updated"); // Updated value
@@ -180,33 +169,27 @@ describe("RootStore hydration (Integration)", () => {
 
   describe("forward link resolution", () => {
     it("sets forward relationship when target exists", async () => {
-      const userId = id();
-      const postId = id();
-
       // Store A creates user and post with relationship
-      const user = await createUserInStoreA(userId, { name: "John" });
-      await createPostInStoreA(postId, { author: user });
+      const user = await createUserInStoreA({ name: "John" });
+      const postA = await createPostInStoreA({ author: user });
 
       // Store B hydrates and verifies relationship
       await storeB.queryAll();
-      const hydratedUser = storeB.getById(User, userId);
-      const hydratedPost = storeB.getById(Post, postId);
+      const hydratedUser = storeB.getById(User, user.id);
+      const hydratedPost = storeB.getById(Post, postA.id);
 
       expect(hydratedPost!.author).toBe(hydratedUser);
     });
 
     it("sets reverse relationship on target (has many)", async () => {
-      const userId = id();
-      const postId = id();
-
       // Store A creates user and post with relationship
-      const user = await createUserInStoreA(userId, { name: "John" });
-      await createPostInStoreA(postId, { author: user });
+      const user = await createUserInStoreA({ name: "John" });
+      const postA = await createPostInStoreA({ author: user });
 
       // Store B hydrates and verifies reverse relationship
       await storeB.queryAll();
-      const hydratedUser = storeB.getById(User, userId);
-      const hydratedPost = storeB.getById(Post, postId);
+      const hydratedUser = storeB.getById(User, user.id);
+      const hydratedPost = storeB.getById(Post, postA.id);
 
       expect(hydratedUser!.posts).toContain(hydratedPost);
       expect(hydratedUser!.posts.length).toBe(1);
@@ -241,8 +224,9 @@ describe("RootStore hydration (Integration)", () => {
       const post = posts.find((p) => p.id === postId);
       expect(post!.author).toBeNull();
 
-      // Now Store A creates the user
-      await createUserInStoreA(userId, { name: "John" });
+      // Now Store A creates the user with specific ID to match dangling link
+      const userA = new User({ name: "John", createdAt: new Date(), updatedAt: new Date() }, userId);
+      await storeA.save(userA);
 
       // Store B re-hydrates everything to pick up the new user
       await storeB.queryAll();
@@ -254,20 +238,16 @@ describe("RootStore hydration (Integration)", () => {
     });
 
     it("handles multiple forward entities referencing same target", async () => {
-      const userId = id();
-      const postId1 = id();
-      const postId2 = id();
-
       // Store A creates user and two posts linked to it
-      const user = await createUserInStoreA(userId, { name: "John" });
-      await createPostInStoreA(postId1, { title: "Post 1", author: user });
-      await createPostInStoreA(postId2, { title: "Post 2", author: user });
+      const user = await createUserInStoreA({ name: "John" });
+      const post1A = await createPostInStoreA({ title: "Post 1", author: user });
+      const post2A = await createPostInStoreA({ title: "Post 2", author: user });
 
       // Store B hydrates and verifies all relationships
       await storeB.queryAll();
-      const hydratedUser = storeB.getById(User, userId);
-      const post1 = storeB.getById(Post, postId1);
-      const post2 = storeB.getById(Post, postId2);
+      const hydratedUser = storeB.getById(User, user.id);
+      const post1 = storeB.getById(Post, post1A.id);
+      const post2 = storeB.getById(Post, post2A.id);
 
       expect(post1!.author).toBe(hydratedUser);
       expect(post2!.author).toBe(hydratedUser);
@@ -279,33 +259,28 @@ describe("RootStore hydration (Integration)", () => {
 
   describe("edge cases", () => {
     it("does not set relationship when no link exists", async () => {
-      const postId = id();
-
       // Store A creates post without author link
-      await createPostInStoreA(postId, {});
+      const postA = await createPostInStoreA({});
 
       // Store B hydrates and verifies no relationship (only posts needed)
       const posts = await storeB.queryModel(Post);
-      const post = posts.find((p) => p.id === postId);
+      const post = posts.find((p) => p.id === postA.id);
 
       expect(post!.author).toBeNull();
     });
 
     it("does not duplicate relationships when entity is hydrated multiple times", async () => {
-      const userId = id();
-      const postId = id();
-
       // Store A creates user and post with relationship
-      const user = await createUserInStoreA(userId, { name: "John" });
-      await createPostInStoreA(postId, { author: user });
+      const user = await createUserInStoreA({ name: "John" });
+      const postA = await createPostInStoreA({ author: user });
 
       // Store B hydrates multiple times
       await storeB.queryAll();
       await storeB.queryAll();
       await storeB.queryAll();
 
-      const hydratedUser = storeB.getById(User, userId);
-      const hydratedPost = storeB.getById(Post, postId);
+      const hydratedUser = storeB.getById(User, user.id);
+      const hydratedPost = storeB.getById(Post, postA.id);
 
       expect(hydratedUser!.posts.length).toBe(1);
       expect(hydratedUser!.posts[0]).toBe(hydratedPost);
@@ -338,20 +313,15 @@ describe("RootStore hydration (Integration)", () => {
      *    - Without recursive expansion, User wouldn't request posts data, so post2 wouldn't be wired
      */
     it("hydrates 3-level nested relationships with 3 different entities (Post → User → Profile)", async () => {
-      const userId = id();
-      const profileId = id();
-      const postId = id();
-      const postId2 = id();
-
       // Create User with Profile
-      const user = await createUserInStoreA(userId, { name: "John" });
-      const profile = await createProfileInStoreA(profileId, { bio: "Hello", user });
+      const user = await createUserInStoreA({ name: "John" });
+      const profile = await createProfileInStoreA({ bio: "Hello", user });
       user.profile = profile;
       await storeA.save(user);
 
       // Create two posts linked to the same User
-      await createPostInStoreA(postId, { author: user });
-      await createPostInStoreB(postId2, { author: user });
+      const post1A = await createPostInStoreA({ author: user });
+      const post2A = await createPostInStoreB({ author: user });
 
       // Pre-hydrate posts into identity map (post2 will be looked up by ID later)
       await storeB.queryModel(Post);
@@ -361,17 +331,17 @@ describe("RootStore hydration (Integration)", () => {
       // which returns posts: [{ id: postId }, { id: post2Id }] (IDs only for circular refs)
       await storeB.query({
         posts: {
-          $: { where: { id: postId } },
+          $: { where: { id: post1A.id } },
           author: {
             profile: {},
           },
         },
       });
 
-      const hydratedPost = storeB.getById(Post, postId);
-      const hydratedPost2 = storeB.getById(Post, postId2);
-      const hydratedUser = storeB.getById(User, userId);
-      const hydratedProfile = storeB.getById(Profile, profileId);
+      const hydratedPost = storeB.getById(Post, post1A.id);
+      const hydratedPost2 = storeB.getById(Post, post2A.id);
+      const hydratedUser = storeB.getById(User, user.id);
+      const hydratedProfile = storeB.getById(Profile, profile.id);
 
       // Verify all 3 entity types hydrated
       expect(hydratedPost).toBeDefined();
@@ -391,12 +361,9 @@ describe("RootStore hydration (Integration)", () => {
     });
 
     it("resolves one-to-one when Profile synced before User", async () => {
-      const userId = id();
-      const profileId = id();
-
       // Store A creates both User and Profile with relationship
-      const user = await createUserInStoreA(userId, { name: "John" });
-      const profile = await createProfileInStoreA(profileId, {
+      const user = await createUserInStoreA({ name: "John" });
+      const profile = await createProfileInStoreA({
         bio: "Hello",
         user: user,
       });
@@ -405,14 +372,14 @@ describe("RootStore hydration (Integration)", () => {
 
       // Store B hydrates Profile FIRST (before User)
       const profiles = await storeB.queryModel(Profile);
-      const hydratedProfile = profiles.find((p) => p.id === profileId);
+      const hydratedProfile = profiles.find((p) => p.id === profile.id);
 
       // Profile.user should be null because User hasn't been hydrated yet
       expect(hydratedProfile!.user).toBeNull();
 
       // Now Store B hydrates User
       await storeB.queryModel(User);
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
 
       // Bidirectional wiring should have set both directions
       expect(hydratedUser!.profile).toBe(hydratedProfile);
@@ -420,14 +387,11 @@ describe("RootStore hydration (Integration)", () => {
     });
 
     it("hydrates one-to-one relationships (User ↔ Profile)", async () => {
-      const userId = id();
-      const profileId = id();
-
       // Create User
-      const user = await createUserInStoreA(userId, { name: "John" });
+      const user = await createUserInStoreA({ name: "John" });
 
       // Create Profile linked to User
-      const profile = await createProfileInStoreA(profileId, {
+      const profile = await createProfileInStoreA({
         bio: "Hello world",
         user: user,
       });
@@ -437,13 +401,13 @@ describe("RootStore hydration (Integration)", () => {
       // Store B hydrates
       await storeB.query({
         users: {
-          $: { where: { id: userId } },
+          $: { where: { id: user.id } },
           profile: {},
         },
       });
 
-      const hydratedUser = storeB.getById(User, userId);
-      const hydratedProfile = storeB.getById(Profile, profileId);
+      const hydratedUser = storeB.getById(User, user.id);
+      const hydratedProfile = storeB.getById(Profile, profile.id);
 
       // Verify bidirectional one-to-one
       expect(hydratedUser!.profile).toBe(hydratedProfile);
@@ -478,13 +442,12 @@ describe("RootStore hydration (Integration)", () => {
     });
 
     it("user-created entities work with any property order in data object", () => {
-      const userId = id();
       const now = new Date();
 
       // Create with properties in different order than schema
-      const user1 = new User(userId, { updatedAt: now, name: "User1", createdAt: now });
-      const user2 = new User(id(), { createdAt: now, updatedAt: now, name: "User2" });
-      const user3 = new User(id(), { name: "User3", createdAt: now, updatedAt: now });
+      const user1 = new User({ updatedAt: now, name: "User1", createdAt: now });
+      const user2 = new User({ createdAt: now, updatedAt: now, name: "User2" });
+      const user3 = new User({ name: "User3", createdAt: now, updatedAt: now });
 
       // All should work correctly
       expect(user1.name).toBe("User1");

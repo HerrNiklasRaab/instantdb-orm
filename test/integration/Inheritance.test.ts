@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   setupTestDatabase,
-  id,
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
@@ -22,14 +21,13 @@ describe("Single Table Inheritance (Integration)", () => {
 
   // Helper to create user through Store A
   async function createUserInStoreA(
-    entityId: string,
     data: Partial<{
       name: string;
       createdAt: Date;
       updatedAt: Date;
-    }>
+    }> = {}
   ): Promise<User> {
-    const user = new User(entityId, {
+    const user = new User({
       name: data.name ?? "Test User",
       createdAt: data.createdAt ?? new Date(),
       updatedAt: data.updatedAt ?? new Date(),
@@ -40,14 +38,13 @@ describe("Single Table Inheritance (Integration)", () => {
 
   // Helper to create ChessMatchRequest through Store A
   async function createChessMatchInStoreA(
-    entityId: string,
     data: Partial<{
       timeControl: string;
       rated: boolean;
       createdAt: Date;
-    }>
+    }> = {}
   ): Promise<ChessMatchRequest> {
-    const match = new ChessMatchRequest(entityId, {
+    const match = new ChessMatchRequest({
       createdAt: data.createdAt ?? new Date(),
       timeControl: data.timeControl ?? "5+0",
       rated: data.rated ?? true,
@@ -58,14 +55,13 @@ describe("Single Table Inheritance (Integration)", () => {
 
   // Helper to create SkiMatchRequest through Store A
   async function createSkiMatchInStoreA(
-    entityId: string,
     data: Partial<{
       resort: string;
       skillLevel: string;
       createdAt: Date;
-    }>
+    }> = {}
   ): Promise<SkiMatchRequest> {
-    const match = new SkiMatchRequest(entityId, {
+    const match = new SkiMatchRequest({
       createdAt: data.createdAt ?? new Date(),
       resort: data.resort ?? "Aspen",
       skillLevel: data.skillLevel ?? "intermediate",
@@ -76,15 +72,12 @@ describe("Single Table Inheritance (Integration)", () => {
 
   describe("hydration with type discriminator", () => {
     it("hydrates mixed types from same table with correct class instances", async () => {
-      const chessId = id();
-      const skiId = id();
-
       // Store A creates both types
-      await createChessMatchInStoreA(chessId, {
+      const chessA = await createChessMatchInStoreA({
         timeControl: "10+5",
         rated: false,
       });
-      await createSkiMatchInStoreA(skiId, {
+      const skiA = await createSkiMatchInStoreA({
         resort: "Vail",
         skillLevel: "beginner",
       });
@@ -92,8 +85,8 @@ describe("Single Table Inheritance (Integration)", () => {
       // Store B hydrates all matchRequests
       await storeB.query({ matchRequests: {} });
 
-      const chess = storeB.getById(ChessMatchRequest, chessId);
-      const ski = storeB.getById(SkiMatchRequest, skiId);
+      const chess = storeB.getById(ChessMatchRequest, chessA.id);
+      const ski = storeB.getById(SkiMatchRequest, skiA.id);
 
       // Each should be the correct subclass instance
       expect(chess).toBeInstanceOf(ChessMatchRequest);
@@ -108,12 +101,9 @@ describe("Single Table Inheritance (Integration)", () => {
 
   describe("relationships with inherited types", () => {
     it("sets forward relationship (subtype → User) correctly", async () => {
-      const userId = id();
-      const chessId = id();
-
       // Create user and chess match with requester link
-      const user = await createUserInStoreA(userId, { name: "Alice" });
-      const chess = await createChessMatchInStoreA(chessId, {
+      const user = await createUserInStoreA({ name: "Alice" });
+      const chess = await createChessMatchInStoreA({
         timeControl: "5+0",
         rated: true,
       });
@@ -123,28 +113,24 @@ describe("Single Table Inheritance (Integration)", () => {
       // Store B hydrates
       await storeB.query({ matchRequests: { requester: {} } });
 
-      const hydratedChess = storeB.getById(ChessMatchRequest, chessId);
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedChess = storeB.getById(ChessMatchRequest, chess.id);
+      const hydratedUser = storeB.getById(User, user.id);
 
       expect(hydratedChess!.requester).toBe(hydratedUser);
     });
 
     it("sets reverse relationship (User → subtypes) correctly", async () => {
-      const userId = id();
-      const chessId = id();
-      const skiId = id();
-
       // Create user with two different match request types
-      const user = await createUserInStoreA(userId, { name: "Bob" });
+      const user = await createUserInStoreA({ name: "Bob" });
 
-      const chess = await createChessMatchInStoreA(chessId, {
+      const chess = await createChessMatchInStoreA({
         timeControl: "3+2",
         rated: false,
       });
       chess.requester = user;
       await storeA.save(chess);
 
-      const ski = await createSkiMatchInStoreA(skiId, {
+      const ski = await createSkiMatchInStoreA({
         resort: "Aspen",
         skillLevel: "advanced",
       });
@@ -154,7 +140,7 @@ describe("Single Table Inheritance (Integration)", () => {
       // Store B hydrates
       await storeB.query({ users: { matchRequests: {} } });
 
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
 
       // User.matchRequests should contain both subtypes
       expect(hydratedUser!.matchRequests.length).toBe(2);
@@ -178,40 +164,35 @@ describe("Single Table Inheritance (Integration)", () => {
     }
 
     it("removes deleted STI entity from identity map", async () => {
-      const chessId = id();
-
       // Create entity
-      await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
 
       // Hydrate in store B
       await storeB.query({ matchRequests: {} });
-      expect(storeB.getById(ChessMatchRequest, chessId)).toBeDefined();
+      expect(storeB.getById(ChessMatchRequest, chess.id)).toBeDefined();
 
       // Mark as deleted in DB (simulating deletion from another device)
-      await markAsDeletedInDb("matchRequests", chessId);
+      await markAsDeletedInDb("matchRequests", chess.id);
 
       // Re-hydrate - should be removed
       await storeB.query({ matchRequests: {} });
-      expect(storeB.getById(ChessMatchRequest, chessId)).toBeUndefined();
+      expect(storeB.getById(ChessMatchRequest, chess.id)).toBeUndefined();
     });
 
     it("sets forward relationship to null when User is deleted (match.requester → null)", async () => {
-      const userId = id();
-      const chessId = id();
-
       // Create user and linked match
-      const user = await createUserInStoreA(userId, { name: "Alice" });
-      const chess = await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const user = await createUserInStoreA({ name: "Alice" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
       chess.requester = user;
       await storeA.save(chess);
 
       // Hydrate in store B
       await storeB.query({ matchRequests: { requester: {} } });
-      const hydratedChess = storeB.getById(ChessMatchRequest, chessId);
+      const hydratedChess = storeB.getById(ChessMatchRequest, chess.id);
       expect(hydratedChess!.requester).toBeDefined();
 
       // Delete user in DB
-      await markAsDeletedInDb("users", userId);
+      await markAsDeletedInDb("users", user.id);
 
       // Re-hydrate - chess.requester should be null
       await storeB.query({ users: {} });
@@ -219,57 +200,49 @@ describe("Single Table Inheritance (Integration)", () => {
     });
 
     it("removes deleted STI entity from reverse array (user.matchRequests)", async () => {
-      const userId = id();
-      const chess1Id = id();
-      const chess2Id = id();
-
       // Create user with 2 match requests
-      const user = await createUserInStoreA(userId, { name: "Bob" });
-      const chess1 = await createChessMatchInStoreA(chess1Id, { timeControl: "3+2" });
+      const user = await createUserInStoreA({ name: "Bob" });
+      const chess1 = await createChessMatchInStoreA({ timeControl: "3+2" });
       chess1.requester = user;
       await storeA.save(chess1);
 
-      const chess2 = await createChessMatchInStoreA(chess2Id, { timeControl: "10+5" });
+      const chess2 = await createChessMatchInStoreA({ timeControl: "10+5" });
       chess2.requester = user;
       await storeA.save(chess2);
 
       // Hydrate
       await storeB.query({ users: { matchRequests: {} } });
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.matchRequests.length).toBe(2);
 
       // Delete one match request
-      await markAsDeletedInDb("matchRequests", chess1Id);
+      await markAsDeletedInDb("matchRequests", chess1.id);
 
       // Re-hydrate - should only have 1 match request
       await storeB.query({ matchRequests: {} });
       expect(hydratedUser!.matchRequests.length).toBe(1);
-      expect(hydratedUser!.matchRequests[0]!.id).toBe(chess2Id);
+      expect(hydratedUser!.matchRequests[0]!.id).toBe(chess2.id);
     });
 
     it("handles mixed STI types in reverse array cleanup", async () => {
-      const userId = id();
-      const chessId = id();
-      const skiId = id();
-
       // Create user with ChessMatchRequest + SkiMatchRequest
-      const user = await createUserInStoreA(userId, { name: "Charlie" });
+      const user = await createUserInStoreA({ name: "Charlie" });
 
-      const chess = await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
       chess.requester = user;
       await storeA.save(chess);
 
-      const ski = await createSkiMatchInStoreA(skiId, { resort: "Aspen" });
+      const ski = await createSkiMatchInStoreA({ resort: "Aspen" });
       ski.requester = user;
       await storeA.save(ski);
 
       // Hydrate
       await storeB.query({ users: { matchRequests: {} } });
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.matchRequests.length).toBe(2);
 
       // Delete ChessMatchRequest
-      await markAsDeletedInDb("matchRequests", chessId);
+      await markAsDeletedInDb("matchRequests", chess.id);
 
       // Re-hydrate
       await storeB.query({ matchRequests: {} });
@@ -280,12 +253,9 @@ describe("Single Table Inheritance (Integration)", () => {
 
   describe("relationship removal", () => {
     it("clears forward 1:1 when set to null (match.requester = null)", async () => {
-      const userId = id();
-      const chessId = id();
-
       // Create linked entities
-      const user = await createUserInStoreA(userId, { name: "Dave" });
-      const chess = await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const user = await createUserInStoreA({ name: "Dave" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
       chess.requester = user;
       await storeA.save(chess);
 
@@ -295,23 +265,20 @@ describe("Single Table Inheritance (Integration)", () => {
 
       // Verify in store B
       await storeB.query({ matchRequests: { requester: {} } });
-      const hydratedChess = storeB.getById(ChessMatchRequest, chessId);
+      const hydratedChess = storeB.getById(ChessMatchRequest, chess.id);
       expect(hydratedChess!.requester).toBeNull();
     });
 
     it("removes from reverse 1:n when forward cleared", async () => {
-      const userId = id();
-      const chessId = id();
-
       // Create linked entities
-      const user = await createUserInStoreA(userId, { name: "Eve" });
-      const chess = await createChessMatchInStoreA(chessId, { timeControl: "5+0" });
+      const user = await createUserInStoreA({ name: "Eve" });
+      const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
       chess.requester = user;
       await storeA.save(chess);
 
       // Hydrate and verify relationship
       await storeB.query({ users: { matchRequests: {} } });
-      const hydratedUser = storeB.getById(User, userId);
+      const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser!.matchRequests.length).toBe(1);
 
       // Clear relationship in store A

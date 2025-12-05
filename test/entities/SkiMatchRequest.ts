@@ -26,14 +26,14 @@ export class SkiMatchRequest extends MatchRequest {
   }
 
   constructor(
-    id: string,
     data: {
       createdAt: Date;
       resort: string;
       skillLevel: string;
-    }
+    },
+    id?: string
   ) {
-    super(id, data);
+    super(data, id);
     this._resort = data.resort;
     this._skillLevel = data.skillLevel;
     this.init({

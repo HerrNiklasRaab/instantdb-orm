@@ -4,8 +4,6 @@ import type { User } from "./User";
 
 @model
 export class Profile extends Model {
-  readonly id: string;
-
   // Required fields (passed in constructor)
   createdAt: Date;
   updatedAt: Date;
@@ -25,9 +23,8 @@ export class Profile extends Model {
     this._user = value;
   }
 
-  constructor(id: string, data: { createdAt: Date; updatedAt: Date }) {
-    super();
-    this.id = id;
+  constructor(data: { createdAt: Date; updatedAt: Date }, id?: string) {
+    super(id);
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
     this.init({

@@ -4,8 +4,6 @@ import type { User } from "./User";
 
 @model
 export class Post extends Model {
-  readonly id: string;
-
   // Required fields (passed in constructor)
   title: string;
   createdAt: Date;
@@ -18,9 +16,8 @@ export class Post extends Model {
   // Relationships
   author: User | null = null;
 
-  constructor(id: string, data: { title: string; createdAt: Date; updatedAt: Date }) {
-    super();
-    this.id = id;
+  constructor(data: { title: string; createdAt: Date; updatedAt: Date }, id?: string) {
+    super(id);
     this.title = data.title;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;

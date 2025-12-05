@@ -26,14 +26,14 @@ export class ChessMatchRequest extends MatchRequest {
   }
 
   constructor(
-    id: string,
     data: {
       createdAt: Date;
       timeControl: string;
       rated: boolean;
-    }
+    },
+    id?: string
   ) {
-    super(id, data);
+    super(data, id);
     this._timeControl = data.timeControl;
     this._rated = data.rated;
     this.init({
