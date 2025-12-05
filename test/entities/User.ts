@@ -46,9 +46,6 @@ export class User extends Model {
     makeObservable(this, {
       _name: observable,
       testDate: observable,
-      createdAt: observable,
-      updatedAt: observable,
-      deletedAt: observable,
       profile: observable.ref,
       _posts: observable.shallow,
       referredBy: observable.ref,

@@ -1,6 +1,7 @@
 import { type EntityName } from "./store/EntityMeta";
 import { ChangeTracker } from "./persistence/ChangeTracker";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
+import { makeObservable, observable } from "mobx";
 
 export abstract class Model {
   readonly id: string;
@@ -17,6 +18,11 @@ export abstract class Model {
     const now = new Date();
     this.createdAt = now;
     this.updatedAt = now;
+    makeObservable(this, {
+      createdAt: observable,
+      updatedAt: observable,
+      deletedAt: observable,
+    });
   }
 
   /**

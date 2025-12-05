@@ -23,9 +23,6 @@ export class Profile extends Model {
     makeObservable(this, {
       bio: observable,
       avatarUrl: observable,
-      createdAt: observable,
-      updatedAt: observable,
-      deletedAt: observable,
       _user: observable.ref,
     } as any);
     this.initTracking();

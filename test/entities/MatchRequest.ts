@@ -12,9 +12,6 @@ export abstract class MatchRequest extends Model {
   constructor(data: Record<string, never> = {}, id?: string) {
     super(id);
     makeObservable(this, {
-      createdAt: observable,
-      updatedAt: observable,
-      deletedAt: observable,
       requester: observable.ref,
     } as any);
   }

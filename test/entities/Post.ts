@@ -22,9 +22,6 @@ export class Post extends Model {
     makeObservable(this, {
       title: observable,
       content: observable,
-      createdAt: observable,
-      updatedAt: observable,
-      deletedAt: observable,
       author: observable.ref,
     });
     this.initTracking();
