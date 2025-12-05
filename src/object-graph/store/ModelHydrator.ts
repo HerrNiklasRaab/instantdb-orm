@@ -30,7 +30,7 @@ export class ModelHydrator {
 
     const model = identityMap.getOrCreate(rawData.id, () => {
       // Build data object with all scalar fields (order-independent)
-      const dataArg: Record<string, unknown> = {};
+      const dataArg: Record<string, unknown> = { id: rawData.id };
       for (const field of meta.scalarFields) {
         if (field === "id") continue;
         const value = rawData[field];
@@ -40,13 +40,13 @@ export class ModelHydrator {
             : value;
         }
       }
-      return Reflect.construct(ModelClass, [dataArg, rawData.id]) as ModelInstanceFor<K>;
+      return Reflect.construct(ModelClass, [dataArg]) as ModelInstanceFor<K>;
     });
 
     this.updateModelFields(model, entityName, rawData, getIdentityMap);
 
     // Mark model as not new and clear dirty state (it exists in database)
-    model._tracker.reset();
+    model._tracker?.reset();
 
     // Check if model is soft-deleted
     if (model.deletedAt != null) {

@@ -13,8 +13,8 @@ export class Post extends Model {
   // Relationships
   author: User | null = null;
 
-  constructor(data: { title: string; author?: User }, id?: string) {
-    super(id);
+  constructor(data: { id?: string; title: string; author?: User }) {
+    super({ id: data.id });
     this.title = data.title;
     if (data.author) {
       this.author = data.author;  // Set relationship IN constructor

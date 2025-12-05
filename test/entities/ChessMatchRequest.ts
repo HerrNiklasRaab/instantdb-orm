@@ -27,12 +27,12 @@ export class ChessMatchRequest extends MatchRequest {
 
   constructor(
     data: {
+      id?: string;
       timeControl: string;
       rated: boolean;
-    },
-    id?: string
+    }
   ) {
-    super({}, id);
+    super({ id: data.id });
     this._timeControl = data.timeControl;
     this._rated = data.rated;
     makeObservable(this, {

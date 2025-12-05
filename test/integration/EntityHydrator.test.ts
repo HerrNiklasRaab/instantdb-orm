@@ -220,7 +220,7 @@ describe("RootStore hydration (Integration)", () => {
       expect(post!.author).toBeNull();
 
       // Now Store A creates the user with specific ID to match dangling link
-      const userA = new User({ name: "John" }, userId);
+      const userA = new User({ id: userId, name: "John" });
       await storeA.save(userA);
 
       // Store B re-hydrates everything to pick up the new user

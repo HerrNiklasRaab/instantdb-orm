@@ -23,10 +23,9 @@ export class ChessMatch extends Match {
   }
 
   constructor(
-    data: { timeControl: string; rated: boolean },
-    id?: string
+    data: { id?: string; timeControl: string; rated: boolean }
   ) {
-    super({}, id);
+    super({ id: data.id });
     this._timeControl = data.timeControl;
     this._rated = data.rated;
     makeObservable(this, {

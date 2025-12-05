@@ -18,8 +18,8 @@ export class UserProfile extends Model {
     this._user = value;
   }
 
-  constructor(data: Record<string, never> = {}, id?: string) {
-    super(id);
+  constructor(data: { id?: string } = {}) {
+    super({ id: data.id });
     makeObservable(this, {
       bio: observable,
       avatarUrl: observable,

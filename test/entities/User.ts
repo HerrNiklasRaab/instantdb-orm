@@ -40,8 +40,8 @@ export class User extends Model {
     this._posts = value;
   }
 
-  constructor(data: { name: string }, id?: string) {
-    super(id);
+  constructor(data: { id?: string; name: string }) {
+    super({ id: data.id });
     this._name = data.name;
     makeObservable(this, {
       _name: observable,

@@ -9,8 +9,8 @@ export abstract class MatchRequest extends Model {
   // Relationship to User
   requester: User | null = null;
 
-  constructor(data: Record<string, never> = {}, id?: string) {
-    super(id);
+  constructor(data: { id?: string } = {}) {
+    super({ id: data.id });
     makeObservable(this, {
       requester: observable.ref,
     } as any);

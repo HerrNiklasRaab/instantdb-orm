@@ -11,10 +11,10 @@ export abstract class Model {
   updatedAt: Date;
   deletedAt: Date | null = null;
 
-  private _tracker: ChangeTracker | null = null;
+  _tracker: ChangeTracker | null = null;
 
-  constructor(id?: string) {
-    this.id = id ?? crypto.randomUUID();
+  constructor(data: { id?: string } = {}) {
+    this.id = data.id ?? crypto.randomUUID();
     const now = new Date();
     this.createdAt = now;
     this.updatedAt = now;
