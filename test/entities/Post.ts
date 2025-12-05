@@ -16,11 +16,14 @@ export class Post extends Model {
   // Relationships
   author: User | null = null;
 
-  constructor(data: { title: string; createdAt: Date; updatedAt: Date }, id?: string) {
+  constructor(data: { title: string; createdAt: Date; updatedAt: Date; author?: User }, id?: string) {
     super(id);
     this.title = data.title;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
+    if (data.author) {
+      this.author = data.author;  // Set relationship IN constructor
+    }
     makeObservable(this, {
       title: observable,
       content: observable,

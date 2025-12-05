@@ -139,6 +139,32 @@ describe("Entity Save (Integration)", () => {
       expect(user.isDirty()).toBe(false);
     });
 
+    it("persists relationship set in constructor", async () => {
+      // Create user first
+      const user = createUser();
+      await store.save(user);
+
+      // Create post WITH author set in constructor (before initTracking)
+      const post = new Post({
+        title: "Test Post",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        author: user,  // Set IN constructor
+      });
+
+      await store.save(post);
+
+      // Verify relationship was persisted
+      const result = await db.query({
+        posts: {
+          $: { where: { id: post.id } },
+          author: {},
+        },
+      });
+      const savedPost = (result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0];
+      expect(savedPost?.author?.id).toBe(user.id);  // This should FAIL without _isNew for relationships
+    });
+
     it("does nothing when hydrated entity is not modified", async () => {
       // First create the entity in DB
       const user = createUser();
