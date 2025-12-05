@@ -55,40 +55,27 @@ function getDiscriminatorValue(target: ModelClassType): string | undefined {
 }
 
 /**
- * Registers a model class in the registry.
- * Derives entity name from class name: User → "users"
- * For STI subclasses, derives entity name from root domain class.
- *
- * @example
- * @model
- * class User extends Model { }
- *
- * @example STI
- * abstract class MatchRequest extends Model { }
- *
- * @model
- * class ChessMatchRequest extends MatchRequest {
- *   get type() { return "chess"; }
- * }
+ * Internal helper that applies the @model decorator logic.
  */
-export function model<T extends ModelClassType>(target: T): T {
+function applyModelDecorator<T extends ModelClassType>(
+  target: T,
+  explicitEntityName?: string
+): T {
   const rootClass = findRootModelClass(target);
   const isSubclass = rootClass !== target;
 
-  // Derive entity name from ROOT class (STI: all subclasses share same table)
-  const entityName = deriveEntityName(rootClass.name);
+  // Use explicit name if provided, otherwise derive from root class
+  const entityName = explicitEntityName ?? deriveEntityName(rootClass.name);
   (target as any)[ENTITY_NAME_KEY] = entityName;
 
   if (isSubclass) {
     const discriminatorValue = getDiscriminatorValue(target);
     if (discriminatorValue) {
       // STI: has type getter → register discriminator mapping
-      // All subclasses share same table via discriminator
       modelRegistry.registerDiscriminator(entityName, discriminatorValue, target as any);
     } else {
       // MTI: no type getter → register with own entity name
-      // Each concrete class gets its own table
-      const ownEntityName = deriveEntityName(target.name);
+      const ownEntityName = explicitEntityName ?? deriveEntityName(target.name);
       (target as any)[ENTITY_NAME_KEY] = ownEntityName;
       modelRegistry.register(ownEntityName, target as any);
     }
@@ -98,4 +85,39 @@ export function model<T extends ModelClassType>(target: T): T {
   }
 
   return target;
+}
+
+/**
+ * Registers a model class in the registry.
+ * Derives entity name from class name: User → "users"
+ * Or accepts explicit entity name: @model("users")
+ * For STI subclasses, derives entity name from root domain class.
+ *
+ * @example
+ * @model
+ * class User extends Model { }
+ *
+ * @example with explicit name
+ * @model("users")
+ * class AppUser extends Model { }
+ *
+ * @example STI
+ * abstract class MatchRequest extends Model { }
+ *
+ * @model
+ * class ChessMatchRequest extends MatchRequest {
+ *   get type() { return "chess"; }
+ * }
+ */
+export function model<T extends ModelClassType>(target: T): T;
+export function model(entityName: string): <T extends ModelClassType>(target: T) => T;
+export function model(
+  targetOrEntityName: ModelClassType | string
+): ModelClassType | (<T extends ModelClassType>(target: T) => T) {
+  if (typeof targetOrEntityName === "string") {
+    // Called as @model("entityName") - return decorator factory
+    return <T extends ModelClassType>(target: T) => applyModelDecorator(target, targetOrEntityName);
+  }
+  // Called as @model - apply directly
+  return applyModelDecorator(targetOrEntityName);
 }

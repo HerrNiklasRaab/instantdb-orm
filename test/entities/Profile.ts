@@ -2,8 +2,8 @@ import { makeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { User } from "./User";
 
-@model
-export class Profile extends Model {
+@model("profiles")
+export class UserProfile extends Model {
   // Optional fields (with defaults)
   bio?: string = undefined;
   avatarUrl?: string = undefined;

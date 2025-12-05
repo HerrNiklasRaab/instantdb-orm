@@ -1,6 +1,6 @@
 import { makeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
-import type { Profile } from "./Profile";
+import type { UserProfile } from "./Profile";
 import type { Post } from "./Post";
 import type { MatchRequest } from "./MatchRequest";
 import type { ChessMatch } from "./ChessMatch";
@@ -23,7 +23,7 @@ export class User extends Model {
   testDate: Date | null = null;
 
   // Relationships - mix of public and private backing fields
-  profile: Profile | null = null;  // public to-one
+  profile: UserProfile | null = null;  // public to-one
   referredBy: User | null = null;  // public to-one
   referrals: User[] = [];          // public to-many
   matchRequests: MatchRequest[] = [];  // STI: reverse of matchRequests.requester

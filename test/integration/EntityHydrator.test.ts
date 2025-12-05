@@ -7,7 +7,7 @@ import {
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
 import { Post } from "../entities/Post";
-import { Profile } from "../entities/Profile";
+import { UserProfile } from "../entities/Profile";
 // Import MTI entities to register them with model registry
 import "../entities/ChessMatch";
 import "../entities/SkiMatch";
@@ -85,8 +85,8 @@ describe("RootStore hydration (Integration)", () => {
       avatarUrl: string;
       user: User;
     }> = {}
-  ): Promise<Profile> {
-    const profile = new Profile();
+  ): Promise<UserProfile> {
+    const profile = new UserProfile();
     profile.bio = data.bio;
     profile.avatarUrl = data.avatarUrl;
     if (data.user) {
@@ -336,7 +336,7 @@ describe("RootStore hydration (Integration)", () => {
       const hydratedPost = storeB.getById(Post, post1A.id);
       const hydratedPost2 = storeB.getById(Post, post2A.id);
       const hydratedUser = storeB.getById(User, user.id);
-      const hydratedProfile = storeB.getById(Profile, profile.id);
+      const hydratedProfile = storeB.getById(UserProfile, profile.id);
 
       // Verify all 3 entity types hydrated
       expect(hydratedPost).toBeDefined();
@@ -365,8 +365,8 @@ describe("RootStore hydration (Integration)", () => {
       user.profile = profile;
       await storeA.save(user);
 
-      // Store B hydrates Profile FIRST (before User)
-      const profiles = await storeB.queryModel(Profile);
+      // Store B hydrates UserProfile FIRST (before User)
+      const profiles = await storeB.queryModel(UserProfile);
       const hydratedProfile = profiles.find((p) => p.id === profile.id);
 
       // Profile.user should be null because User hasn't been hydrated yet
@@ -402,7 +402,7 @@ describe("RootStore hydration (Integration)", () => {
       });
 
       const hydratedUser = storeB.getById(User, user.id);
-      const hydratedProfile = storeB.getById(Profile, profile.id);
+      const hydratedProfile = storeB.getById(UserProfile, profile.id);
 
       // Verify bidirectional one-to-one
       expect(hydratedUser!.profile).toBe(hydratedProfile);
