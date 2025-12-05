@@ -27,15 +27,15 @@ describe("RootStore hydration (Integration)", () => {
   async function createUserInStoreA(
     data: Partial<{
       name: string;
-      createdAt: Date;
-      updatedAt: Date;
+      testDate: Date;
     }> = {}
   ): Promise<User> {
     const user = new User({
       name: data.name ?? "Test User",
-      createdAt: data.createdAt ?? new Date(),
-      updatedAt: data.updatedAt ?? new Date(),
     });
+    if (data.testDate) {
+      user.testDate = data.testDate;
+    }
     await storeA.save(user);
     return user;
   }
@@ -50,8 +50,6 @@ describe("RootStore hydration (Integration)", () => {
   ): Promise<Post> {
     const post = new Post({
       title: data.title ?? "Test Post",
-      createdAt: new Date(),
-      updatedAt: new Date(),
     });
     post.content = data.content;
     if (data.author) {
@@ -71,8 +69,6 @@ describe("RootStore hydration (Integration)", () => {
   ): Promise<Post> {
     const post = new Post({
       title: data.title ?? "Test Post",
-      createdAt: new Date(),
-      updatedAt: new Date(),
     });
     post.content = data.content;
     if (data.author) {
@@ -90,7 +86,7 @@ describe("RootStore hydration (Integration)", () => {
       user: User;
     }> = {}
   ): Promise<Profile> {
-    const profile = new Profile({ createdAt: new Date(), updatedAt: new Date() });
+    const profile = new Profile();
     profile.bio = data.bio;
     profile.avatarUrl = data.avatarUrl;
     if (data.user) {
@@ -132,18 +128,17 @@ describe("RootStore hydration (Integration)", () => {
     it("converts date fields to Date objects", async () => {
       const testDate = new Date("2024-01-01T00:00:00.000Z");
 
-      // Store A creates user with specific dates
+      // Store A creates user with specific testDate
       const userA = await createUserInStoreA({
-        createdAt: testDate,
-        updatedAt: testDate,
+        testDate: testDate,
       });
 
       // Store B hydrates and verifies dates are Date objects (only users needed)
       const users = await storeB.queryModel(User);
       const user = users.find((u) => u.id === userA.id);
 
-      expect(user!.createdAt).toBeInstanceOf(Date);
-      expect(user!.updatedAt).toBeInstanceOf(Date);
+      expect(user!.testDate).toBeInstanceOf(Date);
+      expect(user!.testDate).toEqual(testDate);
     });
 
     it("uses identity map - same ID returns same instance", async () => {
@@ -225,7 +220,7 @@ describe("RootStore hydration (Integration)", () => {
       expect(post!.author).toBeNull();
 
       // Now Store A creates the user with specific ID to match dangling link
-      const userA = new User({ name: "John", createdAt: new Date(), updatedAt: new Date() }, userId);
+      const userA = new User({ name: "John" }, userId);
       await storeA.save(userA);
 
       // Store B re-hydrates everything to pick up the new user
@@ -419,14 +414,16 @@ describe("RootStore hydration (Integration)", () => {
     it("hydrates correctly regardless of schema field order", async () => {
       const userId = id();
       const testDate = new Date("2024-06-15T10:30:00.000Z");
+      const now = new Date();
 
       // Create user directly in DB with fields in arbitrary order
       await db.transact([
         db.tx.users[userId].update({
           // Note: order here doesn't matter because it's an object
-          updatedAt: testDate.toISOString(),
+          testDate: testDate.toISOString(),
           name: "Order Test User",
-          createdAt: testDate.toISOString(),
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
         }),
       ]);
 
@@ -437,17 +434,14 @@ describe("RootStore hydration (Integration)", () => {
       // Verify all fields are correctly hydrated
       expect(user).toBeDefined();
       expect(user!.name).toBe("Order Test User");
-      expect(user!.createdAt).toEqual(testDate);
-      expect(user!.updatedAt).toEqual(testDate);
+      expect(user!.testDate).toEqual(testDate);
     });
 
     it("user-created entities work with any property order in data object", () => {
-      const now = new Date();
-
       // Create with properties in different order than schema
-      const user1 = new User({ updatedAt: now, name: "User1", createdAt: now });
-      const user2 = new User({ createdAt: now, updatedAt: now, name: "User2" });
-      const user3 = new User({ name: "User3", createdAt: now, updatedAt: now });
+      const user1 = new User({ name: "User1" });
+      const user2 = new User({ name: "User2" });
+      const user3 = new User({ name: "User3" });
 
       // All should work correctly
       expect(user1.name).toBe("User1");

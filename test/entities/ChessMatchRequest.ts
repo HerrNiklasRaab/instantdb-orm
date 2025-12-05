@@ -27,13 +27,12 @@ export class ChessMatchRequest extends MatchRequest {
 
   constructor(
     data: {
-      createdAt: Date;
       timeControl: string;
       rated: boolean;
     },
     id?: string
   ) {
-    super(data, id);
+    super({}, id);
     this._timeControl = data.timeControl;
     this._rated = data.rated;
     makeObservable(this, {

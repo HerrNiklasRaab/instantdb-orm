@@ -23,14 +23,10 @@ describe("Single Table Inheritance (Integration)", () => {
   async function createUserInStoreA(
     data: Partial<{
       name: string;
-      createdAt: Date;
-      updatedAt: Date;
     }> = {}
   ): Promise<User> {
     const user = new User({
       name: data.name ?? "Test User",
-      createdAt: data.createdAt ?? new Date(),
-      updatedAt: data.updatedAt ?? new Date(),
     });
     await storeA.save(user);
     return user;
@@ -41,11 +37,9 @@ describe("Single Table Inheritance (Integration)", () => {
     data: Partial<{
       timeControl: string;
       rated: boolean;
-      createdAt: Date;
     }> = {}
   ): Promise<ChessMatchRequest> {
     const match = new ChessMatchRequest({
-      createdAt: data.createdAt ?? new Date(),
       timeControl: data.timeControl ?? "5+0",
       rated: data.rated ?? true,
     });
@@ -58,11 +52,9 @@ describe("Single Table Inheritance (Integration)", () => {
     data: Partial<{
       resort: string;
       skillLevel: string;
-      createdAt: Date;
     }> = {}
   ): Promise<SkiMatchRequest> {
     const match = new SkiMatchRequest({
-      createdAt: data.createdAt ?? new Date(),
       resort: data.resort ?? "Aspen",
       skillLevel: data.skillLevel ?? "intermediate",
     });

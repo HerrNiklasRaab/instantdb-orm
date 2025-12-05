@@ -4,12 +4,19 @@ import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
 
 export abstract class Model {
   readonly id: string;
-  abstract deletedAt: Date | null;
+
+  // Automatic timestamp fields (managed by the framework)
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null = null;
 
   private __tracker: ChangeTracker | null = null;
 
   constructor(id?: string) {
     this.id = id ?? crypto.randomUUID();
+    const now = new Date();
+    this.createdAt = now;
+    this.updatedAt = now;
   }
 
   /**

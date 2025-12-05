@@ -18,11 +18,11 @@ describe("Entity Save (Integration)", () => {
 
   // Helper to create entities with default values
   function createUser(name = "Test User"): User {
-    return new User({ name, createdAt: new Date(), updatedAt: new Date() });
+    return new User({ name });
   }
 
   function createPost(title = "Test Post"): Post {
-    return new Post({ title, createdAt: new Date(), updatedAt: new Date() });
+    return new Post({ title });
   }
 
   describe("isDirty() - new entity behavior", () => {
@@ -147,8 +147,6 @@ describe("Entity Save (Integration)", () => {
       // Create post WITH author set in constructor (before initTracking)
       const post = new Post({
         title: "Test Post",
-        createdAt: new Date(),
-        updatedAt: new Date(),
         author: user,  // Set IN constructor
       });
 
@@ -244,13 +242,14 @@ describe("Entity Save (Integration)", () => {
 
     it("converts Date to ISO string", async () => {
       const testDate = new Date("2024-06-15T10:30:00.000Z");
-      const user = new User({ name: "Test", createdAt: new Date(), updatedAt: testDate });
+      const user = new User({ name: "Test" });
+      user.testDate = testDate;
       await store.save(user);
 
       // Verify date was saved correctly
       const result = await db.query({ users: { $: { where: { id: user.id } } } });
-      const savedUser = (result as { users?: Array<{ updatedAt: string }> }).users?.[0];
-      expect(savedUser?.updatedAt).toBe(testDate.toISOString());
+      const savedUser = (result as { users?: Array<{ testDate: string }> }).users?.[0];
+      expect(savedUser?.testDate).toBe(testDate.toISOString());
     });
   });
 
@@ -272,6 +271,76 @@ describe("Entity Save (Integration)", () => {
       user.name = "Second Change";
 
       expect(user.isDirty()).toBe(true);
+    });
+  });
+
+  describe("automatic timestamps", () => {
+    it("sets createdAt and updatedAt automatically on new entity", () => {
+      const before = new Date();
+      const user = createUser();
+      const after = new Date();
+
+      expect(user.createdAt).toBeInstanceOf(Date);
+      expect(user.updatedAt).toBeInstanceOf(Date);
+      expect(user.createdAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(user.createdAt.getTime()).toBeLessThanOrEqual(after.getTime());
+      expect(user.updatedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(user.updatedAt.getTime()).toBeLessThanOrEqual(after.getTime());
+    });
+
+    it("updates updatedAt automatically on save()", async () => {
+      const user = createUser();
+      const originalUpdatedAt = user.updatedAt;
+
+      // Wait a bit to ensure time difference
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      user.name = "Changed";
+      await store.save(user);
+
+      expect(user.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+    });
+
+    it("does not change createdAt on subsequent saves", async () => {
+      const user = createUser();
+      const originalCreatedAt = user.createdAt;
+
+      await store.save(user);
+
+      // Wait and save again
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      user.name = "Changed";
+      await store.save(user);
+
+      expect(user.createdAt).toEqual(originalCreatedAt);
+    });
+
+    it("persists createdAt and updatedAt to database", async () => {
+      const user = createUser();
+      await store.save(user);
+
+      const result = await db.query({ users: { $: { where: { id: user.id } } } });
+      const savedUser = (result as { users?: Array<{ createdAt: string; updatedAt: string }> }).users?.[0];
+
+      expect(savedUser?.createdAt).toBe(user.createdAt.toISOString());
+      expect(savedUser?.updatedAt).toBe(user.updatedAt.toISOString());
+    });
+
+    it("hydrates createdAt and updatedAt from database", async () => {
+      const user = createUser();
+      const originalCreatedAt = user.createdAt;
+      await store.save(user);
+
+      // Create a fresh store to simulate hydrating from DB without local cache
+      const freshStore = new RootStore({ db });
+      const users = await freshStore.queryModel(User);
+      const hydratedUser = users.find((u) => u.id === user.id);
+
+      expect(hydratedUser).toBeDefined();
+      expect(hydratedUser!.createdAt).toBeInstanceOf(Date);
+      expect(hydratedUser!.updatedAt).toBeInstanceOf(Date);
+      // Hydrated createdAt should match what was originally saved
+      expect(hydratedUser!.createdAt.toISOString()).toBe(originalCreatedAt.toISOString());
     });
   });
 });

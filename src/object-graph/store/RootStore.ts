@@ -32,6 +32,9 @@ export class RootStore {
       return;
     }
 
+    // Auto-update timestamp before getting changes
+    model.updatedAt = new Date();
+
     const entityName = model.entityName;
     const changes = model._tracker.getChanges();
     let tx: TxChunk = this.db.tx[entityName][model.id];

@@ -8,11 +8,8 @@ import type { SkiMatch } from "./SkiMatch";
 
 @model
 export class User extends Model {
-  // Private backing fields (ORM reads/writes these directly)
+  // Private backing field for name
   private _name: string;
-  private _createdAt: Date;
-  private _updatedAt: Date;
-  private _deletedAt: Date | null = null;
 
   // Public getters/setters for API convenience
   get name(): string {
@@ -22,26 +19,8 @@ export class User extends Model {
     this._name = value;
   }
 
-  get createdAt(): Date {
-    return this._createdAt;
-  }
-  set createdAt(value: Date) {
-    this._createdAt = value;
-  }
-
-  get updatedAt(): Date {
-    return this._updatedAt;
-  }
-  set updatedAt(value: Date) {
-    this._updatedAt = value;
-  }
-
-  get deletedAt(): Date | null {
-    return this._deletedAt;
-  }
-  set deletedAt(value: Date | null) {
-    this._deletedAt = value;
-  }
+  // Optional test field for testing Date serialization/hydration
+  testDate: Date | null = null;
 
   // Relationships - mix of public and private backing fields
   profile: Profile | null = null;  // public to-one
@@ -61,16 +40,15 @@ export class User extends Model {
     this._posts = value;
   }
 
-  constructor(data: { name: string; createdAt: Date; updatedAt: Date }, id?: string) {
+  constructor(data: { name: string }, id?: string) {
     super(id);
     this._name = data.name;
-    this._createdAt = data.createdAt;
-    this._updatedAt = data.updatedAt;
     makeObservable(this, {
       _name: observable,
-      _createdAt: observable,
-      _updatedAt: observable,
-      _deletedAt: observable,
+      testDate: observable,
+      createdAt: observable,
+      updatedAt: observable,
+      deletedAt: observable,
       profile: observable.ref,
       _posts: observable.shallow,
       referredBy: observable.ref,

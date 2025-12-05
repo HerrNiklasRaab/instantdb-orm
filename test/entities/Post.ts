@@ -6,21 +6,16 @@ import type { User } from "./User";
 export class Post extends Model {
   // Required fields (passed in constructor)
   title: string;
-  createdAt: Date;
-  updatedAt: Date;
 
   // Optional fields (with defaults)
   content?: string = undefined;
-  deletedAt: Date | null = null;
 
   // Relationships
   author: User | null = null;
 
-  constructor(data: { title: string; createdAt: Date; updatedAt: Date; author?: User }, id?: string) {
+  constructor(data: { title: string; author?: User }, id?: string) {
     super(id);
     this.title = data.title;
-    this.createdAt = data.createdAt;
-    this.updatedAt = data.updatedAt;
     if (data.author) {
       this.author = data.author;  // Set relationship IN constructor
     }

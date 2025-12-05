@@ -22,13 +22,11 @@ describe("Multi-Table Inheritance (Integration)", () => {
   // Helper functions
   async function createChessMatchInStoreA(
     data: Partial<{
-      createdAt: Date;
       timeControl: string;
       rated: boolean;
     }> = {}
   ): Promise<ChessMatch> {
     const match = new ChessMatch({
-      createdAt: data.createdAt ?? new Date(),
       timeControl: data.timeControl ?? "5+0",
       rated: data.rated ?? true,
     });
@@ -38,13 +36,11 @@ describe("Multi-Table Inheritance (Integration)", () => {
 
   async function createSkiMatchInStoreA(
     data: Partial<{
-      createdAt: Date;
       resort: string;
       skillLevel: string;
     }> = {}
   ): Promise<SkiMatch> {
     const match = new SkiMatch({
-      createdAt: data.createdAt ?? new Date(),
       resort: data.resort ?? "Aspen",
       skillLevel: data.skillLevel ?? "intermediate",
     });
@@ -55,14 +51,10 @@ describe("Multi-Table Inheritance (Integration)", () => {
   async function createUserInStoreA(
     data: Partial<{
       name: string;
-      createdAt: Date;
-      updatedAt: Date;
     }> = {}
   ): Promise<User> {
     const user = new User({
       name: data.name ?? "Test User",
-      createdAt: data.createdAt ?? new Date(),
-      updatedAt: data.updatedAt ?? new Date(),
     });
     await storeA.save(user);
     return user;

@@ -27,13 +27,12 @@ export class SkiMatchRequest extends MatchRequest {
 
   constructor(
     data: {
-      createdAt: Date;
       resort: string;
       skillLevel: string;
     },
     id?: string
   ) {
-    super(data, id);
+    super({}, id);
     this._resort = data.resort;
     this._skillLevel = data.skillLevel;
     makeObservable(this, {

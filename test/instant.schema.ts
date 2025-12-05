@@ -6,6 +6,7 @@ const _schema = i.schema({
   entities: {
     users: i.entity({
       name: i.string(),
+      testDate: i.date().indexed().optional(), // For testing Date serialization/hydration
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
       deletedAt: i.date().indexed().optional(),
