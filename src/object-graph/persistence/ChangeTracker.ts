@@ -145,77 +145,54 @@ export class ChangeTracker {
       scalars = new Map(this.dirtyScalars);
     }
 
-    // Calculate link/unlink changes
-    // For new entities, include ALL current relationships as links (like scalars)
-    // For existing entities, compute diffs between original and current
+    // Calculate link/unlink changes by comparing original vs current
+    // Works for both new and existing entities since initTracking() captures
+    // original state at end of constructor
     for (const rel of meta.relationshipFields) {
-      const propName = getPropertyName(this.model, rel.fieldName);
-
       if (rel.isToOne()) {
-        if (this._isNew) {
-          // New entity: include current relationship value as link
-          const modelRef = record[propName] as Model | null;
-          if (modelRef?.id) {
-            const existing = links.get(rel.linkName) ?? [];
-            existing.push(modelRef.id);
-            links.set(rel.linkName, existing);
-          }
-        } else {
-          // Existing entity: compare original vs current
-          const original = this.originalRelationships.get(rel.fieldName);
-          const current = this.currentRelationships.get(rel.fieldName);
-          const origId = original as string | null;
-          const currId = current as string | null;
+        const original = this.originalRelationships.get(rel.fieldName);
+        const current = this.currentRelationships.get(rel.fieldName);
+        const origId = original as string | null;
+        const currId = current as string | null;
 
-          if (origId !== currId) {
-            if (origId) {
-              const existing = unlinks.get(rel.linkName) ?? [];
-              existing.push(origId);
-              unlinks.set(rel.linkName, existing);
-            }
-            if (currId) {
-              const existing = links.get(rel.linkName) ?? [];
-              existing.push(currId);
-              links.set(rel.linkName, existing);
-            }
+        if (origId !== currId) {
+          if (origId) {
+            const existing = unlinks.get(rel.linkName) ?? [];
+            existing.push(origId);
+            unlinks.set(rel.linkName, existing);
+          }
+          if (currId) {
+            const existing = links.get(rel.linkName) ?? [];
+            existing.push(currId);
+            links.set(rel.linkName, existing);
           }
         }
       } else {
-        if (this._isNew) {
-          // New entity: include all current array members as links
-          const models = (record[propName] as Model[] | undefined) ?? [];
-          const ids = models.map((m) => m.id);
-          if (ids.length > 0) {
-            links.set(rel.linkName, ids);
-          }
-        } else {
-          // Existing entity: compute diffs
-          const original = this.originalRelationships.get(rel.fieldName);
-          const current = this.currentRelationships.get(rel.fieldName);
-          const origIds = new Set(original as string[]);
-          const currIds = new Set(current as string[]);
+        const original = this.originalRelationships.get(rel.fieldName);
+        const current = this.currentRelationships.get(rel.fieldName);
+        const origIds = new Set(original as string[]);
+        const currIds = new Set(current as string[]);
 
-          // Find added (to link)
-          const toLink: string[] = [];
-          for (const id of currIds) {
-            if (!origIds.has(id)) {
-              toLink.push(id);
-            }
+        // Find added (to link)
+        const toLink: string[] = [];
+        for (const id of currIds) {
+          if (!origIds.has(id)) {
+            toLink.push(id);
           }
-          if (toLink.length > 0) {
-            links.set(rel.linkName, toLink);
-          }
+        }
+        if (toLink.length > 0) {
+          links.set(rel.linkName, toLink);
+        }
 
-          // Find removed (to unlink)
-          const toUnlink: string[] = [];
-          for (const id of origIds) {
-            if (!currIds.has(id)) {
-              toUnlink.push(id);
-            }
+        // Find removed (to unlink)
+        const toUnlink: string[] = [];
+        for (const id of origIds) {
+          if (!currIds.has(id)) {
+            toUnlink.push(id);
           }
-          if (toUnlink.length > 0) {
-            unlinks.set(rel.linkName, toUnlink);
-          }
+        }
+        if (toUnlink.length > 0) {
+          unlinks.set(rel.linkName, toUnlink);
         }
       }
     }

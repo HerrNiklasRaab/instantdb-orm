@@ -33,5 +33,6 @@ export class SkiMatch extends Match {
       _resort: observable,
       _skillLevel: observable,
     } as any);
+    this.initTracking();
   }
 }

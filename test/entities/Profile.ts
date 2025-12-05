@@ -35,5 +35,6 @@ export class Profile extends Model {
       deletedAt: observable,
       _user: observable.ref,
     } as any);
+    this.initTracking();
   }
 }

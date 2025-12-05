@@ -79,5 +79,6 @@ export class User extends Model {
       chessMatchs: observable.shallow,
       skiMatchs: observable.shallow,
     } as any);
+    this.initTracking();
   }
 }

@@ -12,7 +12,17 @@ export abstract class Model {
     this.id = id ?? crypto.randomUUID();
   }
 
-  /** @internal - Lazily creates tracker on first access */
+  /**
+   * Call at end of leaf class constructor to start tracking changes.
+   * Must be called AFTER makeObservable() and all field initialization.
+   */
+  protected initTracking(): void {
+    if (!this.__tracker) {
+      this.__tracker = new ChangeTracker(this, this.entityName);
+    }
+  }
+
+  /** @internal - Access tracker (creates lazily if not initialized) */
   get _tracker(): ChangeTracker {
     if (!this.__tracker) {
       this.__tracker = new ChangeTracker(this, this.entityName);

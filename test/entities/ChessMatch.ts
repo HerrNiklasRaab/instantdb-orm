@@ -33,5 +33,6 @@ export class ChessMatch extends Match {
       _timeControl: observable,
       _rated: observable,
     } as any);
+    this.initTracking();
   }
 }

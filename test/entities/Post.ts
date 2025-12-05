@@ -29,5 +29,6 @@ export class Post extends Model {
       deletedAt: observable,
       author: observable.ref,
     });
+    this.initTracking();
   }
 }
