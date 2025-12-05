@@ -1,4 +1,4 @@
-import { observable } from "mobx";
+import { makeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { User } from "./User";
 
@@ -21,7 +21,7 @@ export class Post extends Model {
     this.title = data.title;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
-    this.init({
+    makeObservable(this, {
       title: observable,
       content: observable,
       createdAt: observable,

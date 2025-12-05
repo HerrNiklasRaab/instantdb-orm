@@ -1,4 +1,4 @@
-import { observable } from "mobx";
+import { makeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { User } from "./User";
 
@@ -27,13 +27,13 @@ export class Profile extends Model {
     super(id);
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
-    this.init({
+    makeObservable(this, {
       bio: observable,
       avatarUrl: observable,
       createdAt: observable,
       updatedAt: observable,
       deletedAt: observable,
       _user: observable.ref,
-    });
+    } as any);
   }
 }

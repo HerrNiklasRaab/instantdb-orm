@@ -1,4 +1,4 @@
-import { observable } from "mobx";
+import { makeObservable, observable } from "mobx";
 import { model } from "../../src/object-graph";
 import { MatchRequest } from "./MatchRequest";
 
@@ -36,12 +36,9 @@ export class SkiMatchRequest extends MatchRequest {
     super(data, id);
     this._resort = data.resort;
     this._skillLevel = data.skillLevel;
-    this.init({
-      _createdAt: observable,
-      _deletedAt: observable,
+    makeObservable(this, {
       _resort: observable,
       _skillLevel: observable,
-      requester: observable.ref,
-    });
+    } as any);
   }
 }

@@ -1,4 +1,4 @@
-import { observable } from "mobx";
+import { makeObservable, observable } from "mobx";
 import { model } from "../../src/object-graph";
 import { MatchRequest } from "./MatchRequest";
 
@@ -36,12 +36,9 @@ export class ChessMatchRequest extends MatchRequest {
     super(data, id);
     this._timeControl = data.timeControl;
     this._rated = data.rated;
-    this.init({
-      _createdAt: observable,
-      _deletedAt: observable,
+    makeObservable(this, {
       _timeControl: observable,
       _rated: observable,
-      requester: observable.ref,
-    });
+    } as any);
   }
 }

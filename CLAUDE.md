@@ -16,7 +16,7 @@ This package bridges domain models and InstantDB (a real-time database). Key cha
 Abstract base class for all domain entities. Every model must:
 1. Extend `Model`
 2. Define `id: string` and `deletedAt: Date | null`
-3. Call `this.init(annotations)` in constructor to set up MobX
+3. Call `makeObservable(this, {...})` in constructor for its OWN fields
 
 ```typescript
 @model
@@ -29,16 +29,18 @@ export class User extends Model {
     super();
     this.id = id;
     this._name = data.name;
-    this.init({
+    makeObservable(this, {
       _name: observable,
       deletedAt: observable,
-    });
+    } as any);
   }
 
   get name() { return this._name; }
   set name(v: string) { this._name = v; }
 }
 ```
+
+**Important for inheritance**: Each class in the hierarchy calls `makeObservable` for its OWN fields only. Parent fields are NOT included in child classes.
 
 ### RootStore (`src/object-graph/store/RootStore.ts`)
 Central coordinator for all persistence operations:
@@ -123,8 +125,8 @@ export class SkiMatch extends Match { }    // → skiMatchs table
 ## Creating a Model
 
 1. **Extend Model** and add `@model` decorator
-3. **Call `init()`** with MobX annotations in constructor
-4. **Use `observable.ref`** for single relations, `observable.shallow` for arrays
+2. **Call `makeObservable`** with annotations for THIS class's fields only
+3. **Use `observable.ref`** for single relations, `observable.shallow` for arrays
 
 ```typescript
 @model
@@ -141,16 +143,54 @@ export class Post extends Model {
     super();
     this.id = id;
     this._title = data.title;
-    this.init({
+    makeObservable(this, {
       _title: observable,
       deletedAt: observable,
       author: observable.ref,      // Single reference
       comments: observable.shallow, // Array of references
-    });
+    } as any);
   }
 
   get title() { return this._title; }
   set title(v: string) { this._title = v; }
+}
+```
+
+### Inheritance Example
+
+```typescript
+// Abstract base - calls makeObservable for ITS fields
+export abstract class MatchRequest extends Model {
+  abstract readonly type: string;
+  status: string;
+  deletedAt: Date | null = null;
+  member: Member;
+
+  constructor(id: string, data: {...}) {
+    super();
+    this.id = id;
+    // ... set fields
+    makeObservable(this, {
+      status: observable,
+      deletedAt: observable,
+      member: observable.ref,
+    } as any);
+  }
+}
+
+// Concrete - calls makeObservable for ONLY its own fields
+@model
+export class ChessMatchRequest extends MatchRequest {
+  get type(): "chess" { return "chess"; }
+  hasBoard: boolean;
+
+  constructor(id: string, data: {...}) {
+    super(id, data);
+    this.hasBoard = data.hasBoard;
+    makeObservable(this, {
+      hasBoard: observable,  // Only this class's field
+    } as any);
+  }
 }
 ```
 
@@ -175,3 +215,4 @@ export class Post extends Model {
 - **Strategy**: Different inheritance strategies via decorator logic
 - **Observer**: MobX handles reactive state propagation
 
+Always run tests if you made relevant changes to sync package

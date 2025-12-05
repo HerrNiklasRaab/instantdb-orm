@@ -46,7 +46,7 @@ export class ModelHydrator {
     this.updateModelFields(model, entityName, rawData, getIdentityMap);
 
     // Mark model as not new and clear dirty state (it exists in database)
-    model._tracker!.reset();
+    model._tracker.reset();
 
     // Check if model is soft-deleted
     if (model.deletedAt != null) {

@@ -1,4 +1,4 @@
-import { observable } from "mobx";
+import { makeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { Profile } from "./Profile";
 import type { Post } from "./Post";
@@ -66,7 +66,7 @@ export class User extends Model {
     this._name = data.name;
     this._createdAt = data.createdAt;
     this._updatedAt = data.updatedAt;
-    this.init({
+    makeObservable(this, {
       _name: observable,
       _createdAt: observable,
       _updatedAt: observable,
@@ -78,6 +78,6 @@ export class User extends Model {
       matchRequests: observable.shallow,
       chessMatchs: observable.shallow,
       skiMatchs: observable.shallow,
-    });
+    } as any);
   }
 }

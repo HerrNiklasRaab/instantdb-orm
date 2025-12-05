@@ -1,3 +1,4 @@
+import { makeObservable, observable } from "mobx";
 import { Model } from "../../src/object-graph";
 import type { User } from "./User";
 
@@ -28,5 +29,10 @@ export abstract class MatchRequest extends Model {
   constructor(data: { createdAt: Date }, id?: string) {
     super(id);
     this._createdAt = data.createdAt;
+    makeObservable(this, {
+      _createdAt: observable,
+      _deletedAt: observable,
+      requester: observable.ref,
+    } as any);
   }
 }
