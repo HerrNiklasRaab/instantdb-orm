@@ -11,7 +11,7 @@ export abstract class Model {
   updatedAt: Date;
   deletedAt: Date | null = null;
 
-  private __tracker: ChangeTracker | null = null;
+  private _tracker: ChangeTracker | null = null;
 
   constructor(id?: string) {
     this.id = id ?? crypto.randomUUID();
@@ -30,17 +30,7 @@ export abstract class Model {
    * Must be called AFTER makeObservable() and all field initialization.
    */
   protected initTracking(): void {
-    if (!this.__tracker) {
-      this.__tracker = new ChangeTracker(this, this.entityName);
-    }
-  }
-
-  /** @internal - Access tracker (creates lazily if not initialized) */
-  get _tracker(): ChangeTracker {
-    if (!this.__tracker) {
-      this.__tracker = new ChangeTracker(this, this.entityName);
-    }
-    return this.__tracker;
+    this._tracker = new ChangeTracker(this, this.entityName);
   }
 
   get entityName(): EntityName {
@@ -54,6 +44,6 @@ export abstract class Model {
   }
 
   isDirty(): boolean {
-    return this._tracker.hasChanges();
+    return this._tracker!.hasChanges();
   }
 }
