@@ -41,12 +41,13 @@ export class ModelHydrator {
       // Set id directly - it's not in meta.scalarFields (InstantDB manages it implicitly)
       (model as any).id = rawData.id;
 
-      // Initialize scalar fields with null (will be overwritten by updateModelFields)
+      // Initialize scalar fields with undefined (will be overwritten by updateModelFields)
+      // Using undefined (not null) so permission-restricted fields stay undefined if not in rawData
       for (const field of meta.scalarFields) {
         // Skip type (STI discriminator is a getter, not a settable field)
         if (field === "type") continue;
         const propName = getPropertyName(model, field);
-        (model as any)[propName] = null;
+        (model as any)[propName] = undefined;
       }
 
       // Initialize relationship fields
