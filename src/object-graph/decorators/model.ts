@@ -5,7 +5,8 @@ import { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 export { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 
 // Local type to avoid circular dependency with Model.ts
-type ModelClassType = new (...args: any[]) => { id: string };
+// Using Function & prototype allows classes with private constructors
+type ModelClassType = Function & { prototype: { id: string } };
 
 /** Get entity name from a class (set by @model decorator) */
 export function getEntityNameFromClass(

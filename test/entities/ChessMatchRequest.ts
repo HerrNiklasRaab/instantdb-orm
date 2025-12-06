@@ -8,8 +8,9 @@ export class ChessMatchRequest extends MatchRequest {
     return "chess";
   }
 
-  private _timeControl: string = undefined!;
-  private _rated: boolean = undefined!;
+  // Required fields (set in constructor)
+  private _timeControl: string;
+  private _rated: boolean;
 
   get timeControl(): string {
     return this._timeControl;

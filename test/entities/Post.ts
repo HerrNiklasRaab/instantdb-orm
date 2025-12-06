@@ -4,11 +4,11 @@ import type { User } from "./User";
 
 @model
 export class Post extends Model {
-  // Required fields (passed in constructor)
-  title: string = undefined!;
+  // Required field (set in constructor)
+  title: string;
 
-  // Optional fields (with defaults)
-  content?: string = undefined;
+  // Optional field (schema has .optional())
+  content: string | null = null;
 
   // Relationships
   author: User | null = null;

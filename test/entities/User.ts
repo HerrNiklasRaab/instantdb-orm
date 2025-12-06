@@ -8,8 +8,8 @@ import type { SkiMatch } from "./SkiMatch";
 
 @model
 export class User extends Model {
-  // Private backing field for name
-  private _name: string = undefined!;
+  // Required field (set in constructor)
+  private _name: string;
 
   // Public getters/setters for API convenience
   get name(): string {

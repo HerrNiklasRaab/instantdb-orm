@@ -4,9 +4,9 @@ import type { User } from "./User";
 
 @model("profiles")
 export class UserProfile extends Model {
-  // Optional fields (with defaults)
-  bio?: string = undefined;
-  avatarUrl?: string = undefined;
+  // Optional fields (schema has .optional())
+  bio: string | null = null;
+  avatarUrl: string | null = null;
 
   // Private backing field for to-one relationship
   private _user: User | null = null;

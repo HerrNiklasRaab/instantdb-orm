@@ -5,8 +5,9 @@ import { Match } from "./Match";
 // MTI: No type getter → each class gets its own table (chessMatchs)
 @model
 export class ChessMatch extends Match {
-  private _timeControl: string = undefined!;
-  private _rated: boolean = undefined!;
+  // Required fields (set in constructor)
+  private _timeControl: string;
+  private _rated: boolean;
 
   get timeControl(): string {
     return this._timeControl;

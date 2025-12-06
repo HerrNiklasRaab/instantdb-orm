@@ -8,8 +8,9 @@ export class SkiMatchRequest extends MatchRequest {
     return "ski";
   }
 
-  private _resort: string = undefined!;
-  private _skillLevel: string = undefined!;
+  // Required fields (set in constructor)
+  private _resort: string;
+  private _skillLevel: string;
 
   get resort(): string {
     return this._resort;

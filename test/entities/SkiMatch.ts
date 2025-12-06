@@ -5,8 +5,9 @@ import { Match } from "./Match";
 // MTI: No type getter → each class gets its own table (skiMatchs)
 @model
 export class SkiMatch extends Match {
-  private _resort: string = undefined!;
-  private _skillLevel: string = undefined!;
+  // Required fields (set in constructor)
+  private _resort: string;
+  private _skillLevel: string;
 
   get resort(): string {
     return this._resort;
