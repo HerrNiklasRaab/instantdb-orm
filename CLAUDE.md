@@ -226,5 +226,29 @@ export class ChessMatchRequest extends MatchRequest {
 - **Strategy**: Different inheritance strategies via decorator logic
 - **Observer**: MobX handles reactive state propagation
 
+## Property-Level Permissions
+
+When InstantDB property permissions restrict access to a field:
+
+- **Type must include `undefined`**: If a property can be restricted, its type should be `T | undefined`
+- **`undefined` means permission-restricted**: A value of `undefined` indicates the field was not returned due to permission rules
+- **Always request all fields**: Queries that hydrate the store should request all fields of a table to ensure consistent hydration
+- **Initialize with `undefined`**: Permission-restricted properties should be initialized with `undefined`
+
+```typescript
+@model
+export class User extends Model {
+  // Permission-restricted field - may not be returned due to permissions
+  secretField: string | undefined = undefined;
+
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
+      secretField: observable,
+    } as any);
+  }
+}
+```
+
 Always run tests if you made relevant changes to sync package
 
