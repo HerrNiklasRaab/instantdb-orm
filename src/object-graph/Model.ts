@@ -13,8 +13,8 @@ export abstract class Model {
 
   _tracker: ChangeTracker | null = null;
 
-  constructor(data: { id?: string } = {}) {
-    this.id = data.id ?? crypto.randomUUID();
+  constructor(id?: string) {
+    this.id = id ?? crypto.randomUUID();
     const now = new Date();
     this.createdAt = now;
     this.updatedAt = now;

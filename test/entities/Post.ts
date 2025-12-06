@@ -22,11 +22,11 @@ export class Post extends Model {
     });
   }
 
-  constructor(data: { id?: string; title: string; author?: User }) {
-    super({ id: data.id });
-    this.title = data.title;
-    if (data.author) {
-      this.author = data.author;  // Set relationship IN constructor
+  constructor(title: string, author?: User, id?: string) {
+    super(id);
+    this.title = title;
+    if (author) {
+      this.author = author;  // Set relationship IN constructor
     }
     this.initTracking();
   }

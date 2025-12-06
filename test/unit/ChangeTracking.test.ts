@@ -10,7 +10,7 @@ beforeAll(() => {
 
 describe("Change Tracking (Unit)", () => {
   function createUser(name = "Test User"): User {
-    return new User({ name });
+    return new User(name);
   }
 
   describe("isDirty() - new entity", () => {

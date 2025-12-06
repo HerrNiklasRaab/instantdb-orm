@@ -26,10 +26,10 @@ describe("Multi-Table Inheritance (Integration)", () => {
       rated: boolean;
     }> = {}
   ): Promise<ChessMatch> {
-    const match = new ChessMatch({
-      timeControl: data.timeControl ?? "5+0",
-      rated: data.rated ?? true,
-    });
+    const match = new ChessMatch(
+      data.timeControl ?? "5+0",
+      data.rated ?? true
+    );
     await storeA.save(match);
     return match;
   }
@@ -40,10 +40,10 @@ describe("Multi-Table Inheritance (Integration)", () => {
       skillLevel: string;
     }> = {}
   ): Promise<SkiMatch> {
-    const match = new SkiMatch({
-      resort: data.resort ?? "Aspen",
-      skillLevel: data.skillLevel ?? "intermediate",
-    });
+    const match = new SkiMatch(
+      data.resort ?? "Aspen",
+      data.skillLevel ?? "intermediate"
+    );
     await storeA.save(match);
     return match;
   }
@@ -53,9 +53,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       name: string;
     }> = {}
   ): Promise<User> {
-    const user = new User({
-      name: data.name ?? "Test User",
-    });
+    const user = new User(data.name ?? "Test User");
     await storeA.save(user);
     return user;
   }

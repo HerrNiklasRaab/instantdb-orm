@@ -59,9 +59,9 @@ export class User extends Model {
     } as any);
   }
 
-  constructor(data: { id?: string; name: string }) {
-    super({ id: data.id });
-    this._name = data.name;
+  constructor(name: string, id?: string) {
+    super(id);
+    this._name = name;
     this.initTracking();
   }
 }

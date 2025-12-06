@@ -25,9 +25,7 @@ describe("Single Table Inheritance (Integration)", () => {
       name: string;
     }> = {}
   ): Promise<User> {
-    const user = new User({
-      name: data.name ?? "Test User",
-    });
+    const user = new User(data.name ?? "Test User");
     await storeA.save(user);
     return user;
   }
@@ -39,10 +37,10 @@ describe("Single Table Inheritance (Integration)", () => {
       rated: boolean;
     }> = {}
   ): Promise<ChessMatchRequest> {
-    const match = new ChessMatchRequest({
-      timeControl: data.timeControl ?? "5+0",
-      rated: data.rated ?? true,
-    });
+    const match = new ChessMatchRequest(
+      data.timeControl ?? "5+0",
+      data.rated ?? true
+    );
     await storeA.save(match);
     return match;
   }
@@ -54,10 +52,10 @@ describe("Single Table Inheritance (Integration)", () => {
       skillLevel: string;
     }> = {}
   ): Promise<SkiMatchRequest> {
-    const match = new SkiMatchRequest({
-      resort: data.resort ?? "Aspen",
-      skillLevel: data.skillLevel ?? "intermediate",
-    });
+    const match = new SkiMatchRequest(
+      data.resort ?? "Aspen",
+      data.skillLevel ?? "intermediate"
+    );
     await storeA.save(match);
     return match;
   }

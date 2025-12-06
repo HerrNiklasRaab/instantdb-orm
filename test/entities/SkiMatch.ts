@@ -31,12 +31,10 @@ export class SkiMatch extends Match {
     } as any);
   }
 
-  constructor(
-    data: { id?: string; resort: string; skillLevel: string }
-  ) {
-    super({ id: data.id });
-    this._resort = data.resort;
-    this._skillLevel = data.skillLevel;
+  constructor(resort: string, skillLevel: string, id?: string) {
+    super(id);
+    this._resort = resort;
+    this._skillLevel = skillLevel;
     this.initTracking();
   }
 }

@@ -30,9 +30,7 @@ describe("RootStore hydration (Integration)", () => {
       testDate: Date;
     }> = {}
   ): Promise<User> {
-    const user = new User({
-      name: data.name ?? "Test User",
-    });
+    const user = new User(data.name ?? "Test User");
     if (data.testDate) {
       user.testDate = data.testDate;
     }
@@ -48,9 +46,7 @@ describe("RootStore hydration (Integration)", () => {
       author: User;
     }> = {}
   ): Promise<Post> {
-    const post = new Post({
-      title: data.title ?? "Test Post",
-    });
+    const post = new Post(data.title ?? "Test Post");
     post.content = data.content;
     if (data.author) {
       post.author = data.author;
@@ -67,9 +63,7 @@ describe("RootStore hydration (Integration)", () => {
       author: User;
     }> = {}
   ): Promise<Post> {
-    const post = new Post({
-      title: data.title ?? "Test Post",
-    });
+    const post = new Post(data.title ?? "Test Post");
     post.content = data.content;
     if (data.author) {
       post.author = data.author;
@@ -220,7 +214,7 @@ describe("RootStore hydration (Integration)", () => {
       expect(post!.author).toBeNull();
 
       // Now Store A creates the user with specific ID to match dangling link
-      const userA = new User({ id: userId, name: "John" });
+      const userA = new User("John", userId);
       await storeA.save(userA);
 
       // Store B re-hydrates everything to pick up the new user

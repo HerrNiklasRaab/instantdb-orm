@@ -18,11 +18,11 @@ describe("Entity Save (Integration)", () => {
 
   // Helper to create entities with default values
   function createUser(name = "Test User"): User {
-    return new User({ name });
+    return new User(name);
   }
 
   function createPost(title = "Test Post"): Post {
-    return new Post({ title });
+    return new Post(title);
   }
 
   describe("isDirty() - after save", () => {
@@ -118,10 +118,7 @@ describe("Entity Save (Integration)", () => {
       await store.save(user);
 
       // Create post WITH author set in constructor (before initTracking)
-      const post = new Post({
-        title: "Test Post",
-        author: user,  // Set IN constructor
-      });
+      const post = new Post("Test Post", user);
 
       await store.save(post);
 
@@ -215,7 +212,7 @@ describe("Entity Save (Integration)", () => {
 
     it("converts Date to ISO string", async () => {
       const testDate = new Date("2024-06-15T10:30:00.000Z");
-      const user = new User({ name: "Test" });
+      const user = new User("Test");
       user.testDate = testDate;
       await store.save(user);
 

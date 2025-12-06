@@ -34,16 +34,10 @@ export class ChessMatchRequest extends MatchRequest {
     } as any);
   }
 
-  constructor(
-    data: {
-      id?: string;
-      timeControl: string;
-      rated: boolean;
-    }
-  ) {
-    super({ id: data.id });
-    this._timeControl = data.timeControl;
-    this._rated = data.rated;
+  constructor(timeControl: string, rated: boolean, id?: string) {
+    super(id);
+    this._timeControl = timeControl;
+    this._rated = rated;
     this.initTracking();
   }
 }

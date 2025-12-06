@@ -16,7 +16,7 @@ export abstract class Match extends Model {
     } as any);
   }
 
-  constructor(data: { id?: string } = {}) {
-    super({ id: data.id });
+  constructor(id?: string) {
+    super(id);
   }
 }
