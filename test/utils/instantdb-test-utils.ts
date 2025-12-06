@@ -26,11 +26,95 @@ export { id };
 // Type for admin DB instance
 type AdminDB = ReturnType<typeof init>;
 
+// Type for user-scoped DB instance (returned by asUser)
+type UserScopedDB = ReturnType<AdminDB["asUser"]>;
+
 // Admin DB instance (singleton)
 let adminDb: AdminDB | null = null;
 
 export interface TestInstantDBClient extends InstantDBClient {
   __adminDb: AdminDB;
+}
+
+/**
+ * Get or create the singleton admin DB instance.
+ */
+export function getAdminDb(): AdminDB {
+  if (!adminDb) {
+    if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
+      throw new Error(
+        "INSTANTDB_APP_ID and INSTANTDB_ADMIN_TOKEN environment variables are required"
+      );
+    }
+    adminDb = init({
+      appId: process.env.INSTANTDB_APP_ID,
+      adminToken: process.env.INSTANTDB_ADMIN_TOKEN,
+      schema: schema as Parameters<typeof init>[0]["schema"],
+    });
+  }
+  return adminDb;
+}
+
+/**
+ * Create an auth user and return their $users ID.
+ * This creates a user in InstantDB's auth system if they don't exist.
+ */
+export async function createAuthUser(email: string): Promise<string> {
+  const db = getAdminDb();
+  // createToken creates the user if they don't exist, returns a token
+  await db.auth.createToken(email);
+  // getUser retrieves the user record with the ID
+  const user = await db.auth.getUser({ email });
+  return user.id;
+}
+
+/**
+ * Create a test database client that queries as a specific user.
+ * This client respects permission rules (unlike the admin client).
+ */
+export function initTestDatabaseAsUser(email: string): TestInstantDBClient {
+  const db = getAdminDb();
+  const userDb = db.asUser({ email });
+
+  const client: TestInstantDBClient = {
+    __adminDb: db,
+
+    async query<T = unknown>(queryObj: Record<string, unknown>): Promise<T> {
+      const result = await userDb.query(
+        queryObj as Parameters<UserScopedDB["query"]>[0]
+      );
+      return result as T;
+    },
+
+    async transact(chunks: TxChunk | TxChunk[]): Promise<TransactionResult> {
+      const chunksArray = Array.isArray(chunks) ? chunks : [chunks];
+      const result = await userDb.transact(
+        chunksArray as Parameters<UserScopedDB["transact"]>[0]
+      );
+      return result as TransactionResult;
+    },
+
+    subscribeQuery<T = unknown>(
+      queryObj: Record<string, unknown>,
+      callback: SubscriptionCallback<T>
+    ): Unsubscribe {
+      const subscription = userDb.subscribeQuery(
+        queryObj as Parameters<UserScopedDB["subscribeQuery"]>[0],
+        (result: { error?: Error; data?: Record<string, unknown[]> }) => {
+          if (result.error) {
+            callback({ error: { message: result.error.message }, data: undefined });
+          } else {
+            callback({ data: result.data as T });
+          }
+        }
+      );
+      return () => subscription.close();
+    },
+
+    tx: userDb.tx as InstantDBClient["tx"],
+  };
+
+  return client;
 }
 
 export function initTestDatabase(): TestInstantDBClient {

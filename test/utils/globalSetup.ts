@@ -1,4 +1,5 @@
 import * as dotenv from "dotenv";
+import * as fs from "fs";
 import { resolve } from "path";
 import { init } from "@instantdb/admin";
 import { execSync } from "child_process";
@@ -46,8 +47,61 @@ async function pushSchema() {
   }
 }
 
+/**
+ * Push permissions to InstantDB before running tests using the CLI.
+ * This ensures the remote permissions match the local permissions definition.
+ */
+async function pushPerms() {
+  if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
+    console.warn("Skipping perms push: missing INSTANTDB_APP_ID or INSTANTDB_ADMIN_TOKEN");
+    return;
+  }
+
+  const permsPath = resolve(__dirname, "../instant.perms.ts");
+  const appId = process.env.INSTANTDB_APP_ID;
+
+  // The instant-cli ignores INSTANT_PERMS_FILE_PATH and only looks in package root
+  // So we copy the test perms file to the root, push, then clean up
+  const rootPermsPath = resolve(__dirname, "../../instant.perms.ts");
+
+  try {
+    // Copy test perms to package root
+    fs.copyFileSync(permsPath, rootPermsPath);
+    console.log("Pushing perms from:", permsPath);
+
+    const result = execSync(
+      `npx instant-cli push perms --app ${appId} -y`,
+      {
+        cwd: resolve(__dirname, "../.."),
+        env: {
+          ...process.env,
+          INSTANT_APP_ID: appId,
+          INSTANT_ADMIN_TOKEN: process.env.INSTANTDB_ADMIN_TOKEN,
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 60000,
+      }
+    );
+    console.log("Perms push result:", result.toString());
+  } catch (error) {
+    const err = error as { stdout?: Buffer; stderr?: Buffer; message: string };
+    console.error("Perms push failed:", err.message);
+    if (err.stdout) console.log("stdout:", err.stdout.toString());
+    if (err.stderr) console.log("stderr:", err.stderr.toString());
+    // Don't throw - let tests continue even if perms push fails
+  } finally {
+    // Clean up the copied file
+    try {
+      fs.unlinkSync(rootPermsPath);
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+}
+
 export async function setup() {
   await pushSchema();
+  await pushPerms();
 }
 
 export async function teardown() {

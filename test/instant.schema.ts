@@ -6,6 +6,7 @@ const _schema = i.schema({
   entities: {
     users: i.entity({
       name: i.string(),
+      secretField: i.string().optional(), // For testing property-level permissions
       testDate: i.date().indexed().optional(), // For testing Date serialization/hydration
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),

@@ -22,6 +22,9 @@ export class User extends Model {
   // Optional test field for testing Date serialization/hydration
   testDate: Date | null = null;
 
+  // Permission-restricted field - may not be returned due to permissions
+  secretField: string | undefined = undefined;
+
   // Relationships - mix of public and private backing fields
   profile: UserProfile | null = null;  // public to-one
   referredBy: User | null = null;  // public to-one
@@ -45,6 +48,7 @@ export class User extends Model {
     mobxMakeObservable(this, {
       _name: observable,
       testDate: observable,
+      secretField: observable,
       profile: observable.ref,
       _posts: observable.shallow,
       referredBy: observable.ref,
