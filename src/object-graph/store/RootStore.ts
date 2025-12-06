@@ -12,7 +12,8 @@ import type {
   QueryResult,
 } from "./types";
 
-type ModelClass<T extends Model = Model> = new (...args: any[]) => T;
+// Use Function & prototype pattern to allow private constructors (hydration-only models)
+type ModelClass<T extends Model = Model> = (abstract new (...args: any[]) => T) | (Function & { prototype: T });
 
 export class RootStore {
   private identityMaps = new Map<string, IdentityMap<Model>>();
