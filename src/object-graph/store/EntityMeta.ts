@@ -143,11 +143,70 @@ function buildEntityMeta(schema: SchemaConfig): Map<EntityName, EntityMeta> {
   return meta;
 }
 
+const TIMESTAMP_FIELDS = ["createdAt", "updatedAt", "deletedAt"] as const;
+
+/**
+ * Validates timestamp fields for an entity.
+ * - createdAt and updatedAt must exist and be required
+ * - deletedAt must exist and be optional
+ * - Exception: entities starting with $ have all timestamps optional
+ */
+function validateTimestampFields(
+  entityName: string,
+  attrs: Record<string, AttrDef>
+): void {
+  const isSystemEntity = entityName.startsWith("$");
+  const fields = Object.keys(attrs);
+
+  // Check field existence
+  for (const field of TIMESTAMP_FIELDS) {
+    if (!fields.includes(field)) {
+      throw new Error(
+        `Entity "${entityName}" is missing required field "${field}". ` +
+          `All entities must have createdAt, updatedAt, and deletedAt fields.`
+      );
+    }
+  }
+
+  // Check optionality for createdAt and updatedAt
+  for (const field of ["createdAt", "updatedAt"] as const) {
+    const isOptional = attrs[field].required === false;
+    if (isSystemEntity) {
+      // System entities: timestamps should be optional
+      if (!isOptional) {
+        throw new Error(
+          `Entity "${entityName}": "${field}" must be optional for system entities (starting with $).`
+        );
+      }
+    } else {
+      // Regular entities: timestamps must be required
+      if (isOptional) {
+        throw new Error(
+          `Entity "${entityName}": "${field}" must be required (not optional).`
+        );
+      }
+    }
+  }
+
+  // Check optionality for deletedAt - must always be optional
+  const deletedAtIsOptional = attrs["deletedAt"].required === false;
+  if (!deletedAtIsOptional) {
+    throw new Error(`Entity "${entityName}": "deletedAt" must be optional.`);
+  }
+}
+
 /**
  * Configure the entity metadata system with a schema.
  * Must be called before using getEntityMeta or other metadata functions.
+ * Validates that all entities have required timestamp fields with correct optionality.
  */
 export function configureEntityMeta(schema: SchemaConfig): void {
+  // Validate schema timestamp fields
+  for (const entityName of Object.keys(schema.entities)) {
+    const attrs = schema.entities[entityName]?.attrs ?? {};
+    validateTimestampFields(entityName, attrs);
+  }
+
   ENTITY_META = buildEntityMeta(schema);
   ENTITY_NAMES = Object.keys(schema.entities);
 }
