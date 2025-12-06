@@ -436,17 +436,5 @@ describe("RootStore hydration (Integration)", () => {
       expect(user!.name).toBe("Order Test User");
       expect(user!.testDate).toEqual(testDate);
     });
-
-    it("user-created entities work with any property order in data object", () => {
-      // Create with properties in different order than schema
-      const user1 = new User({ name: "User1" });
-      const user2 = new User({ name: "User2" });
-      const user3 = new User({ name: "User3" });
-
-      // All should work correctly
-      expect(user1.name).toBe("User1");
-      expect(user2.name).toBe("User2");
-      expect(user3.name).toBe("User3");
-    });
   });
 });

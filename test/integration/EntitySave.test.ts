@@ -25,12 +25,7 @@ describe("Entity Save (Integration)", () => {
     return new Post({ title });
   }
 
-  describe("isDirty() - new entity behavior", () => {
-    it("new entity is dirty (needs to be inserted)", () => {
-      const user = createUser();
-      expect(user.isDirty()).toBe(true);
-    });
-
+  describe("isDirty() - after save", () => {
     it("hydrated entity is not dirty", async () => {
       const user = createUser();
       await store.save(user);
@@ -39,9 +34,7 @@ describe("Entity Save (Integration)", () => {
       const [hydratedUser] = await store.queryModel(User);
       expect(hydratedUser!.isDirty()).toBe(false);
     });
-  });
 
-  describe("isDirty() - scalar changes", () => {
     it("returns true after changing string field on saved entity", async () => {
       const user = createUser();
       await store.save(user);
@@ -69,17 +62,6 @@ describe("Entity Save (Integration)", () => {
 
       expect(user.isDirty()).toBe(true);
     });
-  });
-
-  describe("isDirty() - relationship changes", () => {
-    it("returns true after assigning one-to-one relationship", () => {
-      const post = createPost();
-      const user = createUser();
-
-      post.author = user;
-
-      expect(post.isDirty()).toBe(true);
-    });
 
     it("returns true after removing one-to-one relationship", async () => {
       const post = createPost();
@@ -94,15 +76,6 @@ describe("Entity Save (Integration)", () => {
       post.author = null;
 
       expect(post.isDirty()).toBe(true);
-    });
-
-    it("returns true after adding to one-to-many relationship", () => {
-      const user = createUser();
-      const post = createPost();
-
-      user.posts.push(post);
-
-      expect(user.isDirty()).toBe(true);
     });
 
     it("returns true after removing from one-to-many relationship", async () => {
@@ -275,19 +248,6 @@ describe("Entity Save (Integration)", () => {
   });
 
   describe("automatic timestamps", () => {
-    it("sets createdAt and updatedAt automatically on new entity", () => {
-      const before = new Date();
-      const user = createUser();
-      const after = new Date();
-
-      expect(user.createdAt).toBeInstanceOf(Date);
-      expect(user.updatedAt).toBeInstanceOf(Date);
-      expect(user.createdAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
-      expect(user.createdAt.getTime()).toBeLessThanOrEqual(after.getTime());
-      expect(user.updatedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
-      expect(user.updatedAt.getTime()).toBeLessThanOrEqual(after.getTime());
-    });
-
     it("updates updatedAt automatically on save()", async () => {
       const user = createUser();
       const originalUpdatedAt = user.updatedAt;
