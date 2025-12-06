@@ -28,6 +28,7 @@ const _schema = i.schema({
     matchRequests: i.entity({
       type: i.string(), // discriminator: 'chess' | 'ski'
       createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
       // Chess-specific (optional)
       timeControl: i.string().optional(),
       rated: i.boolean().optional(),
@@ -40,12 +41,14 @@ const _schema = i.schema({
     // MTI: Each concrete class has its own table (separate from STI matchRequests)
     chessMatchs: i.entity({
       createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
       timeControl: i.string(),
       rated: i.boolean(),
       deletedAt: i.date().indexed().optional(),
     }),
     skiMatchs: i.entity({
       createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
       resort: i.string(),
       skillLevel: i.string(),
       deletedAt: i.date().indexed().optional(),

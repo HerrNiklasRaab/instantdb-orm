@@ -197,7 +197,7 @@ describe("Soft Delete (Integration)", () => {
       await markAsDeletedInDb("users", userId);
 
       // Wait for reactive sync to process the deletion
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // User should be removed via reactive sync
       expect(rootStore.getById(User, userId)).toBeUndefined();

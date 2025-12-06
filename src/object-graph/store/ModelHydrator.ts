@@ -28,21 +28,38 @@ export class ModelHydrator {
     const identityMap = getIdentityMap(entityName);
     const meta = getEntityMeta(entityName);
 
+    let isNewInstance = false;
     const model = identityMap.getOrCreate(rawData.id, () => {
-      // Build data object with all scalar fields (order-independent)
-      const dataArg: Record<string, unknown> = { id: rawData.id };
-      for (const field of meta.scalarFields) {
-        if (field === "id") continue;
-        const value = rawData[field];
-        if (value !== undefined) {
-          dataArg[field] = meta.isDateField(field) && value != null
-            ? new Date(value as string | number)
-            : value;
-        }
-      }
-      return Reflect.construct(ModelClass, [dataArg]) as ModelInstanceFor<K>;
+      isNewInstance = true;
+      // Create instance without calling constructor (bypasses validation/business logic)
+      return Object.create(ModelClass.prototype) as ModelInstanceFor<K>;
     });
 
+    // For new instances: initialize ALL fields (field initializers don't run with Object.create)
+    // MobX requires properties to exist on the object before makeObservable() is called
+    if (isNewInstance) {
+      // Set id directly - it's not in meta.scalarFields (InstantDB manages it implicitly)
+      (model as any).id = rawData.id;
+
+      // Initialize scalar fields with null (will be overwritten by updateModelFields)
+      for (const field of meta.scalarFields) {
+        // Skip type (STI discriminator is a getter, not a settable field)
+        if (field === "type") continue;
+        const propName = getPropertyName(model, field);
+        (model as any)[propName] = null;
+      }
+
+      // Initialize relationship fields
+      for (const rel of meta.relationshipFields) {
+        const propName = getPropertyName(model, rel.fieldName);
+        (model as any)[propName] = rel.isToMany() ? [] : null;
+      }
+
+      // Set up observables now that all fields exist
+      model.initTracking();
+    }
+
+    // Set scalar fields from raw data
     this.updateModelFields(model, entityName, rawData, getIdentityMap);
 
     // Mark model as not new and clear dirty state (it exists in database)
@@ -82,7 +99,7 @@ export class ModelHydrator {
       // Update ALL scalar fields from raw data (handles re-hydration of existing models)
       // Use private backing field if exists (e.g., _name for schema field "name")
       for (const field of meta.scalarFields) {
-        if (field === "id" || field === "type") continue; // Don't update id or type discriminator
+        if (field === "type") continue; // Don't update type (STI discriminator is a getter)
         const value = rawData[field];
         if (value !== undefined) {
           const propName = getPropertyName(model, field);

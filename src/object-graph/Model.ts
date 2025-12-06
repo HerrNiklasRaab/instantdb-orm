@@ -35,8 +35,9 @@ export abstract class Model {
   /**
    * Call at end of leaf class constructor to finalize the model.
    * Sets up observables and starts tracking changes.
+   * Public so hydrator can call it after creating instance via createForHydration().
    */
-  protected initTracking(): void {
+  initTracking(): void {
     this.makeObservable();
     this._tracker = new ChangeTracker(this, this.entityName);
   }
