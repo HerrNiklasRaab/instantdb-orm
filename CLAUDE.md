@@ -65,11 +65,7 @@ Automatically tracks mutations on model instances:
 - Distinguishes new vs existing entities
 
 ### ModelHydrator (`src/object-graph/store/ModelHydrator.ts`)
-Reconstructs model instances from raw InstantDB data:
-1. Resolves correct class (using discriminator for STI)
-2. Creates/updates instance via identity map
-3. Sets up bidirectional relationships
-4. Marks as persisted (not new)
+Reconstructs model instances from raw InstantDB data. Hydration bypasses constructors, so constructors can have required parameters, validation, and business logic.
 
 ## Inheritance Strategies
 
@@ -130,7 +126,7 @@ export class SkiMatch extends Match { }    // → skiMatchs table
 1. **Extend Model** and add `@model` decorator
 2. **Override `makeObservable()`** - call `super.makeObservable()` first, then register own fields
 3. **Use `observable.ref`** for single relations, `observable.shallow` for arrays
-4. **Pass required fields via constructor** - Non-optional fields (with `!`) must be set in the constructor
+4. **Constructors can have required params and validation** - hydration bypasses constructors
 
 ```typescript
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
