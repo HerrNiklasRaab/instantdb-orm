@@ -127,32 +127,29 @@ export class SkiMatch extends Match { }    // → skiMatchs table
 1. **Extend Model** and add `@model` decorator
 2. **Call `makeObservable`** with annotations for THIS class's fields only
 3. **Use `observable.ref`** for single relations, `observable.shallow` for arrays
+4. **Pass required fields via constructor** - Non-optional fields (with `!`) must be set in the constructor to ensure proper initialization
 
 ```typescript
 @model
 export class Post extends Model {
-  readonly id: string;
-  private _title: string;
-  deletedAt: Date | null = null;
+  title!: string;                    // Required - must be passed via constructor
+  description?: string = undefined;  // Optional - can be set later
 
   // Relations
   author: User | null = null;
   comments: Comment[] = [];
 
-  constructor(id: string, data: { title: string }) {
-    super();
-    this.id = id;
-    this._title = data.title;
+  constructor(data: { id?: string; title: string }) {
+    super({ id: data.id });
+    this.title = data.title;         // Required field initialized here
     makeObservable(this, {
-      _title: observable,
-      deletedAt: observable,
-      author: observable.ref,      // Single reference
-      comments: observable.shallow, // Array of references
-    } as any);
+      title: observable,
+      description: observable,
+      author: observable.ref,        // Single reference
+      comments: observable.shallow,  // Array of references
+    });
+    this.initTracking();
   }
-
-  get title() { return this._title; }
-  set title(v: string) { this._title = v; }
 }
 ```
 
@@ -216,3 +213,4 @@ export class ChessMatchRequest extends MatchRequest {
 - **Observer**: MobX handles reactive state propagation
 
 Always run tests if you made relevant changes to sync package
+
