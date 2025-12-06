@@ -15,24 +15,27 @@ This package bridges domain models and InstantDB (a real-time database). Key cha
 ### Model (`src/object-graph/Model.ts`)
 Abstract base class for all domain entities. Every model must:
 1. Extend `Model`
-2. Define `id: string` and `deletedAt: Date | null`
-3. Call `makeObservable(this, {...})` in constructor for its OWN fields
+2. Override the protected `makeObservable()` method to register observable fields
+3. Call `super.makeObservable()` first in the override, then add own fields
 
 ```typescript
+import { makeObservable as mobxMakeObservable, observable } from "mobx";
+
 @model
 export class User extends Model {
-  readonly id: string;
-  private _name: string;
-  deletedAt: Date | null = null;
+  private _name: string = undefined!;  // Initializer required for MobX
 
-  constructor(id: string, data: { name: string }) {
-    super();
-    this.id = id;
-    this._name = data.name;
-    makeObservable(this, {
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
       _name: observable,
-      deletedAt: observable,
     } as any);
+  }
+
+  constructor(data: { id?: string; name: string }) {
+    super({ id: data.id });
+    this._name = data.name;
+    this.initTracking();
   }
 
   get name() { return this._name; }
@@ -40,7 +43,7 @@ export class User extends Model {
 }
 ```
 
-**Important for inheritance**: Each class in the hierarchy calls `makeObservable` for its OWN fields only. Parent fields are NOT included in child classes.
+**Important for inheritance**: Each class overrides `makeObservable()`, calls `super.makeObservable()`, then registers its OWN fields only. The `initTracking()` method calls `this.makeObservable()` which invokes the full override chain, so all fields exist when observables are set up.
 
 ### RootStore (`src/object-graph/store/RootStore.ts`)
 Central coordinator for all persistence operations:
@@ -125,29 +128,35 @@ export class SkiMatch extends Match { }    // → skiMatchs table
 ## Creating a Model
 
 1. **Extend Model** and add `@model` decorator
-2. **Call `makeObservable`** with annotations for THIS class's fields only
+2. **Override `makeObservable()`** - call `super.makeObservable()` first, then register own fields
 3. **Use `observable.ref`** for single relations, `observable.shallow` for arrays
-4. **Pass required fields via constructor** - Non-optional fields (with `!`) must be set in the constructor to ensure proper initialization
+4. **Pass required fields via constructor** - Non-optional fields (with `!`) must be set in the constructor
 
 ```typescript
+import { makeObservable as mobxMakeObservable, observable } from "mobx";
+
 @model
 export class Post extends Model {
-  title!: string;                    // Required - must be passed via constructor
+  title: string = undefined!;        // Required - must be passed via constructor
   description?: string = undefined;  // Optional - can be set later
 
   // Relations
   author: User | null = null;
   comments: Comment[] = [];
 
-  constructor(data: { id?: string; title: string }) {
-    super({ id: data.id });
-    this.title = data.title;         // Required field initialized here
-    makeObservable(this, {
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
       title: observable,
       description: observable,
       author: observable.ref,        // Single reference
       comments: observable.shallow,  // Array of references
     });
+  }
+
+  constructor(data: { id?: string; title: string }) {
+    super({ id: data.id });
+    this.title = data.title;         // Required field initialized here
     this.initTracking();
   }
 }
@@ -156,37 +165,46 @@ export class Post extends Model {
 ### Inheritance Example
 
 ```typescript
-// Abstract base - calls makeObservable for ITS fields
+import { makeObservable as mobxMakeObservable, observable } from "mobx";
+
+// Abstract base - overrides makeObservable for ITS fields
 export abstract class MatchRequest extends Model {
   abstract readonly type: string;
-  status: string;
-  deletedAt: Date | null = null;
-  member: Member;
+  status: string = undefined!;
+  member: Member = undefined!;
 
-  constructor(id: string, data: {...}) {
-    super();
-    this.id = id;
-    // ... set fields
-    makeObservable(this, {
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
       status: observable,
-      deletedAt: observable,
       member: observable.ref,
     } as any);
   }
+
+  constructor(data: { id?: string; status: string; member: Member }) {
+    super({ id: data.id });
+    this.status = data.status;
+    this.member = data.member;
+  }
 }
 
-// Concrete - calls makeObservable for ONLY its own fields
+// Concrete - overrides makeObservable for ONLY its own fields
 @model
 export class ChessMatchRequest extends MatchRequest {
   get type(): "chess" { return "chess"; }
-  hasBoard: boolean;
+  hasBoard: boolean = undefined!;
 
-  constructor(id: string, data: {...}) {
-    super(id, data);
-    this.hasBoard = data.hasBoard;
-    makeObservable(this, {
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
       hasBoard: observable,  // Only this class's field
     } as any);
+  }
+
+  constructor(data: { ...; hasBoard: boolean }) {
+    super(data);
+    this.hasBoard = data.hasBoard;
+    this.initTracking();
   }
 }
 ```

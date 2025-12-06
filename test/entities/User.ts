@@ -1,4 +1,4 @@
-import { makeObservable, observable } from "mobx";
+import { makeObservable as mobxMakeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { UserProfile } from "./Profile";
 import type { Post } from "./Post";
@@ -9,7 +9,7 @@ import type { SkiMatch } from "./SkiMatch";
 @model
 export class User extends Model {
   // Private backing field for name
-  private _name: string;
+  private _name: string = undefined!;
 
   // Public getters/setters for API convenience
   get name(): string {
@@ -40,10 +40,9 @@ export class User extends Model {
     this._posts = value;
   }
 
-  constructor(data: { id?: string; name: string }) {
-    super({ id: data.id });
-    this._name = data.name;
-    makeObservable(this, {
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
       _name: observable,
       testDate: observable,
       profile: observable.ref,
@@ -54,6 +53,11 @@ export class User extends Model {
       chessMatchs: observable.shallow,
       skiMatchs: observable.shallow,
     } as any);
+  }
+
+  constructor(data: { id?: string; name: string }) {
+    super({ id: data.id });
+    this._name = data.name;
     this.initTracking();
   }
 }

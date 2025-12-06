@@ -1,4 +1,4 @@
-import { makeObservable, observable } from "mobx";
+import { makeObservable as mobxMakeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { User } from "./User";
 
@@ -18,13 +18,17 @@ export class UserProfile extends Model {
     this._user = value;
   }
 
-  constructor(data: { id?: string } = {}) {
-    super({ id: data.id });
-    makeObservable(this, {
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
       bio: observable,
       avatarUrl: observable,
       _user: observable.ref,
     } as any);
+  }
+
+  constructor(data: { id?: string } = {}) {
+    super({ id: data.id });
     this.initTracking();
   }
 }

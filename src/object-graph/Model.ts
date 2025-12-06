@@ -1,7 +1,7 @@
 import { type EntityName } from "./store/EntityMeta";
 import { ChangeTracker } from "./persistence/ChangeTracker";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
-import { makeObservable, observable } from "mobx";
+import { makeObservable as mobxMakeObservable, observable } from "mobx";
 
 export abstract class Model {
   readonly id: string;
@@ -18,7 +18,14 @@ export abstract class Model {
     const now = new Date();
     this.createdAt = now;
     this.updatedAt = now;
-    makeObservable(this, {
+  }
+
+  /**
+   * Override in subclasses to register observable fields.
+   * Always call super.makeObservable() first.
+   */
+  protected makeObservable(): void {
+    mobxMakeObservable(this, {
       createdAt: observable,
       updatedAt: observable,
       deletedAt: observable,
@@ -26,10 +33,11 @@ export abstract class Model {
   }
 
   /**
-   * Call at end of leaf class constructor to start tracking changes.
-   * Must be called AFTER makeObservable() and all field initialization.
+   * Call at end of leaf class constructor to finalize the model.
+   * Sets up observables and starts tracking changes.
    */
   protected initTracking(): void {
+    this.makeObservable();
     this._tracker = new ChangeTracker(this, this.entityName);
   }
 

@@ -1,4 +1,4 @@
-import { makeObservable, observable } from "mobx";
+import { makeObservable as mobxMakeObservable, observable } from "mobx";
 import { model } from "../../src/object-graph";
 import { MatchRequest } from "./MatchRequest";
 
@@ -8,8 +8,8 @@ export class ChessMatchRequest extends MatchRequest {
     return "chess";
   }
 
-  declare private _timeControl: string;
-  declare private _rated: boolean;
+  private _timeControl: string = undefined!;
+  private _rated: boolean = undefined!;
 
   get timeControl(): string {
     return this._timeControl;
@@ -25,6 +25,14 @@ export class ChessMatchRequest extends MatchRequest {
     this._rated = value;
   }
 
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
+      _timeControl: observable,
+      _rated: observable,
+    } as any);
+  }
+
   constructor(
     data: {
       id?: string;
@@ -35,10 +43,6 @@ export class ChessMatchRequest extends MatchRequest {
     super({ id: data.id });
     this._timeControl = data.timeControl;
     this._rated = data.rated;
-    makeObservable(this, {
-      _timeControl: observable,
-      _rated: observable,
-    } as any);
     this.initTracking();
   }
 }
