@@ -23,7 +23,7 @@ import { makeObservable as mobxMakeObservable, observable } from "mobx";
 
 @model
 export class User extends Model {
-  private _name: string = undefined!;  // Initializer required for MobX
+  private _name: string;
 
   protected override makeObservable(): void {
     super.makeObservable();
@@ -32,9 +32,9 @@ export class User extends Model {
     } as any);
   }
 
-  constructor(data: { id?: string; name: string }) {
-    super({ id: data.id });
-    this._name = data.name;
+  constructor(name: string, id?: string) {
+    super(id);
+    this._name = name;
     this.initTracking();
   }
 
@@ -128,34 +128,170 @@ export class SkiMatch extends Match { }    // → skiMatchs table
 3. **Use `observable.ref`** for single relations, `observable.shallow` for arrays
 4. **Constructors can have required params and validation** - hydration bypasses constructors
 
-```typescript
-import { makeObservable as mobxMakeObservable, observable } from "mobx";
+### Field Initialization Rules
 
+```typescript
+@model
+export class ExampleModel extends Model {
+  // ✓ Optional field - may or may not have a value
+  bio: string | null = null;
+
+  // ✓ Permission-restricted field - may not be returned due to permissions
+  email: string | undefined = undefined;
+
+  // ✓ Optional AND permission-restricted field
+  phoneNumber: string | null | undefined = undefined;
+
+  // ✓ Required field with domain-specific default (WARNING: only use if explicitly intended)
+  prefersDarkMode: boolean = false;
+
+  // ✓ Required field must be initialized in constructor
+  prefersWine: boolean;
+
+  constructor(prefersWine: boolean, id?: string) {
+    super(id);
+    this.prefersWine = prefersWine;
+    this.initTracking();
+  }
+}
+```
+
+**Common mistakes to avoid:**
+
+```typescript
+@model
+export class BadExampleModel extends Model {
+  // ✗ WRONG: Optional field without initializer - MobX won't track it
+  bio?: string;
+
+  // ✗ WRONG: Using = undefined! with public constructor
+  // (only allowed with private constructor for hydration-only models)
+  name: string = undefined!;
+
+  // ✗ WRONG: Using ! without private constructor
+  score!: number;
+
+  // ✗ WRONG: Optional field using undefined instead of null
+  description: string | undefined = undefined;  // Should be: string | null = null
+
+  // ✗ WRONG: Required field not passed to constructor
+  title: string;  // Will cause "not initialized" error if not set in constructor
+}
+```
+
+### Model Examples
+
+**Hydration-only model (private constructor):**
+```typescript
+@model
+export class Account extends Model {
+  // Required fields (hydration-only, private constructor allows !)
+  accountId!: string;
+  providerId!: string;
+
+  // Optional fields
+  accessToken: string | null = null;
+  refreshToken: string | null = null;
+
+  // Relationships
+  user: $User | null = null;
+
+  protected override makeObservable(): void {
+    super.makeObservable();
+    mobxMakeObservable(this, {
+      accountId: observable,
+      providerId: observable,
+      accessToken: observable,
+      refreshToken: observable,
+      user: observable.ref,
+    });
+  }
+
+  private constructor(id?: string) {
+    super(id);
+    this.initTracking();
+  }
+}
+```
+
+**User-creatable model (public constructor):**
+```typescript
 @model
 export class Post extends Model {
-  title: string = undefined!;        // Required - must be passed via constructor
-  description?: string = undefined;  // Optional - can be set later
+  // Required field (set in constructor)
+  title: string;
 
-  // Relations
+  // Optional field
+  content: string | null = null;
+
+  // Relationships
   author: User | null = null;
-  comments: Comment[] = [];
 
   protected override makeObservable(): void {
     super.makeObservable();
     mobxMakeObservable(this, {
       title: observable,
-      description: observable,
-      author: observable.ref,        // Single reference
-      comments: observable.shallow,  // Array of references
+      content: observable,
+      author: observable.ref,
     });
   }
 
-  constructor(data: { id?: string; title: string }) {
-    super({ id: data.id });
-    this.title = data.title;         // Required field initialized here
+  constructor(title: string, id?: string) {
+    super(id);
+    this.title = title;
     this.initTracking();
   }
 }
+```
+
+### Automatic Timestamps
+
+Model base class provides automatic timestamp management (no need to define in subclasses):
+- `createdAt` / `updatedAt`: Set automatically on construction, `updatedAt` updates on each `save()`
+- `deletedAt`: Defaults to `null`, set via `store.delete(entity)`
+- MobX observables for these fields are set up via the base `makeObservable()` method
+
+### Schema Requirements
+
+Every entity in the schema must have these timestamp fields with specific optionality:
+
+**Regular entities:**
+- `createdAt`: **required** (not optional)
+- `updatedAt`: **required** (not optional)
+- `deletedAt`: **optional**
+
+**System entities (prefixed with `$`):**
+- `createdAt`: **optional** (must be optional)
+- `updatedAt`: **optional** (must be optional)
+- `deletedAt`: **optional** (must be optional)
+
+System entities like `$users` and `$files` are managed externally (e.g., by InstantDB auth) and may not always have timestamps set.
+
+Example (regular entity):
+```typescript
+users: i.entity({
+  name: i.string(),
+  createdAt: i.date().indexed(),      // required (no .optional())
+  updatedAt: i.date().indexed(),      // required (no .optional())
+  deletedAt: i.date().indexed().optional(), // must be optional
+}),
+```
+
+Example (system entity):
+```typescript
+$users: i.entity({
+  email: i.string().unique().indexed(),
+  createdAt: i.date().indexed().optional(),  // must be optional for system entities
+  updatedAt: i.date().indexed().optional(),  // must be optional for system entities
+  deletedAt: i.date().indexed().optional(),  // must be optional for system entities
+}),
+```
+
+### Schema Changes
+
+When adding fields to models, also update `packages/bl/src/instant.schema.ts` and push:
+```bash
+infisical run --env=dev -- bash -c 'npx instant-cli@latest push schema -p admin -a "$INSTANTDB_APP_ID" -y'
 ```
 
 ### Inheritance Example
@@ -166,8 +302,8 @@ import { makeObservable as mobxMakeObservable, observable } from "mobx";
 // Abstract base - overrides makeObservable for ITS fields
 export abstract class MatchRequest extends Model {
   abstract readonly modelType: string;
-  status: string = undefined!;
-  member: Member = undefined!;
+  status: string;
+  member: Member;
 
   protected override makeObservable(): void {
     super.makeObservable();
@@ -177,10 +313,10 @@ export abstract class MatchRequest extends Model {
     } as any);
   }
 
-  constructor(data: { id?: string; status: string; member: Member }) {
-    super({ id: data.id });
-    this.status = data.status;
-    this.member = data.member;
+  constructor(status: string, member: Member, id?: string) {
+    super(id);
+    this.status = status;
+    this.member = member;
   }
 }
 
@@ -188,7 +324,7 @@ export abstract class MatchRequest extends Model {
 @model
 export class ChessMatchRequest extends MatchRequest {
   get modelType(): "chess" { return "chess"; }
-  hasBoard: boolean = undefined!;
+  hasBoard: boolean;
 
   protected override makeObservable(): void {
     super.makeObservable();
@@ -197,9 +333,9 @@ export class ChessMatchRequest extends MatchRequest {
     } as any);
   }
 
-  constructor(data: { ...; hasBoard: boolean }) {
-    super(data);
-    this.hasBoard = data.hasBoard;
+  constructor(status: string, member: Member, hasBoard: boolean, id?: string) {
+    super(status, member, id);
+    this.hasBoard = hasBoard;
     this.initTracking();
   }
 }
