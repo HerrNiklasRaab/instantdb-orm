@@ -39,11 +39,11 @@ function findRootModelClass(target: ModelClassType): ModelClassType {
 }
 
 /**
- * Reads discriminator value from 'type' getter on the class prototype.
- * The type must be defined as a getter: `get type() { return "value"; }`
+ * Reads discriminator value from 'modelType' getter on the class prototype.
+ * The modelType must be defined as a getter: `get modelType() { return "value"; }`
  */
 function getDiscriminatorValue(target: ModelClassType): string | undefined {
-  const descriptor = Object.getOwnPropertyDescriptor(target.prototype, "type");
+  const descriptor = Object.getOwnPropertyDescriptor(target.prototype, "modelType");
   if (!descriptor) return undefined;
 
   // Handle getter: get type() { return "value"; }
@@ -107,7 +107,7 @@ function applyModelDecorator<T extends ModelClassType>(
  *
  * @model
  * class ChessMatchRequest extends MatchRequest {
- *   get type() { return "chess"; }
+ *   get modelType() { return "chess"; }
  * }
  */
 export function model<T extends ModelClassType>(target: T): T;

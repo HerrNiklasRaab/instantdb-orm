@@ -4,7 +4,7 @@ import { MatchRequest } from "./MatchRequest";
 
 @model
 export class ChessMatchRequest extends MatchRequest {
-  get type(): "chess" {
+  get modelType(): "chess" {
     return "chess";
   }
 

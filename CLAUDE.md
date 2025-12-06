@@ -75,29 +75,29 @@ Multiple classes share one database table. Use when subclasses have similar fiel
 **Requirements:**
 - Abstract base class (no `@model`)
 - Concrete subclasses with `@model` decorator
-- `type` getter returning a literal string discriminator
+- `modelType` getter returning a literal string discriminator
 
 ```typescript
 // Abstract base - NO @model
 export abstract class MatchRequest extends Model {
-  abstract readonly type: string;  // Discriminator field
+  abstract readonly modelType: string;  // Discriminator field
   // shared fields...
 }
 
-// Concrete - HAS @model + type getter
+// Concrete - HAS @model + modelType getter
 @model
 export class ChessMatchRequest extends MatchRequest {
-  get type(): "chess" { return "chess"; }  // Determines table storage
+  get modelType(): "chess" { return "chess"; }  // Determines table storage
   // chess-specific fields...
 }
 
 @model
 export class SkiMatchRequest extends MatchRequest {
-  get type(): "ski" { return "ski"; }
+  get modelType(): "ski" { return "ski"; }
 }
 ```
 
-Both store in `matchRequests` table with `type` column distinguishing them.
+Both store in `matchRequests` table with `modelType` column distinguishing them.
 
 ### Multi-Table Inheritance (MTI)
 Each concrete class gets its own database table. Use when subclasses have very different fields.
@@ -105,7 +105,7 @@ Each concrete class gets its own database table. Use when subclasses have very d
 **Requirements:**
 - Abstract base class (no `@model`)
 - Concrete subclasses with `@model` decorator
-- **No** `type` getter
+- **No** `modelType` getter
 
 ```typescript
 // Abstract base - NO @model
@@ -165,7 +165,7 @@ import { makeObservable as mobxMakeObservable, observable } from "mobx";
 
 // Abstract base - overrides makeObservable for ITS fields
 export abstract class MatchRequest extends Model {
-  abstract readonly type: string;
+  abstract readonly modelType: string;
   status: string = undefined!;
   member: Member = undefined!;
 
@@ -187,7 +187,7 @@ export abstract class MatchRequest extends Model {
 // Concrete - overrides makeObservable for ONLY its own fields
 @model
 export class ChessMatchRequest extends MatchRequest {
-  get type(): "chess" { return "chess"; }
+  get modelType(): "chess" { return "chess"; }
   hasBoard: boolean = undefined!;
 
   protected override makeObservable(): void {

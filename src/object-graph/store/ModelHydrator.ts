@@ -44,8 +44,8 @@ export class ModelHydrator {
       // Initialize scalar fields with undefined (will be overwritten by updateModelFields)
       // Using undefined (not null) so permission-restricted fields stay undefined if not in rawData
       for (const field of meta.scalarFields) {
-        // Skip type (STI discriminator is a getter, not a settable field)
-        if (field === "type") continue;
+        // Skip modelType (STI discriminator is a getter, not a settable field)
+        if (field === "modelType") continue;
         const propName = getPropertyName(model, field);
         (model as any)[propName] = undefined;
       }
@@ -100,7 +100,7 @@ export class ModelHydrator {
       // Update ALL scalar fields from raw data (handles re-hydration of existing models)
       // Use private backing field if exists (e.g., _name for schema field "name")
       for (const field of meta.scalarFields) {
-        if (field === "type") continue; // Don't update type (STI discriminator is a getter)
+        if (field === "modelType") continue; // Don't update modelType (STI discriminator is a getter)
         const value = rawData[field];
         if (value !== undefined) {
           const propName = getPropertyName(model, field);
@@ -203,18 +203,18 @@ export class ModelHydrator {
 
   /**
    * Resolves the concrete model class to instantiate.
-   * For STI entities, uses 'type' discriminator to find the correct subclass.
+   * For STI entities, uses 'modelType' discriminator to find the correct subclass.
    */
   private resolveModelClass(
     entityName: string,
     rawData: RawEntityData
   ): ReturnType<typeof getModelClass> {
     if (hasDiscriminatorMapping(entityName)) {
-      const discriminatorValue = rawData.type as string | undefined;
+      const discriminatorValue = rawData.modelType as string | undefined;
 
       if (!discriminatorValue) {
         throw new Error(
-          `Entity '${entityName}' uses STI but record ${rawData.id} has no 'type' field.`
+          `Entity '${entityName}' uses STI but record ${rawData.id} has no 'modelType' field.`
         );
       }
 
@@ -225,7 +225,7 @@ export class ModelHydrator {
       if (!SubClass) {
         throw new Error(
           `Unknown discriminator '${discriminatorValue}' for entity '${entityName}'. ` +
-            `Did you register a @model class with 'readonly type = "${discriminatorValue}"'?`
+            `Did you register a @model class with 'get modelType() { return "${discriminatorValue}"; }'?`
         );
       }
 

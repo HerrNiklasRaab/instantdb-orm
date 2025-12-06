@@ -80,11 +80,11 @@ describe("Single Table Inheritance (Integration)", () => {
 
       // Each should be the correct subclass instance
       expect(chess).toBeInstanceOf(ChessMatchRequest);
-      expect(chess!.type).toBe("chess");
+      expect(chess!.modelType).toBe("chess");
       expect(chess!.timeControl).toBe("10+5");
 
       expect(ski).toBeInstanceOf(SkiMatchRequest);
-      expect(ski!.type).toBe("ski");
+      expect(ski!.modelType).toBe("ski");
       expect(ski!.resort).toBe("Vail");
     });
   });

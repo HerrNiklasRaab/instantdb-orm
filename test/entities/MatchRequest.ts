@@ -4,7 +4,7 @@ import type { User } from "./User";
 
 // Abstract base - NOT decorated with @model (children are)
 export abstract class MatchRequest extends Model {
-  abstract readonly type: string; // discriminator
+  abstract readonly modelType: string; // discriminator
 
   // Relationship to User
   requester: User | null = null;

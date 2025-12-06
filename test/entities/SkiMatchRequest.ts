@@ -4,7 +4,7 @@ import { MatchRequest } from "./MatchRequest";
 
 @model
 export class SkiMatchRequest extends MatchRequest {
-  get type(): "ski" {
+  get modelType(): "ski" {
     return "ski";
   }
 

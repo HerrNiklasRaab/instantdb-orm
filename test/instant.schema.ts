@@ -27,7 +27,7 @@ const _schema = i.schema({
       deletedAt: i.date().indexed().optional(),
     }),
     matchRequests: i.entity({
-      type: i.string(), // discriminator: 'chess' | 'ski'
+      modelType: i.string(), // discriminator: 'chess' | 'ski'
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
       // Chess-specific (optional)
