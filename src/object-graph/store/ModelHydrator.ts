@@ -45,8 +45,8 @@ export class ModelHydrator {
       // Using undefined (not null) so permission-restricted fields stay undefined if not in rawData
       for (const field of meta.scalarFields) {
         // Skip modelType (STI discriminator is a getter, not a settable field)
-        if (field === "modelType") continue;
-        const propName = getPropertyName(model, field);
+        if (field.fieldName === "modelType") continue;
+        const propName = getPropertyName(model, field.fieldName);
         (model as any)[propName] = undefined;
       }
 
@@ -100,11 +100,11 @@ export class ModelHydrator {
       // Update ALL scalar fields from raw data (handles re-hydration of existing models)
       // Use private backing field if exists (e.g., _name for schema field "name")
       for (const field of meta.scalarFields) {
-        if (field === "modelType") continue; // Don't update modelType (STI discriminator is a getter)
-        const value = rawData[field];
+        if (field.fieldName === "modelType") continue; // Don't update modelType (STI discriminator is a getter)
+        const value = rawData[field.fieldName];
         if (value !== undefined) {
-          const propName = getPropertyName(model, field);
-          record[propName] = meta.isDateField(field) && value != null
+          const propName = getPropertyName(model, field.fieldName);
+          record[propName] = field.isDate && value != null
             ? new Date(value as string | number)
             : value;
         }

@@ -31,18 +31,18 @@ export class ModelSnapshotDiff {
   private computeScalarDiff(meta: ReturnType<typeof getEntityMeta>): void {
     if (this.isNew) {
       // New entity: include ALL scalar fields (excluding id)
-      for (const fieldName of meta.scalarFields) {
-        if (fieldName === "id") continue;
-        this.scalars.set(fieldName, this.current.scalars.get(fieldName));
+      for (const field of meta.scalarFields) {
+        if (field.fieldName === "id") continue;
+        this.scalars.set(field.fieldName, this.current.scalars.get(field.fieldName));
       }
     } else {
       // Existing entity: include only changed scalars
-      for (const fieldName of meta.scalarFields) {
-        if (fieldName === "id") continue;
-        const originalValue = this.original.scalars.get(fieldName);
-        const currentValue = this.current.scalars.get(fieldName);
+      for (const field of meta.scalarFields) {
+        if (field.fieldName === "id") continue;
+        const originalValue = this.original.scalars.get(field.fieldName);
+        const currentValue = this.current.scalars.get(field.fieldName);
         if (originalValue !== currentValue) {
-          this.scalars.set(fieldName, currentValue);
+          this.scalars.set(field.fieldName, currentValue);
         }
       }
     }

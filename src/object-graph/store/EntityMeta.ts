@@ -22,7 +22,19 @@ export interface SchemaConfig {
   links: Record<string, LinkDef>;
 }
 
-export class RelationshipFieldMeta {
+export interface FieldMeta {
+  readonly fieldName: string;
+}
+
+export class ScalarFieldMeta implements FieldMeta {
+  constructor(
+    readonly fieldName: string,
+    readonly valueType: string,
+    readonly isDate: boolean
+  ) {}
+}
+
+export class RelationshipFieldMeta implements FieldMeta {
   readonly fieldName: string;
   readonly targetEntity: EntityName;
   readonly cardinality: "one" | "many";
@@ -50,69 +62,48 @@ export class RelationshipFieldMeta {
 }
 
 export class EntityMeta {
-  readonly schemaName: EntityName;
-  readonly scalarFields: string[];
-  readonly requiredFields: string[];
-  readonly optionalFields: string[];
-  readonly relationshipFields: RelationshipFieldMeta[];
-  readonly dateFields: Set<string>;
+  readonly scalarFields: ScalarFieldMeta[] = [];
+  readonly relationshipFields: RelationshipFieldMeta[] = [];
 
-  constructor(schema: SchemaConfig, entityName: EntityName) {
-    this.schemaName = entityName;
-
-    const entityDef = schema.entities[entityName];
-    const attrs = entityDef?.attrs ?? {};
-
-    this.scalarFields = Object.keys(attrs);
-    this.requiredFields = this.extractRequiredFields(attrs);
-    this.optionalFields = this.extractOptionalFields(attrs);
-    this.dateFields = this.extractDateFields(attrs);
-    this.relationshipFields = this.extractRelationshipFields(schema);
+  constructor(
+    private schema: SchemaConfig,
+    readonly schemaName: EntityName
+  ) {
+    this.extractScalarFields();
+    this.extractRelationshipFields();
   }
 
-  private extractRequiredFields(attrs: Record<string, AttrDef>): string[] {
-    return Object.entries(attrs)
-      .filter(([, attrDef]) => attrDef.required !== false)
-      .map(([fieldName]) => fieldName);
+  /** All fields (scalar + relationship) unified under FieldMeta interface */
+  get fields(): FieldMeta[] {
+    return [...this.scalarFields, ...this.relationshipFields];
   }
 
-  private extractOptionalFields(attrs: Record<string, AttrDef>): string[] {
-    return Object.entries(attrs)
-      .filter(([, attrDef]) => attrDef.required === false)
-      .map(([fieldName]) => fieldName);
+  private get attrs(): Record<string, AttrDef> {
+    return this.schema.entities[this.schemaName]?.attrs ?? {};
   }
 
-  private extractDateFields(attrs: Record<string, AttrDef>): Set<string> {
-    const dateFields = new Set<string>();
-    for (const [fieldName, attrDef] of Object.entries(attrs)) {
-      if (attrDef.valueType === "date") {
-        dateFields.add(fieldName);
-      }
+  private extractScalarFields(): void {
+    for (const [fieldName, attrDef] of Object.entries(this.attrs)) {
+      this.scalarFields.push(
+        new ScalarFieldMeta(fieldName, attrDef.valueType, attrDef.valueType === "date")
+      );
     }
-    return dateFields;
   }
 
-  private extractRelationshipFields(schema: SchemaConfig): RelationshipFieldMeta[] {
-    const relationships: RelationshipFieldMeta[] = [];
-    const allEntityNames = new Set(Object.keys(schema.entities));
+  private extractRelationshipFields(): void {
+    const allEntityNames = new Set(Object.keys(this.schema.entities));
 
-    for (const [linkName, link] of Object.entries(schema.links)) {
+    for (const [linkName, link] of Object.entries(this.schema.links)) {
       // Forward side
       if (link.forward.on === this.schemaName && allEntityNames.has(link.reverse.on)) {
-        relationships.push(new RelationshipFieldMeta(linkName, link, true));
+        this.relationshipFields.push(new RelationshipFieldMeta(linkName, link, true));
       }
 
       // Reverse side
       if (link.reverse.on === this.schemaName && allEntityNames.has(link.forward.on)) {
-        relationships.push(new RelationshipFieldMeta(linkName, link, false));
+        this.relationshipFields.push(new RelationshipFieldMeta(linkName, link, false));
       }
     }
-
-    return relationships;
-  }
-
-  isDateField(name: string): boolean {
-    return this.dateFields.has(name);
   }
 
   getRelationshipFieldNames(): Set<string> {

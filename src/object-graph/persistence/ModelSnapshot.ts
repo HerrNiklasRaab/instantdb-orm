@@ -19,9 +19,9 @@ export class ModelSnapshot {
     this.relationships = new Map<string, string | string[] | null>();
 
     // Capture scalar values
-    for (const fieldName of meta.scalarFields) {
-      const propName = getPropertyName(model, fieldName);
-      this.scalars.set(fieldName, record[propName]);
+    for (const field of meta.scalarFields) {
+      const propName = getPropertyName(model, field.fieldName);
+      this.scalars.set(field.fieldName, record[propName]);
     }
 
     // Capture relationship IDs

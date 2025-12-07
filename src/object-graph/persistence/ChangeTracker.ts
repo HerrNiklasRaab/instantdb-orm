@@ -37,9 +37,9 @@ export class ChangeTracker {
     const record = this.model as unknown as Record<string, unknown>;
 
     // Observe scalar field changes (use private backing field if exists)
-    for (const fieldName of meta.scalarFields) {
-      if (fieldName === "id") continue;
-      const propName = getPropertyName(this.model, fieldName);
+    for (const field of meta.scalarFields) {
+      if (field.fieldName === "id") continue;
+      const propName = getPropertyName(this.model, field.fieldName);
 
       try {
         const disposer = observe(
