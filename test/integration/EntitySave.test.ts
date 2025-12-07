@@ -106,166 +106,121 @@ describe("Entity Save (Integration)", () => {
   });
 
   describe("save() - one-to-one relationships (User ↔ Profile)", () => {
-    it("persists link", async () => {
+    it("persists link and unlink", async () => {
       const user = createUser();
       const profile = createProfile();
 
       await store.save(user);
       await store.save(profile);
+
+      // Link
       user.profile = profile;
-
       expect(user.isDirty()).toBe(true);
-
       await store.save(user);
 
-      // Verify via fresh store
-      const freshStore = new RootStore({ db });
-      const users = await freshStore.queryModel(User);
-      const profiles = await freshStore.queryModel(UserProfile);
-      const hydratedUser = users.find((u) => u.id === user.id);
-      const hydratedProfile = profiles.find((p) => p.id === profile.id);
+      // Verify link via fresh store
+      let freshStore = new RootStore({ db });
+      let users = await freshStore.queryModel(User);
+      let profiles = await freshStore.queryModel(UserProfile);
+      let hydratedUser = users.find((u) => u.id === user.id);
+      let hydratedProfile = profiles.find((p) => p.id === profile.id);
 
-      // Both directions
       expect(hydratedUser?.profile).toBe(hydratedProfile);
       expect(hydratedProfile?.user).toBe(hydratedUser);
-    });
-
-    it("persists unlink", async () => {
-      const user = createUser();
-      const profile = createProfile();
-
-      // Setup: link
-      await store.save(user);
-      await store.save(profile);
-      user.profile = profile;
-      await store.save(user);
 
       // Unlink
       user.profile = null;
       expect(user.isDirty()).toBe(true);
-
       await store.save(user);
 
-      // Verify via fresh store
-      const freshStore = new RootStore({ db });
-      const users = await freshStore.queryModel(User);
-      const profiles = await freshStore.queryModel(UserProfile);
-      const hydratedUser = users.find((u) => u.id === user.id);
-      const hydratedProfile = profiles.find((p) => p.id === profile.id);
+      // Verify unlink via fresh store
+      freshStore = new RootStore({ db });
+      users = await freshStore.queryModel(User);
+      profiles = await freshStore.queryModel(UserProfile);
+      hydratedUser = users.find((u) => u.id === user.id);
+      hydratedProfile = profiles.find((p) => p.id === profile.id);
 
-      // Both directions
       expect(hydratedUser?.profile).toBeNull();
       expect(hydratedProfile?.user).toBeNull();
     });
   });
 
   describe("save() - one-to-many relationships (Post ↔ User)", () => {
-    it("persists link via user.posts.push(post)", async () => {
+    it("persists link and unlink via collection (user.posts)", async () => {
       const user = createUser();
       const post = createPost();
 
       await store.save(user);
       await store.save(post);
+
+      // Link via collection
       user.posts.push(post);
-
-      // Assert isDirty before save
       expect(user.isDirty()).toBe(true);
-
       await store.save(user);
 
-      // Verify via fresh store
-      const freshStore = new RootStore({ db });
-      const posts = await freshStore.queryModel(Post);
-      const users = await freshStore.queryModel(User);
-      const hydratedUser = users.find((u) => u.id === user.id);
-      const hydratedPost = posts.find((p) => p.id === post.id);
+      // Verify link via fresh store
+      let freshStore = new RootStore({ db });
+      let posts = await freshStore.queryModel(Post);
+      let users = await freshStore.queryModel(User);
+      let hydratedUser = users.find((u) => u.id === user.id);
+      let hydratedPost = posts.find((p) => p.id === post.id);
 
-      // Reverse: User.posts → Post[]
       expect(hydratedUser?.posts.length).toBe(1);
       expect(hydratedUser?.posts[0]).toBe(hydratedPost);
-      // Forward: Post.author → User
       expect(hydratedPost?.author).toBe(hydratedUser);
-    });
 
-    it("persists unlink via removing from user.posts", async () => {
-      const user = createUser();
-      const post = createPost();
-
-      // Setup: link post
-      await store.save(user);
-      await store.save(post);
-      user.posts.push(post);
-      await store.save(user);
-
-      // Remove and assert isDirty
+      // Unlink via collection
       user.posts.pop();
       expect(user.isDirty()).toBe(true);
-
       await store.save(user);
 
-      // Verify via fresh store
-      const freshStore = new RootStore({ db });
-      const posts = await freshStore.queryModel(Post);
-      const users = await freshStore.queryModel(User);
-      const hydratedUser = users.find((u) => u.id === user.id);
-      const hydratedPost = posts.find((p) => p.id === post.id);
+      // Verify unlink via fresh store
+      freshStore = new RootStore({ db });
+      posts = await freshStore.queryModel(Post);
+      users = await freshStore.queryModel(User);
+      hydratedUser = users.find((u) => u.id === user.id);
+      hydratedPost = posts.find((p) => p.id === post.id);
 
-      // Reverse: User.posts → empty
       expect(hydratedUser?.posts.length).toBe(0);
-      // Forward: Post.author → null
       expect(hydratedPost?.author).toBeNull();
     });
 
-    it("persists link via post.author = user", async () => {
+    it("persists link and unlink via reference (post.author)", async () => {
       const post = createPost();
       const user = createUser();
 
       await store.save(user);
-      post.author = user;
-
-      expect(post.isDirty()).toBe(true);
-
       await store.save(post);
 
-      // Verify via fresh store
-      const freshStore = new RootStore({ db });
-      const users = await freshStore.queryModel(User);
-      const posts = await freshStore.queryModel(Post);
-      const hydratedPost = posts.find((p) => p.id === post.id);
-      const hydratedUser = users.find((u) => u.id === user.id);
+      // Link via reference
+      post.author = user;
+      expect(post.isDirty()).toBe(true);
+      await store.save(post);
 
-      // Forward: Post.author → User
-      expect(hydratedPost?.author?.id).toBe(user.id);
-      // Reverse: User.posts → Post[]
+      // Verify link via fresh store
+      let freshStore = new RootStore({ db });
+      let users = await freshStore.queryModel(User);
+      let posts = await freshStore.queryModel(Post);
+      let hydratedPost = posts.find((p) => p.id === post.id);
+      let hydratedUser = users.find((u) => u.id === user.id);
+
+      expect(hydratedPost?.author).toBe(hydratedUser);
       expect(hydratedUser?.posts.length).toBe(1);
       expect(hydratedUser?.posts[0]).toBe(hydratedPost);
-    });
 
-    it("persists unlink via post.author = null", async () => {
-      const post = createPost();
-      const user = createUser();
-
-      // Setup: link author
-      await store.save(user);
-      post.author = user;
-      await store.save(post);
-
-      // Unlink
+      // Unlink via reference
       post.author = null;
       expect(post.isDirty()).toBe(true);
-
       await store.save(post);
 
-      // Verify via fresh store
-      const freshStore = new RootStore({ db });
-      const users = await freshStore.queryModel(User);
-      const posts = await freshStore.queryModel(Post);
-      const hydratedPost = posts.find((p) => p.id === post.id);
-      const hydratedUser = users.find((u) => u.id === user.id);
+      // Verify unlink via fresh store
+      freshStore = new RootStore({ db });
+      users = await freshStore.queryModel(User);
+      posts = await freshStore.queryModel(Post);
+      hydratedPost = posts.find((p) => p.id === post.id);
+      hydratedUser = users.find((u) => u.id === user.id);
 
-      // Forward: Post.author → null
       expect(hydratedPost?.author).toBeNull();
-      // Reverse: User.posts → empty
       expect(hydratedUser?.posts.length).toBe(0);
     });
   });
