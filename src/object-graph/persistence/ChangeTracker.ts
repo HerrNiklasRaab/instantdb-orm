@@ -1,7 +1,7 @@
 import { observe } from "mobx";
 import type { Model } from "../Model";
 import type { EntityName } from "../store/EntityMeta";
-import { getEntityMeta } from "../store/EntityMeta";
+import { getEntityMeta, RelationshipFieldMeta } from "../store/EntityMeta";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 
@@ -36,18 +36,32 @@ export class ChangeTracker {
     const meta = getEntityMeta(this.entityName);
     const record = this.model as unknown as Record<string, unknown>;
 
-    // Observe scalar field changes (use private backing field if exists)
-    for (const field of meta.scalarFields) {
+    for (const field of meta.fields) {
       if (field.fieldName === "id") continue;
       const propName = field.getFieldNameOnModel(this.model);
 
+      // To-many relationships need array observer
+      if (field instanceof RelationshipFieldMeta && field.isToMany()) {
+        const array = record[propName] as Model[] | undefined;
+        if (array && Array.isArray(array)) {
+          try {
+            const disposer = observe(array, () => this.updateSnapshot());
+            this.disposers.push(disposer);
+          } catch {
+            // Array might not be observable, skip it
+          }
+        }
+        continue;
+      }
+
+      // Scalars and to-one relationships use property observer
       try {
         const disposer = observe(
           this.model as object,
           propName as never,
           (change) => {
             if (change.type === "update") {
-              this.currentSnapshot = new ModelSnapshot(this.model, this._isNew);
+              this.updateSnapshot();
             }
           }
         );
@@ -56,42 +70,10 @@ export class ChangeTracker {
         // Field might not be observable, skip it
       }
     }
+  }
 
-    // Observe relationship changes (use private backing field if exists)
-    for (const rel of meta.relationshipFields) {
-      const propName = rel.getFieldNameOnModel(this.model);
-
-      if (rel.isToOne()) {
-        // observable.ref - observe the reference change
-        try {
-          const disposer = observe(
-            this.model as object,
-            propName as never,
-            (change) => {
-              if (change.type === "update") {
-                this.currentSnapshot = new ModelSnapshot(this.model, this._isNew);
-              }
-            }
-          );
-          this.disposers.push(disposer);
-        } catch {
-          // Field might not be observable, skip it
-        }
-      } else {
-        // observable.shallow - observe array changes
-        const array = record[propName] as Model[] | undefined;
-        if (array && Array.isArray(array)) {
-          try {
-            const disposer = observe(array, () => {
-              this.currentSnapshot = new ModelSnapshot(this.model, this._isNew);
-            });
-            this.disposers.push(disposer);
-          } catch {
-            // Array might not be observable, skip it
-          }
-        }
-      }
-    }
+  private updateSnapshot(): void {
+    this.currentSnapshot = new ModelSnapshot(this.model, this._isNew);
   }
 
   getChanges(): ModelSnapshotDiff {
