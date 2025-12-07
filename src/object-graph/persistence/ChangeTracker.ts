@@ -23,13 +23,8 @@ export class ChangeTracker {
   }
 
   /** Returns true if entity has never been saved */
-  isNew(): boolean {
+  get isNew(): boolean {
     return this._isNew;
-  }
-
-  /** Mark entity as not new (already exists in database) */
-  markNotNew(): void {
-    this._isNew = false;
   }
 
   private setupObservers(): void {

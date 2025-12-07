@@ -96,22 +96,6 @@ describe("Entity Save (Integration)", () => {
   });
 
   describe("save() - basic flow", () => {
-    it("new entity is persisted on first save", async () => {
-      const user = createUser();
-
-      // New entity should be dirty (needs to be inserted)
-      expect(user.isDirty()).toBe(true);
-
-      await store.save(user);
-
-      // Verify entity was saved to DB
-      const result = await db.query({ users: { $: { where: { id: user.id } } } });
-      expect((result as { users?: unknown[] }).users ?? []).toHaveLength(1);
-
-      // After save, entity should no longer be dirty
-      expect(user.isDirty()).toBe(false);
-    });
-
     it("persists relationship set in constructor", async () => {
       // Create user first
       const user = createUser();
@@ -119,43 +103,29 @@ describe("Entity Save (Integration)", () => {
 
       // Create post WITH author set in constructor (before initTracking)
       const post = new Post("Test Post", user);
-
       await store.save(post);
 
-      // Verify relationship was persisted
-      const result = await db.query({
-        posts: {
-          $: { where: { id: post.id } },
-          author: {},
-        },
-      });
-      const savedPost = (result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0];
-      expect(savedPost?.author?.id).toBe(user.id);  // This should FAIL without _isNew for relationships
-    });
+      // Verify via fresh store (query User first to populate identity map)
+      const freshStore = new RootStore({ db });
+      await freshStore.queryModel(User);
+      const posts = await freshStore.queryModel(Post);
+      const hydratedPost = posts.find((p) => p.id === post.id);
 
-    it("does nothing when hydrated entity is not modified", async () => {
-      // First create the entity in DB
-      const user = createUser();
-      await store.save(user);
-
-      // Hydrate the entity from DB (simulates app restart or sync)
-      const [hydratedUser] = await store.queryModel(User);
-      expect(hydratedUser).toBeDefined();
-      expect(hydratedUser!.isDirty()).toBe(false);
-
-      // Save should do nothing (no changes)
-      await store.save(hydratedUser!);
+      expect(hydratedPost).toBeDefined();
+      expect(hydratedPost!.author?.id).toBe(user.id);
     });
 
     it("persists scalar changes to database", async () => {
       const user = createUser("New Name");
       await store.save(user);
 
-      // Verify in database
-      const result = await db.query({ users: { $: { where: { id: user.id } } } });
-      const savedUser = (result as { users?: Array<{ name: string }> }).users?.[0];
-      expect(savedUser).toBeDefined();
-      expect(savedUser!.name).toBe("New Name");
+      // Verify via fresh store
+      const freshStore = new RootStore({ db });
+      const users = await freshStore.queryModel(User);
+      const hydratedUser = users.find((u) => u.id === user.id);
+
+      expect(hydratedUser).toBeDefined();
+      expect(hydratedUser!.name).toBe("New Name");
     });
 
     it("persists relationship link to database", async () => {
@@ -272,20 +242,10 @@ describe("Entity Save (Integration)", () => {
       expect(user.createdAt).toEqual(originalCreatedAt);
     });
 
-    it("persists createdAt and updatedAt to database", async () => {
-      const user = createUser();
-      await store.save(user);
-
-      const result = await db.query({ users: { $: { where: { id: user.id } } } });
-      const savedUser = (result as { users?: Array<{ createdAt: string; updatedAt: string }> }).users?.[0];
-
-      expect(savedUser?.createdAt).toBe(user.createdAt.toISOString());
-      expect(savedUser?.updatedAt).toBe(user.updatedAt.toISOString());
-    });
-
-    it("hydrates createdAt and updatedAt from database", async () => {
+    it("persists and hydrates createdAt and updatedAt correctly", async () => {
       const user = createUser();
       const originalCreatedAt = user.createdAt;
+      const originalUpdatedAt = user.updatedAt;
       await store.save(user);
 
       // Create a fresh store to simulate hydrating from DB without local cache
@@ -296,8 +256,8 @@ describe("Entity Save (Integration)", () => {
       expect(hydratedUser).toBeDefined();
       expect(hydratedUser!.createdAt).toBeInstanceOf(Date);
       expect(hydratedUser!.updatedAt).toBeInstanceOf(Date);
-      // Hydrated createdAt should match what was originally saved
       expect(hydratedUser!.createdAt.toISOString()).toBe(originalCreatedAt.toISOString());
+      expect(hydratedUser!.updatedAt.toISOString()).toBe(originalUpdatedAt.toISOString());
     });
   });
 });

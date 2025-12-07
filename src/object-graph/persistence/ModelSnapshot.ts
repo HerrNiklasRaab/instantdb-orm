@@ -35,6 +35,6 @@ export class ModelSnapshot {
       }
     }
 
-    this.wasNew = wasNew ?? model._tracker?.isNew() ?? true;
+    this.wasNew = wasNew ?? model._tracker?.isNew ?? true;
   }
 }

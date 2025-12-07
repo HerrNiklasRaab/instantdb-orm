@@ -55,4 +55,8 @@ export abstract class Model {
   isDirty(): boolean {
     return this._tracker!.hasChanges();
   }
+
+  get isNew(): boolean {
+    return this._tracker!.isNew;
+  }
 }
