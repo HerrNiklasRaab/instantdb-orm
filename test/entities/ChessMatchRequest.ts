@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { model } from "../../src/object-graph";
+import { model, field } from "../../src/object-graph";
 import { MatchRequest } from "./MatchRequest";
 
 @model
@@ -9,7 +9,9 @@ export class ChessMatchRequest extends MatchRequest {
   }
 
   // Required fields (set in constructor)
+  @field()
   private _timeControl: string;
+  @field()
   private _rated: boolean;
 
   get timeControl(): string {

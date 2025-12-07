@@ -119,6 +119,9 @@ export class RootStore implements TransactionStoreAccess {
       identityMap.set(model);
     }
 
+    // Update timestamp before getting changes
+    model.setUpdatedAt();
+
     const changes = model._tracker!.getChanges();
     let tx: TxChunk = this.db.tx[entityName][model.id];
 

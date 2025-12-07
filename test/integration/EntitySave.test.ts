@@ -53,7 +53,7 @@ describe("Entity Save (Integration)", () => {
       const user = createUser();
       await store.save(user);
 
-      user.updatedAt = new Date("2024-06-01");
+      user.testDate = new Date("2024-06-01");
 
       expect(user.isDirty()).toBe(true);
     });

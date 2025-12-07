@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { Model, model } from "../../src/object-graph";
+import { Model, model, field } from "../../src/object-graph";
 import type { UserProfile } from "./Profile";
 import type { Post } from "./Post";
 import type { MatchRequest } from "./MatchRequest";
@@ -9,6 +9,7 @@ import type { SkiMatch } from "./SkiMatch";
 @model
 export class User extends Model {
   // Required field (set in constructor)
+  @field()
   private _name: string;
 
   // Public getters/setters for API convenience
@@ -34,6 +35,7 @@ export class User extends Model {
   skiMatchs: SkiMatch[] = [];          // MTI: reverse of skiMatchs.requester
 
   // Private backing field for to-many relationship
+  @field()
   private _posts: Post[] = [];
 
   get posts(): Post[] {

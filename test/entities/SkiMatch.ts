@@ -1,12 +1,14 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { model } from "../../src/object-graph";
+import { model, field } from "../../src/object-graph";
 import { Match } from "./Match";
 
 // MTI: No type getter → each class gets its own table (skiMatchs)
 @model
 export class SkiMatch extends Match {
   // Required fields (set in constructor)
+  @field()
   private _resort: string;
+  @field()
   private _skillLevel: string;
 
   get resort(): string {

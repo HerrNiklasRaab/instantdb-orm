@@ -1,3 +1,5 @@
+import { getBackingFieldName } from "../decorators/field";
+
 // Generic entity name type - will be narrowed by configuration
 export type EntityName = string;
 
@@ -26,8 +28,9 @@ export abstract class FieldMeta {
   abstract readonly fieldName: string;
 
   getFieldNameOnModel(entity: object): string {
-    const privateName = "_" + this.fieldName;
-    return privateName in entity ? privateName : this.fieldName;
+    const ModelClass = entity.constructor;
+    const backingField = getBackingFieldName(ModelClass, this.fieldName);
+    return backingField ?? this.fieldName;
   }
 }
 
@@ -231,10 +234,10 @@ export { ENTITY_META };
 
 /**
  * Resolves the actual property name on an entity for a given schema field.
- * Supports private backing field convention: if `_fieldName` exists, use it.
- * Otherwise, use `fieldName`.
+ * Uses @field decorator registry to find private backing fields.
  */
 export function getPropertyName(entity: object, schemaField: string): string {
-  const privateName = "_" + schemaField;
-  return privateName in entity ? privateName : schemaField;
+  const ModelClass = entity.constructor;
+  const backingField = getBackingFieldName(ModelClass, schemaField);
+  return backingField ?? schemaField;
 }

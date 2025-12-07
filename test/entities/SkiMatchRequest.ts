@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { model } from "../../src/object-graph";
+import { model, field } from "../../src/object-graph";
 import { MatchRequest } from "./MatchRequest";
 
 @model
@@ -9,7 +9,9 @@ export class SkiMatchRequest extends MatchRequest {
   }
 
   // Required fields (set in constructor)
+  @field()
   private _resort: string;
+  @field()
   private _skillLevel: string;
 
   get resort(): string {

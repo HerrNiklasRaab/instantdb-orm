@@ -2,13 +2,18 @@ import { type EntityName } from "./store/EntityMeta";
 import { ChangeTracker } from "./persistence/ChangeTracker";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
+import { field } from "./decorators";
 
 export abstract class Model {
   readonly id: string;
 
-  // Automatic timestamp fields (managed by the framework)
+  @field()
   private readonly _createdAt: Date;
+
+  @field()
   private _updatedAt: Date;
+
+  @field()
   private _deletedAt: Date | null = null;
 
   _tracker: ChangeTracker | null = null;
@@ -27,6 +32,11 @@ export abstract class Model {
     return this._updatedAt;
   }
 
+  /** Sets updatedAt timestamp to now. Called by RootStore/Transaction before save. */
+  setUpdatedAt(): void {
+    this._updatedAt = new Date();
+  }
+
   get deletedAt(): Date | null {
     return this._deletedAt;
   }
@@ -34,11 +44,6 @@ export abstract class Model {
   /** Marks this model as deleted locally. Call store.save() to persist. */
   markDeleted(): void {
     this._deletedAt = new Date();
-  }
-
-  /** @internal Called by ChangeTracker when scalar properties change. */
-  _touchUpdatedAt(): void {
-    this._updatedAt = new Date();
   }
 
   /**

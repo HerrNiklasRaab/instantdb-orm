@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { Model, model } from "../../src/object-graph";
+import { Model, model, field } from "../../src/object-graph";
 import type { User } from "./User";
 
 @model("profiles")
@@ -9,6 +9,7 @@ export class UserProfile extends Model {
   avatarUrl: string | null = null;
 
   // Private backing field for to-one relationship
+  @field()
   private _user: User | null = null;
 
   get user(): User | null {
