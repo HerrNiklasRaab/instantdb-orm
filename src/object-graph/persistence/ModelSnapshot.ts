@@ -6,17 +6,14 @@ import { getEntityMeta } from "../store/EntityMeta";
  * Used by Transaction for rollback and ChangeTracker for original state.
  */
 export class ModelSnapshot {
-  readonly scalars: Map<string, unknown>;
-  readonly relationships: Map<string, string | string[] | null>;
+  readonly scalars = new Map<string, unknown>();
+  readonly relationships = new Map<string, string | string[] | null>();
   readonly wasNew: boolean;
 
   constructor(model: Model, wasNew?: boolean) {
     const entityName = model.entityName;
     const meta = getEntityMeta(entityName);
     const record = model as unknown as Record<string, unknown>;
-
-    this.scalars = new Map<string, unknown>();
-    this.relationships = new Map<string, string | string[] | null>();
 
     // Capture scalar values
     for (const field of meta.scalarFields) {
