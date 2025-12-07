@@ -313,4 +313,32 @@ describe("RootStore hydration (Integration)", () => {
       expect(hydratedUser!.posts.length).toBe(2);
     });
   });
+
+  describe("reactive subscriptions", () => {
+    it("updates identity map and relationships when entity changes in DB", async () => {
+      const user = await createUserInStoreA({ name: "John" });
+      const post = await createPostInStoreA({ author: user });
+
+      // Set up reactive subscriptions
+      await storeA.subscribeModel(User, () => { });
+      await storeA.subscribeModel(Post, () => { });
+
+      expect(post.author).toBe(user);
+      expect(user.posts).toContain(post);
+
+      // Mark user as deleted directly in DB (simulates another device)
+      await db.transact([
+        db.tx.users[user.id].update({ deletedAt: new Date().toISOString() }),
+      ]);
+
+      // Wait for reactive sync to process
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // User removed from identity map
+      expect(storeA.getById(User, user.id)).toBeUndefined();
+
+      // Relationship cleaned up
+      expect(post.author).toBeNull();
+    });
+  });
 });
