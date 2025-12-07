@@ -50,6 +50,7 @@ export class ChangeTracker {
       }
 
       // Scalars and to-one relationships use property observer
+      const isScalar = !(field instanceof RelationshipFieldMeta);
       try {
         const disposer = observe(
           this.model as object,
@@ -57,6 +58,9 @@ export class ChangeTracker {
           (change) => {
             if (change.type === "update") {
               this.updateSnapshot();
+              if (isScalar) {
+                this.model._touchUpdatedAt();
+              }
             }
           }
         );

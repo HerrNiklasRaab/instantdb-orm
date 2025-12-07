@@ -119,8 +119,6 @@ export class RootStore implements TransactionStoreAccess {
       identityMap.set(model);
     }
 
-    // Auto-update timestamp before getting changes
-    model.updatedAt = new Date();
     const changes = model._tracker!.getChanges();
     let tx: TxChunk = this.db.tx[entityName][model.id];
 
@@ -151,7 +149,7 @@ export class RootStore implements TransactionStoreAccess {
 
   /** Delete a model (soft delete) */
   async delete(model: Model): Promise<void> {
-    model.deletedAt = new Date();
+    model.markDeleted();
     await this.save(model);
   }
 

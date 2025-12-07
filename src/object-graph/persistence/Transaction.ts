@@ -56,7 +56,6 @@ export class Transaction {
     // Process existing models that have changes
     for (const [model] of this.snapshots) {
       if (model._tracker?.hasChanges()) {
-        model.updatedAt = new Date();
         transactions.push(this.buildTransaction(model));
       }
     }
@@ -64,7 +63,6 @@ export class Transaction {
     // Process new models
     for (const model of this.newModels) {
       if (model._tracker?.hasChanges()) {
-        model.updatedAt = new Date();
         transactions.push(this.buildTransaction(model));
       }
     }

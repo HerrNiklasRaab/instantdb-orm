@@ -7,17 +7,38 @@ export abstract class Model {
   readonly id: string;
 
   // Automatic timestamp fields (managed by the framework)
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt: Date | null = null;
+  private readonly _createdAt: Date;
+  private _updatedAt: Date;
+  private _deletedAt: Date | null = null;
 
   _tracker: ChangeTracker | null = null;
 
   constructor(id?: string) {
     this.id = id ?? crypto.randomUUID();
-    const now = new Date();
-    this.createdAt = now;
-    this.updatedAt = now;
+    this._createdAt = new Date();
+    this._updatedAt = new Date();
+  }
+
+  get createdAt(): Date {
+    return this._createdAt;
+  }
+
+  get updatedAt(): Date {
+    return this._updatedAt;
+  }
+
+  get deletedAt(): Date | null {
+    return this._deletedAt;
+  }
+
+  /** Marks this model as deleted locally. Call store.save() to persist. */
+  markDeleted(): void {
+    this._deletedAt = new Date();
+  }
+
+  /** @internal Called by ChangeTracker when scalar properties change. */
+  _touchUpdatedAt(): void {
+    this._updatedAt = new Date();
   }
 
   /**
@@ -25,10 +46,10 @@ export abstract class Model {
    * Always call super.makeObservable() first.
    */
   protected makeObservable(): void {
-    mobxMakeObservable(this, {
-      createdAt: observable,
-      updatedAt: observable,
-      deletedAt: observable,
+    mobxMakeObservable<Model, "_createdAt" | "_updatedAt" | "_deletedAt">(this, {
+      _createdAt: observable,
+      _updatedAt: observable,
+      _deletedAt: observable,
     });
   }
 
