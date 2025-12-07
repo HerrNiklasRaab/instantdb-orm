@@ -28,37 +28,36 @@ export class ModelHydrator {
     const identityMap = getIdentityMap(entityName);
     const meta = getEntityMeta(entityName);
 
-    let isNewInstance = false;
     const model = identityMap.getOrCreate(rawData.id, () => {
-      isNewInstance = true;
       // Create instance without calling constructor (bypasses validation/business logic)
-      return Object.create(ModelClass.prototype) as ModelInstanceFor<K>;
-    });
+      const instance = Object.create(ModelClass.prototype) as ModelInstanceFor<K>;
 
-    // For new instances: initialize ALL fields (field initializers don't run with Object.create)
-    // MobX requires properties to exist on the object before makeObservable() is called
-    if (isNewInstance) {
+      // Initialize ALL fields (field initializers don't run with Object.create)
+      // MobX requires properties to exist on the object before makeObservable() is called
+
       // Set id directly - it's not in meta.scalarFields (InstantDB manages it implicitly)
-      (model as any).id = rawData.id;
+      (instance as any).id = rawData.id;
 
       // Initialize scalar fields with undefined (will be overwritten by updateModelFields)
       // Using undefined (not null) so permission-restricted fields stay undefined if not in rawData
       for (const field of meta.scalarFields) {
         // Skip modelType (STI discriminator is a getter, not a settable field)
         if (field.fieldName === "modelType") continue;
-        const propName = field.getFieldNameOnModel(model);
-        (model as any)[propName] = undefined;
+        const propName = field.getFieldNameOnModel(instance);
+        (instance as any)[propName] = undefined;
       }
 
       // Initialize relationship fields
       for (const rel of meta.relationshipFields) {
-        const propName = rel.getFieldNameOnModel(model);
-        (model as any)[propName] = rel.isToMany() ? [] : null;
+        const propName = rel.getFieldNameOnModel(instance);
+        (instance as any)[propName] = rel.isToMany() ? [] : null;
       }
 
       // Set up observables now that all fields exist
-      model.initTracking(false);
-    }
+      instance.initTracking(false);
+
+      return instance;
+    });
 
     // Set scalar fields from raw data
     this.updateModelFields(model, entityName, rawData, getIdentityMap);
