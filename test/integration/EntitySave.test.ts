@@ -144,11 +144,15 @@ describe("Entity Save (Integration)", () => {
 
       // Verify via fresh store
       const freshStore = new RootStore({ db });
-      await freshStore.queryModel(User);
+      const users = await freshStore.queryModel(User);
       const posts = await freshStore.queryModel(Post);
       const hydratedPost = posts.find((p) => p.id === post.id);
+      const hydratedUser = users.find((u) => u.id === user.id);
 
+      // Forward: Post.author → null
       expect(hydratedPost?.author).toBeNull();
+      // Reverse: User.posts → empty
+      expect(hydratedUser?.posts.length).toBe(0);
     });
   });
 
@@ -198,11 +202,15 @@ describe("Entity Save (Integration)", () => {
 
       // Verify via fresh store
       const freshStore = new RootStore({ db });
-      await freshStore.queryModel(Post);
+      const posts = await freshStore.queryModel(Post);
       const users = await freshStore.queryModel(User);
       const hydratedUser = users.find((u) => u.id === user.id);
+      const hydratedPost = posts.find((p) => p.id === post.id);
 
+      // Reverse: User.posts → empty
       expect(hydratedUser?.posts.length).toBe(0);
+      // Forward: Post.author → null
+      expect(hydratedPost?.author).toBeNull();
     });
   });
 
