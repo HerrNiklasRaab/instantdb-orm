@@ -52,47 +52,6 @@ describe("Entity Save (Integration)", () => {
 
       expect(user.isDirty()).toBe(true);
     });
-
-    it("returns true after changing multiple fields on saved entity", async () => {
-      const user = createUser();
-      await store.save(user);
-
-      user.name = "New Name";
-      user.updatedAt = new Date();
-
-      expect(user.isDirty()).toBe(true);
-    });
-
-    it("returns true after removing one-to-one relationship", async () => {
-      const post = createPost();
-      const user = createUser();
-
-      // Save both entities and set up relationship
-      await store.save(user);
-      post.author = user;
-      await store.save(post);
-
-      // Now remove it
-      post.author = null;
-
-      expect(post.isDirty()).toBe(true);
-    });
-
-    it("returns true after removing from one-to-many relationship", async () => {
-      const user = createUser();
-      const post = createPost();
-
-      // Save entities with relationship
-      await store.save(user);
-      await store.save(post);
-      user.posts.push(post);
-      await store.save(user);
-
-      // Now remove it
-      user.posts.pop();
-
-      expect(user.isDirty()).toBe(true);
-    });
   });
 
   describe("save() - basic flow", () => {
@@ -128,58 +87,6 @@ describe("Entity Save (Integration)", () => {
       expect(hydratedUser!.name).toBe("New Name");
     });
 
-    it("persists relationship link to database", async () => {
-      const post = createPost();
-      const user = createUser();
-
-      // Save user first, then link and save post
-      await store.save(user);
-      post.author = user;
-      await store.save(post);
-
-      // Verify relationship in database
-      const result = await db.query({
-        posts: {
-          $: { where: { id: post.id } },
-          author: {},
-        },
-      });
-      const savedPost = (result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0];
-      expect(savedPost?.author?.id).toBe(user.id);
-    });
-
-    it("persists relationship unlink to database", async () => {
-      const post = createPost();
-      const user = createUser();
-
-      // Save user, link to post and save
-      await store.save(user);
-      post.author = user;
-      await store.save(post);
-
-      // Verify link exists
-      let result = await db.query({
-        posts: {
-          $: { where: { id: post.id } },
-          author: {},
-        },
-      });
-      expect((result as { posts?: Array<{ author?: { id: string } }> }).posts?.[0]?.author?.id).toBe(user.id);
-
-      // Now remove the relationship
-      post.author = null;
-      await store.save(post);
-
-      // Verify unlinked
-      result = await db.query({
-        posts: {
-          $: { where: { id: post.id } },
-          author: {},
-        },
-      });
-      expect((result as { posts?: Array<{ author?: { id: string } | null }> }).posts?.[0]?.author).toBeNull();
-    });
-
     it("converts Date to ISO string", async () => {
       const testDate = new Date("2024-06-15T10:30:00.000Z");
       const user = new User("Test");
@@ -190,6 +97,103 @@ describe("Entity Save (Integration)", () => {
       const result = await db.query({ users: { $: { where: { id: user.id } } } });
       const savedUser = (result as { users?: Array<{ testDate: string }> }).users?.[0];
       expect(savedUser?.testDate).toBe(testDate.toISOString());
+    });
+  });
+
+  describe("save() - one-to-one relationships (forward side)", () => {
+    it("persists link via post.author = user", async () => {
+      const post = createPost();
+      const user = createUser();
+
+      await store.save(user);
+      post.author = user;
+
+      // Assert isDirty before save
+      expect(post.isDirty()).toBe(true);
+
+      await store.save(post);
+
+      // Verify via fresh store
+      const freshStore = new RootStore({ db });
+      await freshStore.queryModel(User);
+      const posts = await freshStore.queryModel(Post);
+      const hydratedPost = posts.find((p) => p.id === post.id);
+
+      expect(hydratedPost?.author?.id).toBe(user.id);
+    });
+
+    it("persists unlink via post.author = null", async () => {
+      const post = createPost();
+      const user = createUser();
+
+      // Setup: link author
+      await store.save(user);
+      post.author = user;
+      await store.save(post);
+
+      // Unlink and assert isDirty
+      post.author = null;
+      expect(post.isDirty()).toBe(true);
+
+      await store.save(post);
+
+      // Verify via fresh store
+      const freshStore = new RootStore({ db });
+      await freshStore.queryModel(User);
+      const posts = await freshStore.queryModel(Post);
+      const hydratedPost = posts.find((p) => p.id === post.id);
+
+      expect(hydratedPost?.author).toBeNull();
+    });
+  });
+
+  describe("save() - one-to-many relationships (reverse side)", () => {
+    it("persists link via user.posts.push(post)", async () => {
+      const user = createUser();
+      const post = createPost();
+
+      await store.save(user);
+      await store.save(post);
+      user.posts.push(post);
+
+      // Assert isDirty before save
+      expect(user.isDirty()).toBe(true);
+
+      await store.save(user);
+
+      // Verify via fresh store
+      const freshStore = new RootStore({ db });
+      await freshStore.queryModel(Post);
+      const users = await freshStore.queryModel(User);
+      const hydratedUser = users.find((u) => u.id === user.id);
+
+      expect(hydratedUser?.posts.length).toBe(1);
+      expect(hydratedUser?.posts[0]?.id).toBe(post.id);
+    });
+
+    it("persists unlink via removing from user.posts", async () => {
+      const user = createUser();
+      const post = createPost();
+
+      // Setup: link post
+      await store.save(user);
+      await store.save(post);
+      user.posts.push(post);
+      await store.save(user);
+
+      // Remove and assert isDirty
+      user.posts.pop();
+      expect(user.isDirty()).toBe(true);
+
+      await store.save(user);
+
+      // Verify via fresh store
+      const freshStore = new RootStore({ db });
+      await freshStore.queryModel(Post);
+      const users = await freshStore.queryModel(User);
+      const hydratedUser = users.find((u) => u.id === user.id);
+
+      expect(hydratedUser?.posts.length).toBe(0);
     });
   });
 
