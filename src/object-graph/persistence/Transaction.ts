@@ -149,7 +149,7 @@ export class Transaction {
 
     // Restore relationships
     for (const rel of meta.relationshipFields) {
-      const propName = getPropertyName(model, rel.fieldName);
+      const propName = rel.getFieldNameOnModel(model);
       const savedValue = snapshot.relationships.get(rel.fieldName);
 
       if (rel.isToOne()) {

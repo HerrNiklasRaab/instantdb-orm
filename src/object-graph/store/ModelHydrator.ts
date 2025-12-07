@@ -8,7 +8,7 @@ import {
 } from "./ModelRegistry";
 import type { EntityName } from "./EntityMeta";
 import type { ModelInstanceFor } from "./types";
-import { getEntityMeta, getPropertyName } from "./EntityMeta";
+import { getEntityMeta } from "./EntityMeta";
 import type { RawEntityData } from "./types";
 import { RootStore } from "./RootStore";
 
@@ -46,13 +46,13 @@ export class ModelHydrator {
       for (const field of meta.scalarFields) {
         // Skip modelType (STI discriminator is a getter, not a settable field)
         if (field.fieldName === "modelType") continue;
-        const propName = getPropertyName(model, field.fieldName);
+        const propName = field.getFieldNameOnModel(model);
         (model as any)[propName] = undefined;
       }
 
       // Initialize relationship fields
       for (const rel of meta.relationshipFields) {
-        const propName = getPropertyName(model, rel.fieldName);
+        const propName = rel.getFieldNameOnModel(model);
         (model as any)[propName] = rel.isToMany() ? [] : null;
       }
 
@@ -103,7 +103,7 @@ export class ModelHydrator {
         if (field.fieldName === "modelType") continue; // Don't update modelType (STI discriminator is a getter)
         const value = rawData[field.fieldName];
         if (value !== undefined) {
-          const propName = getPropertyName(model, field.fieldName);
+          const propName = field.getFieldNameOnModel(model);
           record[propName] = field.isDate && value != null
             ? new Date(value as string | number)
             : value;
@@ -142,9 +142,7 @@ export class ModelHydrator {
         : [nestedData];
 
       const targetMap = getIdentityMap(rel.targetEntity);
-
-      // Use private backing field if exists
-      const propName = getPropertyName(model, rel.fieldName);
+      const propName = rel.getFieldNameOnModel(model);
 
       if (rel.isToOne()) {
         // has-one: InstantDB returns [{ id: '...' }] or { id: '...' } for has-one relationships
@@ -247,8 +245,7 @@ export class ModelHydrator {
     if (!reverseRel) return;
 
     const targetRecord = targetModel as unknown as Record<string, unknown>;
-    // Use private backing field if exists
-    const propName = getPropertyName(targetModel, reverseRel.fieldName);
+    const propName = reverseRel.getFieldNameOnModel(targetModel);
 
     if (reverseRel.isToMany()) {
       const array = targetRecord[propName] as Model[];

@@ -22,19 +22,26 @@ export interface SchemaConfig {
   links: Record<string, LinkDef>;
 }
 
-export interface FieldMeta {
-  readonly fieldName: string;
+export abstract class FieldMeta {
+  abstract readonly fieldName: string;
+
+  getFieldNameOnModel(entity: object): string {
+    const privateName = "_" + this.fieldName;
+    return privateName in entity ? privateName : this.fieldName;
+  }
 }
 
-export class ScalarFieldMeta implements FieldMeta {
+export class ScalarFieldMeta extends FieldMeta {
   constructor(
     readonly fieldName: string,
     readonly valueType: string,
     readonly isDate: boolean
-  ) {}
+  ) {
+    super();
+  }
 }
 
-export class RelationshipFieldMeta implements FieldMeta {
+export class RelationshipFieldMeta extends FieldMeta {
   readonly fieldName: string;
   readonly targetEntity: EntityName;
   readonly cardinality: "one" | "many";
@@ -44,6 +51,7 @@ export class RelationshipFieldMeta implements FieldMeta {
     link: LinkDef,
     readonly isForward: boolean
   ) {
+    super();
     const side = isForward ? link.forward : link.reverse;
     const otherSide = isForward ? link.reverse : link.forward;
 
@@ -154,7 +162,7 @@ function validateTimestampFields(
     if (!fields.includes(field)) {
       throw new Error(
         `Entity "${entityName}" is missing required field "${field}". ` +
-          `All entities must have createdAt, updatedAt, and deletedAt fields.`
+        `All entities must have createdAt, updatedAt, and deletedAt fields.`
       );
     }
   }

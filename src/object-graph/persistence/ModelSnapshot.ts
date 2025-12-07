@@ -1,5 +1,5 @@
 import type { Model } from "../Model";
-import { getEntityMeta, getPropertyName } from "../store/EntityMeta";
+import { getEntityMeta } from "../store/EntityMeta";
 
 /**
  * Captures a model's state at a point in time.
@@ -20,13 +20,13 @@ export class ModelSnapshot {
 
     // Capture scalar values
     for (const field of meta.scalarFields) {
-      const propName = getPropertyName(model, field.fieldName);
+      const propName = field.getFieldNameOnModel(model);
       this.scalars.set(field.fieldName, record[propName]);
     }
 
     // Capture relationship IDs
     for (const rel of meta.relationshipFields) {
-      const propName = getPropertyName(model, rel.fieldName);
+      const propName = rel.getFieldNameOnModel(model);
       const value = record[propName];
 
       if (rel.isToOne()) {

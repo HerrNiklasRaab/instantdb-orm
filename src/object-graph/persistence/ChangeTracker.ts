@@ -1,7 +1,7 @@
 import { observe } from "mobx";
 import type { Model } from "../Model";
 import type { EntityName } from "../store/EntityMeta";
-import { getEntityMeta, getPropertyName } from "../store/EntityMeta";
+import { getEntityMeta } from "../store/EntityMeta";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 
@@ -39,7 +39,7 @@ export class ChangeTracker {
     // Observe scalar field changes (use private backing field if exists)
     for (const field of meta.scalarFields) {
       if (field.fieldName === "id") continue;
-      const propName = getPropertyName(this.model, field.fieldName);
+      const propName = field.getFieldNameOnModel(this.model);
 
       try {
         const disposer = observe(
@@ -59,7 +59,7 @@ export class ChangeTracker {
 
     // Observe relationship changes (use private backing field if exists)
     for (const rel of meta.relationshipFields) {
-      const propName = getPropertyName(this.model, rel.fieldName);
+      const propName = rel.getFieldNameOnModel(this.model);
 
       if (rel.isToOne()) {
         // observable.ref - observe the reference change
