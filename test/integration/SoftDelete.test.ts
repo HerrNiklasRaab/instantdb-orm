@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import { User } from "../entities/User";
 import { Post } from "../entities/Post";
+import { UserProfile } from "../entities/Profile";
 import {
   setupTestDatabase,
   type TestInstantDBClient,
@@ -106,8 +107,8 @@ describe("Soft Delete (Integration)", () => {
     });
   });
 
-  describe("relationship cleanup", () => {
-    it("sets forward reference to null when target is deleted during hydration", async () => {
+  describe("relationship cleanup - one-to-many (Post ↔ User)", () => {
+    it("nullifies post.author when user is deleted", async () => {
       // Setup via store
       const user = new User("Test User");
       const post = new Post("Test Post");
@@ -126,7 +127,7 @@ describe("Soft Delete (Integration)", () => {
       expect(hydratedPost?.author).toBeNull();
     });
 
-    it("removes deleted entity from reverse arrays during hydration", async () => {
+    it("removes post from user.posts when post is deleted", async () => {
       // Setup via store
       const user = new User("Test User");
       const post1 = new Post("Post 1");
@@ -148,7 +149,30 @@ describe("Soft Delete (Integration)", () => {
       expect(hydratedUser?.posts.length).toBe(1);
       expect(hydratedUser?.posts[0]?.id).toBe(post2.id);
     });
+  });
 
+  describe("relationship cleanup - one-to-one (User ↔ Profile)", () => {
+    it("nullifies user.profile when profile is deleted", async () => {
+      // Setup via store
+      const user = new User("Test User");
+      const profile = new UserProfile();
+      user.profile = profile;
+      await store.save(user);
+      await store.save(profile);
+      await store.delete(profile);
+
+      // Verify via storeB
+      const storeB = new RootStore({ db });
+      await storeB.queryModel(User);
+      await storeB.queryModel(UserProfile);
+
+      const hydratedUser = storeB.getById(User, user.id);
+      expect(hydratedUser).toBeDefined();
+      expect(hydratedUser?.profile).toBeNull();
+    });
+  });
+
+  describe("relationship cleanup - reactive sync", () => {
     it("cleans up relationships via reactive sync", async () => {
       // Setup via store
       const user = new User("Test User");
