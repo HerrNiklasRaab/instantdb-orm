@@ -100,7 +100,7 @@ describe("Entity Save (Integration)", () => {
     });
   });
 
-  describe("save() - one-to-one relationships (forward side)", () => {
+  describe("save() - one-to-one relationships", () => {
     it("persists link via post.author = user", async () => {
       const post = createPost();
       const user = createUser();
@@ -115,11 +115,16 @@ describe("Entity Save (Integration)", () => {
 
       // Verify via fresh store
       const freshStore = new RootStore({ db });
-      await freshStore.queryModel(User);
+      const users = await freshStore.queryModel(User);
       const posts = await freshStore.queryModel(Post);
       const hydratedPost = posts.find((p) => p.id === post.id);
+      const hydratedUser = users.find((u) => u.id === user.id);
 
+      // Forward: Post.author → User
       expect(hydratedPost?.author?.id).toBe(user.id);
+      // Reverse: User.posts → Post[]
+      expect(hydratedUser?.posts.length).toBe(1);
+      expect(hydratedUser?.posts[0]).toBe(hydratedPost);
     });
 
     it("persists unlink via post.author = null", async () => {
@@ -147,7 +152,7 @@ describe("Entity Save (Integration)", () => {
     });
   });
 
-  describe("save() - one-to-many relationships (reverse side)", () => {
+  describe("save() - one-to-many relationships", () => {
     it("persists link via user.posts.push(post)", async () => {
       const user = createUser();
       const post = createPost();
@@ -163,12 +168,16 @@ describe("Entity Save (Integration)", () => {
 
       // Verify via fresh store
       const freshStore = new RootStore({ db });
-      await freshStore.queryModel(Post);
+      const posts = await freshStore.queryModel(Post);
       const users = await freshStore.queryModel(User);
       const hydratedUser = users.find((u) => u.id === user.id);
+      const hydratedPost = posts.find((p) => p.id === post.id);
 
+      // Reverse: User.posts → Post[]
       expect(hydratedUser?.posts.length).toBe(1);
-      expect(hydratedUser?.posts[0]?.id).toBe(post.id);
+      expect(hydratedUser?.posts[0]).toBe(hydratedPost);
+      // Forward: Post.author → User
+      expect(hydratedPost?.author).toBe(hydratedUser);
     });
 
     it("persists unlink via removing from user.posts", async () => {

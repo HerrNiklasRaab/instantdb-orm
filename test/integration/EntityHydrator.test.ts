@@ -146,20 +146,7 @@ describe("RootStore hydration (Integration)", () => {
   });
 
   describe("one-to-many relationships (Post ↔ User)", () => {
-    it("resolves both directions when both entities exist", async () => {
-      const user = await createUserInStoreA({ name: "John" });
-      const post = await createPostInStoreA({ author: user });
-
-      await storeB.queryAll();
-      const hydratedUser = storeB.getById(User, user.id);
-      const hydratedPost = storeB.getById(Post, post.id);
-
-      // Forward: Post.author → User
-      expect(hydratedPost!.author).toBe(hydratedUser);
-      // Reverse: User.posts → Post[]
-      expect(hydratedUser!.posts).toContain(hydratedPost);
-      expect(hydratedUser!.posts.length).toBe(1);
-    });
+    // "resolves both directions" merged into EntitySave.test.ts "save() - one-to-one relationships"
 
     it("returns null when target does not exist", async () => {
       const postId = id();
@@ -233,27 +220,7 @@ describe("RootStore hydration (Integration)", () => {
   });
 
   describe("one-to-one relationships (User ↔ Profile)", () => {
-    it("resolves both directions when both entities exist", async () => {
-      const user = await createUserInStoreA({ name: "John" });
-      const profile = await createProfileInStoreA({ bio: "Hello", user });
-      user.profile = profile;
-      await storeA.save(user);
-
-      await storeB.query({
-        users: {
-          $: { where: { id: user.id } },
-          profile: {},
-        },
-      });
-
-      const hydratedUser = storeB.getById(User, user.id);
-      const hydratedProfile = storeB.getById(UserProfile, profile.id);
-
-      // Forward: User.profile → Profile
-      expect(hydratedUser!.profile).toBe(hydratedProfile);
-      // Reverse: Profile.user → User
-      expect(hydratedProfile!.user).toBe(hydratedUser);
-    });
+    // "resolves both directions" merged into EntitySave.test.ts "save() - one-to-many relationships"
 
     it("resolves both directions via late hydration", async () => {
       const user = await createUserInStoreA({ name: "John" });
