@@ -16,6 +16,11 @@ describe("Transaction (Integration)", () => {
     store = new RootStore({ db });
   });
 
+  /** Creates a fresh store to verify persistence */
+  function createVerificationStore(): RootStore {
+    return new RootStore({ db });
+  }
+
   function createUser(name = "Test User"): User {
     return new User(name);
   }
@@ -42,12 +47,12 @@ describe("Transaction (Integration)", () => {
       // Commit transaction
       await store.commitTransaction();
 
-      // Verify changes were persisted
-      const result1 = await db.query({ users: { $: { where: { id: user1.id } } } });
-      const result2 = await db.query({ users: { $: { where: { id: user2.id } } } });
+      // Verify changes were persisted via fresh store
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
 
-      expect((result1 as { users?: Array<{ name: string }> }).users?.[0]?.name).toBe("Updated User 1");
-      expect((result2 as { users?: Array<{ name: string }> }).users?.[0]?.name).toBe("Updated User 2");
+      expect(storeB.getById(User, user1.id)?.name).toBe("Updated User 1");
+      expect(storeB.getById(User, user2.id)?.name).toBe("Updated User 2");
     });
 
     it("resets change trackers after commit", async () => {
@@ -307,9 +312,10 @@ describe("Transaction (Integration)", () => {
       user.name = "Saved During Transaction";
       await store.save(user);
 
-      // Verify it was persisted
-      const result = await db.query({ users: { $: { where: { id: user.id } } } });
-      expect((result as { users?: Array<{ name: string }> }).users?.[0]?.name).toBe("Saved During Transaction");
+      // Verify it was persisted via fresh store
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      expect(storeB.getById(User, user.id)?.name).toBe("Saved During Transaction");
 
       // Complete the transaction (no additional changes to commit)
       await store.commitTransaction();
