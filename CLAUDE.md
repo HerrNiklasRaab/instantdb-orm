@@ -20,9 +20,11 @@ Abstract base class for all domain entities. Every model must:
 
 ```typescript
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
+import { Model, model, field } from "@upfor/sync";
 
 @model
 export class User extends Model {
+  @field()
   private _name: string;
 
   protected override makeObservable(): void {
@@ -121,12 +123,46 @@ export class ChessMatch extends Match { }  // → chessMatchs table
 export class SkiMatch extends Match { }    // → skiMatchs table
 ```
 
+## Decorators
+
+### `@model` Decorator
+Marks a class as a persistable entity. Required on all concrete model classes.
+
+### `@field()` Decorator
+Registers field-to-schema attribute mappings for hydration. Use when the field name differs from the schema attribute name.
+
+```typescript
+import { Model, model, field } from "@upfor/sync";
+
+@model
+export class User extends Model {
+  @field()  // Maps _name → name in schema (strips _ prefix)
+  private _name: string;
+
+  @field({ attributeName: "displayName" })  // Maps customField → displayName in schema
+  public customField: string;
+}
+```
+
+**Why it's needed:** Hydration uses `Object.create(prototype)` to bypass constructors. Without the decorator, the hydrator cannot discover field-to-schema mappings since the instance has no properties until the constructor runs.
+
+**When to use:**
+- Private fields with `_` prefix (maps `_foo` → `foo` automatically)
+- Any field where the field name differs from the schema attribute name (use `attributeName` option)
+- All timestamp fields in Model base class already have `@field()` applied
+
+**When NOT needed:**
+- Public fields where field name matches schema attribute name
+- Computed getters with no backing field
+- Relationship fields (handled separately)
+
 ## Creating a Model
 
 1. **Extend Model** and add `@model` decorator
-2. **Override `makeObservable()`** - call `super.makeObservable()` first, then register own fields
-3. **Use `observable.ref`** for single relations, `observable.shallow` for arrays
-4. **Constructors can have required params and validation** - hydration bypasses constructors
+2. **Add `@field()` decorator** to private backing fields with `_` prefix
+3. **Override `makeObservable()`** - call `super.makeObservable()` first, then register own fields
+4. **Use `observable.ref`** for single relations, `observable.shallow` for arrays
+5. **Constructors can have required params and validation** - hydration bypasses constructors
 
 ### Field Initialization Rules
 
@@ -347,6 +383,7 @@ export class ChessMatchRequest extends MatchRequest {
 |------|---------|
 | `src/object-graph/Model.ts` | Base class for all models |
 | `src/object-graph/decorators/model.ts` | `@model` decorator, inheritance handling |
+| `src/object-graph/decorators/field.ts` | `@field` decorator, private field registry |
 | `src/object-graph/IdentityMap.ts` | Instance caching by ID |
 | `src/object-graph/persistence/ChangeTracker.ts` | Mutation tracking |
 | `src/object-graph/store/RootStore.ts` | Central persistence coordinator |
