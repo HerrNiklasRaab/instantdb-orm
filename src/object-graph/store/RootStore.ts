@@ -5,6 +5,7 @@ import { getModelClass } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
 import type { TxChunk, Unsubscribe } from "../persistence/types";
+import { Transaction, type TransactionStoreAccess } from "../persistence/Transaction";
 import type {
   RawEntityData,
   RootStoreConfig,
@@ -15,10 +16,11 @@ import type {
 // Use Function & prototype pattern to allow private constructors (hydration-only models)
 type ModelClass<T extends Model = Model> = (abstract new (...args: any[]) => T) | (Function & { prototype: T });
 
-export class RootStore {
+export class RootStore implements TransactionStoreAccess {
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private subscriptions = new Map<string, { close(): void }>();
   private hydrator: ModelHydrator;
+  private activeTransaction: Transaction | null = null;
   readonly db: InstantDBClient;
 
   constructor(config: RootStoreConfig) {
@@ -27,16 +29,98 @@ export class RootStore {
     this.initializeIdentityMaps();
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Transaction API
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Check if a transaction is active */
+  get hasActiveTransaction(): boolean {
+    return this.activeTransaction !== null;
+  }
+
+  /** Start a new transaction - captures current state for rollback */
+  startTransaction(): void {
+    if (this.activeTransaction) {
+      throw new Error("Transaction already active");
+    }
+    this.activeTransaction = new Transaction(this);
+
+    // Register callbacks to track new models added during transaction
+    for (const identityMap of this.identityMaps.values()) {
+      identityMap.setOnModelAdded((model) => {
+        this.activeTransaction?.registerNew(model);
+      });
+    }
+  }
+
+  /** Commit all dirty models atomically */
+  async commitTransaction(): Promise<void> {
+    if (!this.activeTransaction) {
+      throw new Error("No active transaction");
+    }
+    try {
+      await this.activeTransaction.commit();
+    } finally {
+      this.clearTransactionHooks();
+    }
+  }
+
+  /** Rollback all changes to pre-transaction state */
+  undoTransaction(): void {
+    if (!this.activeTransaction) {
+      throw new Error("No active transaction");
+    }
+    try {
+      this.activeTransaction.rollback();
+    } finally {
+      this.clearTransactionHooks();
+    }
+  }
+
+  private clearTransactionHooks(): void {
+    for (const identityMap of this.identityMaps.values()) {
+      identityMap.clearOnModelAdded();
+    }
+    this.activeTransaction = null;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TransactionStoreAccess implementation
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  getIdentityMaps(): Map<string, IdentityMap<Model>> {
+    return this.identityMaps;
+  }
+
+  getIdentityMapByName(entityName: string): IdentityMap<Model> {
+    const map = this.identityMaps.get(entityName);
+    if (!map) {
+      throw new Error(`No identity map for entity: ${entityName}`);
+    }
+    return map;
+  }
+
+  getLinkLabel(entityName: string, linkName: string): string {
+    const meta = getEntityMeta(entityName);
+    const rel = meta.relationshipFields.find((r) => r.linkName === linkName);
+    return rel?.fieldName ?? linkName;
+  }
+
   /** Save model changes to the database */
   async save(model: Model): Promise<void> {
     if (!model._tracker!.hasChanges()) {
       return;
     }
 
+    // Auto-add to identity map if not present (enables automatic transaction tracking)
+    const entityName = model.entityName;
+    const identityMap = this.getIdentityMapByName(entityName);
+    if (!identityMap.has(model.id)) {
+      identityMap.set(model);
+    }
+
     // Auto-update timestamp before getting changes
     model.updatedAt = new Date();
-
-    const entityName = model.entityName;
     const changes = model._tracker!.getChanges();
     let tx: TxChunk = this.db.tx[entityName][model.id];
 
@@ -69,12 +153,6 @@ export class RootStore {
   async delete(model: Model): Promise<void> {
     model.deletedAt = new Date();
     await this.save(model);
-  }
-
-  private getLinkLabel(entityName: string, linkName: string): string {
-    const meta = getEntityMeta(entityName);
-    const rel = meta.relationshipFields.find((r) => r.linkName === linkName);
-    return rel?.fieldName ?? linkName;
   }
 
   private initializeIdentityMaps(): void {
@@ -117,20 +195,12 @@ export class RootStore {
     }
   }
 
-  private getIdentityMapByName(entityName: string): IdentityMap<Model> {
-    const map = this.identityMaps.get(entityName);
-    if (!map) {
-      throw new Error(`No identity map for entity: ${entityName}`);
-    }
-    return map;
-  }
-
   /** Get identity map for an entity class */
   getIdentityMap<T extends Model>(
     EntityClass: ModelClass<T>
   ): IdentityMap<T> {
     const entityName = getEntityNameFromClass(EntityClass);
-    return this.getIdentityMapByName(entityName) as IdentityMap<T>;
+    return this.getIdentityMapByName(entityName) as unknown as IdentityMap<T>;
   }
 
   /** Get all entities of a class */

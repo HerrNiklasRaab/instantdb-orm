@@ -57,7 +57,7 @@ export class ModelHydrator {
       }
 
       // Set up observables now that all fields exist
-      model.initTracking();
+      model.initTracking(false);
     }
 
     // Set scalar fields from raw data
@@ -225,7 +225,7 @@ export class ModelHydrator {
       if (!SubClass) {
         throw new Error(
           `Unknown discriminator '${discriminatorValue}' for entity '${entityName}'. ` +
-            `Did you register a @model class with 'get modelType() { return "${discriminatorValue}"; }'?`
+          `Did you register a @model class with 'get modelType() { return "${discriminatorValue}"; }'?`
         );
       }
 

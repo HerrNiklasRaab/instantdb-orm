@@ -3,6 +3,7 @@ import type { Model } from "./Model";
 
 export class IdentityMap<T extends Model> {
   private cache: Map<string, T> = new Map();
+  private onModelAdded?: (model: T) => void;
 
   constructor() {
     makeObservable<IdentityMap<T>, "cache">(this, {
@@ -11,6 +12,21 @@ export class IdentityMap<T extends Model> {
       delete: action,
       clear: action,
     });
+  }
+
+  /**
+   * Set a callback to be invoked when a new model is added.
+   * Used by transactions to track newly created models.
+   */
+  setOnModelAdded(callback: (model: T) => void): void {
+    this.onModelAdded = callback;
+  }
+
+  /**
+   * Clear the onModelAdded callback.
+   */
+  clearOnModelAdded(): void {
+    this.onModelAdded = undefined;
   }
 
   get(id: string): T | undefined {
@@ -22,7 +38,11 @@ export class IdentityMap<T extends Model> {
   }
 
   set(model: T): T {
+    const isNew = !this.cache.has(model.id);
     this.cache.set(model.id, model);
+    if (isNew && this.onModelAdded) {
+      this.onModelAdded(model);
+    }
     return model;
   }
 
@@ -33,6 +53,9 @@ export class IdentityMap<T extends Model> {
     }
     const model = factory();
     this.cache.set(id, model);
+    if (this.onModelAdded) {
+      this.onModelAdded(model);
+    }
     return model;
   }
 
