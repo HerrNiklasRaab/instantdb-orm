@@ -86,6 +86,18 @@ export class ModelHydrator {
       .filter((model): model is ModelInstanceFor<K> => model !== null);
   }
 
+  /**
+   * Re-hydrate an existing model from raw data.
+   * Used for rollback/restore operations.
+   */
+  rehydrate(
+    model: Model,
+    rawData: RawEntityData,
+    getIdentityMap: GetIdentityMap
+  ): void {
+    this.updateModelFields(model, model.entityName as EntityName, rawData, getIdentityMap);
+  }
+
   private updateModelFields(
     model: Model,
     entityName: EntityName,
@@ -131,8 +143,9 @@ export class ModelHydrator {
     for (const rel of meta.relationshipFields) {
       const nestedData = rawData[rel.fieldName];
 
-      // Skip if no nested relationship data
-      if (!nestedData) continue;
+      // Skip if relationship data wasn't included in query (undefined)
+      // But process null explicitly - it means "clear the relationship"
+      if (nestedData === undefined) continue;
 
       // Normalize nested data to array format
       // InstantDB returns arrays for simple queries, but objects for deeply nested queries
@@ -161,6 +174,9 @@ export class ModelHydrator {
             // Set up bidirectional relationship
             this.setReverseRelationship(model, targetModel, rel);
           }
+        } else {
+          // Empty array means no relationship - set to null
+          record[propName] = null;
         }
       } else {
         // has-many: Clear and rebuild the array

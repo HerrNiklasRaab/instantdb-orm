@@ -106,6 +106,10 @@ export class RootStore implements TransactionStoreAccess {
     return rel?.fieldName ?? linkName;
   }
 
+  rehydrateModel(model: Model, rawData: RawEntityData): void {
+    this.hydrator.rehydrate(model, rawData, this.getIdentityMapByName.bind(this));
+  }
+
   /** Save model changes to the database */
   async save(model: Model): Promise<void> {
     if (!model._tracker!.hasChanges()) {

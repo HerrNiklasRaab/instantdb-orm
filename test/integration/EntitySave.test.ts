@@ -118,6 +118,13 @@ describe("Entity Save (Integration)", () => {
       expect(user.isDirty()).toBe(true);
       await store.save(user);
 
+      // Verify link via same store (rehydration clears relationship correctly)
+      await store.queryModel(User);
+      await store.queryModel(UserProfile);
+
+      expect(user.profile).toBe(profile);
+      expect(profile.user).toBe(user);
+
       // Verify link via fresh store
       let freshStore = new RootStore({ db });
       let users = await freshStore.queryModel(User);
@@ -132,6 +139,13 @@ describe("Entity Save (Integration)", () => {
       user.profile = null;
       expect(user.isDirty()).toBe(true);
       await store.save(user);
+
+      // Verify unlink via same store (rehydration clears relationship correctly)
+      await store.queryModel(User);
+      await store.queryModel(UserProfile);
+
+      expect(user.profile).toBeNull();
+      expect(profile.user).toBeNull();
 
       // Verify unlink via fresh store
       freshStore = new RootStore({ db });
@@ -158,6 +172,14 @@ describe("Entity Save (Integration)", () => {
       expect(user.isDirty()).toBe(true);
       await store.save(user);
 
+      // Verify link via same store (rehydration)
+      await store.queryModel(Post);
+      await store.queryModel(User);
+
+      expect(user.posts.length).toBe(1);
+      expect(user.posts[0]).toBe(post);
+      expect(post.author).toBe(user);
+
       // Verify link via fresh store
       let freshStore = new RootStore({ db });
       let posts = await freshStore.queryModel(Post);
@@ -173,6 +195,13 @@ describe("Entity Save (Integration)", () => {
       user.posts.pop();
       expect(user.isDirty()).toBe(true);
       await store.save(user);
+
+      // Verify unlink via same store (rehydration)
+      await store.queryModel(Post);
+      await store.queryModel(User);
+
+      expect(user.posts.length).toBe(0);
+      expect(post.author).toBeNull();
 
       // Verify unlink via fresh store
       freshStore = new RootStore({ db });
@@ -197,6 +226,14 @@ describe("Entity Save (Integration)", () => {
       expect(post.isDirty()).toBe(true);
       await store.save(post);
 
+      // Verify link via same store (rehydration)
+      await store.queryModel(User);
+      await store.queryModel(Post);
+
+      expect(post.author).toBe(user);
+      expect(user.posts.length).toBe(1);
+      expect(user.posts[0]).toBe(post);
+
       // Verify link via fresh store
       let freshStore = new RootStore({ db });
       let users = await freshStore.queryModel(User);
@@ -212,6 +249,13 @@ describe("Entity Save (Integration)", () => {
       post.author = null;
       expect(post.isDirty()).toBe(true);
       await store.save(post);
+
+      // Verify unlink via same store (rehydration)
+      await store.queryModel(User);
+      await store.queryModel(Post);
+
+      expect(post.author).toBeNull();
+      expect(user.posts.length).toBe(0);
 
       // Verify unlink via fresh store
       freshStore = new RootStore({ db });

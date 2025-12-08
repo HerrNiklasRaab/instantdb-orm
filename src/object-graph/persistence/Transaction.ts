@@ -1,7 +1,6 @@
 import { runInAction } from "mobx";
 import type { Model } from "../Model";
 import type { IdentityMap } from "../IdentityMap";
-import { getEntityMeta, getPropertyName } from "../store/EntityMeta";
 import type { TxChunk } from "./types";
 import { ModelSnapshot } from "./ModelSnapshot";
 
@@ -14,6 +13,7 @@ export interface TransactionStoreAccess {
   getIdentityMaps(): Map<string, IdentityMap<Model>>;
   getIdentityMapByName(entityName: string): IdentityMap<Model>;
   getLinkLabel(entityName: string, linkName: string): string;
+  rehydrateModel(model: Model, rawData: { id: string; [key: string]: unknown }): void;
 }
 
 /**
@@ -134,54 +134,15 @@ export class Transaction {
   }
 
   /**
-   * Restore a model to its snapshot state.
+   * Restore a model to its snapshot state using hydration.
    */
   private restoreFromSnapshot(model: Model, snapshot: ModelSnapshot): void {
-    const entityName = model.entityName;
-    const meta = getEntityMeta(entityName);
-    const record = model as unknown as Record<string, unknown>;
-
-    // Restore scalar values
-    for (const [fieldName, value] of snapshot.scalars) {
-      const propName = getPropertyName(model, fieldName);
-      record[propName] = value;
-    }
-
-    // Restore relationships
-    for (const rel of meta.relationshipFields) {
-      const propName = rel.getFieldNameOnModel(model);
-      const savedValue = snapshot.relationships.get(rel.fieldName);
-
-      if (rel.isToOne()) {
-        const id = savedValue as string | null;
-        if (id === null) {
-          record[propName] = null;
-        } else {
-          const targetMap = this.store.getIdentityMapByName(rel.targetEntity);
-          record[propName] = targetMap.get(id) ?? null;
-        }
-      } else {
-        const ids = (savedValue as string[]) ?? [];
-        const targetMap = this.store.getIdentityMapByName(rel.targetEntity);
-        const models = ids
-          .map((id) => targetMap.get(id))
-          .filter((m): m is Model => m !== undefined);
-
-        // Replace array contents in-place to preserve MobX observable
-        const arr = record[propName] as Model[];
-        if (Array.isArray(arr)) {
-          arr.length = 0;
-          arr.push(...models);
-        } else {
-          record[propName] = models;
-        }
-      }
-    }
+    const rawData = snapshot.toRawEntityData(model.id);
+    this.store.rehydrateModel(model, rawData);
 
     // Reset tracker state
     if (snapshot.wasNew) {
       // Model was new - keep it marked as new
-      // (tracker.reset marks it as not new, so we need special handling)
       model._tracker?.dispose();
       model.initTracking();
     } else {

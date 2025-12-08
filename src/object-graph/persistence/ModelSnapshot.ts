@@ -1,5 +1,6 @@
 import type { Model } from "../Model";
 import { getEntityMeta } from "../store/EntityMeta";
+import type { RawEntityData } from "../store/types";
 
 /**
  * Captures a model's state at a point in time.
@@ -36,5 +37,25 @@ export class ModelSnapshot {
     }
 
     this.wasNew = wasNew ?? model._tracker?.isNew ?? true;
+  }
+
+  toRawEntityData(id: string): RawEntityData {
+    const data: RawEntityData = { id };
+
+    for (const [fieldName, value] of this.scalars) {
+      data[fieldName] = value instanceof Date ? value.toISOString() : value;
+    }
+
+    for (const [fieldName, value] of this.relationships) {
+      if (value === null) {
+        data[fieldName] = null;
+      } else if (Array.isArray(value)) {
+        data[fieldName] = value.map((relId) => ({ id: relId }));
+      } else {
+        data[fieldName] = [{ id: value }];
+      }
+    }
+
+    return data;
   }
 }
