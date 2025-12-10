@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   esbuild: {
-    target: "es2022",
+    target: "es2017",
     // This ensures class fields are defined properly for MobX
     define: { "import.meta.vitest": "undefined" },
   },

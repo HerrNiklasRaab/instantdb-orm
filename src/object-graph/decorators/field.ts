@@ -16,14 +16,10 @@ const PRIVATE_FIELD_REGISTRY = new Map<Function, Map<string, string>>();
  * }
  */
 export function field(options?: { attributeName?: string }) {
-  return function (target: any, backingFieldName: string): void {
-    // Handle potential undefined target during decorator initialization
+  return function (target: any, context: string): void {
+    // Legacy TypeScript experimental decorator format: context is string (property name)
+    const backingFieldName = context;
     const ModelClass = target?.constructor ?? target;
-
-    if (!ModelClass) {
-      console.warn(`@field decorator called with invalid target for field: ${backingFieldName}`);
-      return;
-    }
 
     const attributeName =
       options?.attributeName ??
