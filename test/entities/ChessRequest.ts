@@ -1,9 +1,9 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
 import { model, field } from "../../src/object-graph";
-import { MatchRequest } from "./MatchRequest";
+import { Request } from "./Request";
 
 @model
-export class ChessMatchRequest extends MatchRequest {
+export class ChessRequest extends Request {
   get modelType(): "chess" {
     return "chess";
   }

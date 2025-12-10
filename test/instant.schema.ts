@@ -26,7 +26,7 @@ const _schema = i.schema({
       updatedAt: i.date().indexed(),
       deletedAt: i.date().indexed().optional(),
     }),
-    matchRequests: i.entity({
+    requests: i.entity({
       modelType: i.string(), // discriminator: 'chess' | 'ski'
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
@@ -39,7 +39,7 @@ const _schema = i.schema({
       // Soft delete
       deletedAt: i.date().indexed().optional(),
     }),
-    // MTI: Each concrete class has its own table (separate from STI matchRequests)
+    // MTI: Each concrete class has its own table (separate from STI requests)
     chessMatchs: i.entity({
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
@@ -92,16 +92,16 @@ const _schema = i.schema({
         label: "referrals",
       },
     },
-    matchRequestsRequester: {
+    requestsRequester: {
       forward: {
-        on: "matchRequests",
+        on: "requests",
         has: "one",
         label: "requester",
       },
       reverse: {
         on: "users",
         has: "many",
-        label: "matchRequests",
+        label: "requests",
       },
     },
     // MTI links: each concrete table has its own relationship

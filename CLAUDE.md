@@ -81,25 +81,25 @@ Multiple classes share one database table. Use when subclasses have similar fiel
 
 ```typescript
 // Abstract base - NO @model
-export abstract class MatchRequest extends Model {
+export abstract class Request extends Model {
   abstract readonly modelType: string;  // Discriminator field
   // shared fields...
 }
 
 // Concrete - HAS @model + modelType getter
 @model
-export class ChessMatchRequest extends MatchRequest {
+export class ChessRequest extends Request {
   get modelType(): "chess" { return "chess"; }  // Determines table storage
   // chess-specific fields...
 }
 
 @model
-export class SkiMatchRequest extends MatchRequest {
+export class SkiRequest extends Request {
   get modelType(): "ski" { return "ski"; }
 }
 ```
 
-Both store in `matchRequests` table with `modelType` column distinguishing them.
+Both store in `requests` table with `modelType` column distinguishing them.
 
 ### Multi-Table Inheritance (MTI)
 Each concrete class gets its own database table. Use when subclasses have very different fields.
@@ -336,7 +336,7 @@ infisical run --env=dev -- bash -c 'npx instant-cli@latest push schema -p admin 
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
 
 // Abstract base - overrides makeObservable for ITS fields
-export abstract class MatchRequest extends Model {
+export abstract class Request extends Model {
   abstract readonly modelType: string;
   status: string;
   member: Member;
@@ -358,7 +358,7 @@ export abstract class MatchRequest extends Model {
 
 // Concrete - overrides makeObservable for ONLY its own fields
 @model
-export class ChessMatchRequest extends MatchRequest {
+export class ChessRequest extends Request {
   get modelType(): "chess" { return "chess"; }
   hasBoard: boolean;
 
