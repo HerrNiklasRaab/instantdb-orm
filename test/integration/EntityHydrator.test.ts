@@ -3,6 +3,7 @@ import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   setupTestDatabase,
   id,
+  waitFor,
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
@@ -319,9 +320,12 @@ describe("RootStore hydration (Integration)", () => {
       const user = await createUserInStoreA({ name: "John" });
       const post = await createPostInStoreA({ author: user });
 
-      // Set up reactive subscriptions
+      // Set up reactive subscriptions (first callback hydrates from DB)
       await storeA.subscribeModel(User, () => { });
       await storeA.subscribeModel(Post, () => { });
+
+      // Wait for InstantDB eventual consistency
+      await waitFor(() => user.posts.includes(post), 3000);
 
       expect(post.author).toBe(user);
       expect(user.posts).toContain(post);
@@ -332,7 +336,7 @@ describe("RootStore hydration (Integration)", () => {
       ]);
 
       // Wait for reactive sync to process
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await waitFor(() => storeA.getById(User, user.id) === undefined, 3000);
 
       // User removed from identity map
       expect(storeA.getById(User, user.id)).toBeUndefined();

@@ -85,6 +85,13 @@ function applyModelDecorator<T extends ModelClassType>(
     modelRegistry.register(entityName, target as any);
   }
 
+  // Register parent→child relationships for polymorphic getAll
+  let parent = Object.getPrototypeOf(target);
+  while (parent && parent.name !== "Model") {
+    modelRegistry.registerSubclass(parent, target as any);
+    parent = Object.getPrototypeOf(parent);
+  }
+
   return target;
 }
 

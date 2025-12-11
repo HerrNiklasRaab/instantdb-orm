@@ -21,10 +21,10 @@ async function pushSchema() {
   const appId = process.env.INSTANTDB_APP_ID;
 
   try {
-    // Use the CLI to push schema - the 'yes |' auto-confirms prompts
-    // --skip-check-types allows destructive changes
+    // Use the CLI to push schema
+    // -y auto-confirms prompts, --skip-check-types allows destructive changes
     const result = execSync(
-      `yes | npx instant-cli push schema --app ${appId} --skip-check-types`,
+      `npx instant-cli push schema --app ${appId} --skip-check-types -y`,
       {
         cwd: resolve(__dirname, "../.."),
         env: {
@@ -123,6 +123,9 @@ export async function teardown() {
     users: {},
     profiles: {},
     posts: {},
+    requests: {},
+    chessMatchs: {},
+    skiMatchs: {},
   });
 
   const txChunks: Parameters<typeof db.transact>[0] = [];
@@ -140,6 +143,21 @@ export async function teardown() {
   // Delete all posts
   for (const post of (result.posts ?? []) as { id: string }[]) {
     txChunks.push(db.tx.posts[post.id].delete());
+  }
+
+  // Delete all requests (STI)
+  for (const request of (result.requests ?? []) as { id: string }[]) {
+    txChunks.push(db.tx.requests[request.id].delete());
+  }
+
+  // Delete all chessMatchs (MTI)
+  for (const match of (result.chessMatchs ?? []) as { id: string }[]) {
+    txChunks.push(db.tx.chessMatchs[match.id].delete());
+  }
+
+  // Delete all skiMatchs (MTI)
+  for (const match of (result.skiMatchs ?? []) as { id: string }[]) {
+    txChunks.push(db.tx.skiMatchs[match.id].delete());
   }
 
   if (txChunks.length > 0) {

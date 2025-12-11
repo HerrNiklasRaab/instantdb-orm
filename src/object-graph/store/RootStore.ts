@@ -1,10 +1,10 @@
 import { IdentityMap } from "../IdentityMap";
 import type { Model } from "../Model";
 import { getEntityNames, isValidEntityName, getEntityMeta } from "./EntityMeta";
-import { getModelClass } from "./ModelRegistry";
+import { getModelClass, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
-import type { TxChunk, Unsubscribe } from "../persistence/types";
+import type { TxChunk } from "../persistence/types";
 import { Transaction, type TransactionStoreAccess } from "../persistence/Transaction";
 import type {
   RawEntityData,
@@ -208,9 +208,22 @@ export class RootStore implements TransactionStoreAccess {
     return this.getIdentityMapByName(entityName) as unknown as IdentityMap<T>;
   }
 
-  /** Get all entities of a class */
+  /** Get all entities of a class (supports polymorphic queries for base classes) */
   getAll<T extends Model>(EntityClass: ModelClass<T>): T[] {
-    return this.getIdentityMap(EntityClass).values() as T[];
+    const subclasses = getSubclasses(EntityClass);
+
+    if (subclasses.length > 0) {
+      const results: T[] = [];
+      for (const SubClass of subclasses) {
+        results.push(...this.getIdentityMap(SubClass).values() as T[]);
+      }
+      return results;
+    }
+
+    // Filter by instanceof to handle STI (where identity map is shared across subtypes)
+    return this.getIdentityMap(EntityClass)
+      .values()
+      .filter((entity) => entity instanceof EntityClass) as T[];
   }
 
   /** Get entity by ID */
@@ -238,16 +251,14 @@ export class RootStore implements TransactionStoreAccess {
     ) as T[];
   }
 
-  /** Subscribe to live updates for all entities of a class */
-  async subscribeModel<T extends Model>(
-    EntityClass: ModelClass<T>,
-    callback: (entities: T[]) => void
-  ): Promise<{ entities: T[]; close(): void }> {
-    const entityName = getEntityNameFromClass(EntityClass);
-    const query = this.buildQueryWithRelationships({ [entityName]: {} });
-
-    // Close existing subscription for this entity if any
-    this.subscriptions.get(entityName)?.close();
+  /** Generic subscription helper for DRY subscription logic */
+  private createSubscription<T>(
+    subscriptionKey: string,
+    query: Record<string, unknown>,
+    onData: (data: QueryResult) => T,
+    callback?: (result: T) => void
+  ): Promise<{ result: T; close(): void }> {
+    this.subscriptions.get(subscriptionKey)?.close();
 
     return new Promise((resolve, reject) => {
       let isFirstCallback = true;
@@ -256,38 +267,58 @@ export class RootStore implements TransactionStoreAccess {
         query,
         ({ error, data }) => {
           if (error) {
-            console.error(`Subscription error for ${entityName}:`, error.message);
+            console.error(`Subscription error for ${subscriptionKey}:`, error.message);
             if (isFirstCallback) {
               reject(new Error(error.message));
             }
             return;
           }
           if (data) {
-            const rawDataArray = (data[entityName] ?? []) as RawEntityData[];
-            const entities = this.hydrator.hydrateMany(
-              entityName,
-              rawDataArray,
-              this.getIdentityMapByName.bind(this)
-            ) as T[];
+            const result = onData(data);
 
             if (isFirstCallback) {
               isFirstCallback = false;
               const subscription = {
-                entities,
+                result,
                 close: () => {
                   unsubscribe();
-                  this.subscriptions.delete(entityName);
+                  this.subscriptions.delete(subscriptionKey);
                 },
               };
-              this.subscriptions.set(entityName, subscription);
+              this.subscriptions.set(subscriptionKey, subscription);
               resolve(subscription);
             }
 
-            callback(entities);
+            callback?.(result);
           }
         }
       );
     });
+  }
+
+  /** Subscribe to live updates for all entities of a class */
+  async subscribeModel<T extends Model>(
+    EntityClass: ModelClass<T>,
+    callback: (entities: T[]) => void
+  ): Promise<{ entities: T[]; close(): void }> {
+    const entityName = getEntityNameFromClass(EntityClass);
+    const query = this.buildQueryWithRelationships({ [entityName]: {} });
+
+    const { result: entities, close } = await this.createSubscription(
+      entityName,
+      query,
+      (data) => {
+        const rawDataArray = (data[entityName] ?? []) as RawEntityData[];
+        return this.hydrator.hydrateMany(
+          entityName,
+          rawDataArray,
+          this.getIdentityMapByName.bind(this)
+        ) as T[];
+      },
+      callback
+    );
+
+    return { entities, close };
   }
 
   private buildQueryWithRelationships(
@@ -394,17 +425,23 @@ export class RootStore implements TransactionStoreAccess {
   /**
    * Subscribe to a query with live updates.
    * Automatically hydrates results on each update.
-   * Returns an unsubscribe function.
    */
-  subscribeQuery(queryObj: Record<string, unknown>): Unsubscribe {
-    return this.db.subscribeQuery<QueryResult>(queryObj, ({ error, data }) => {
-      if (error) {
-        console.error("Subscription error:", error.message);
-        return;
-      }
-      if (data) {
+  async subscribeQuery(
+    queryObj: Record<string, unknown>,
+    callback?: () => void
+  ): Promise<{ close(): void }> {
+    const expandedQuery = this.buildQueryWithRelationships(queryObj);
+    const queryKey = JSON.stringify(queryObj);
+
+    const { close } = await this.createSubscription(
+      queryKey,
+      expandedQuery,
+      (data) => {
         this.hydrateResult(data);
-      }
-    });
+      },
+      callback
+    );
+
+    return { close };
   }
 }

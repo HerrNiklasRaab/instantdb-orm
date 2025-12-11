@@ -5,6 +5,7 @@ import {
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
+import { Request } from "../entities/Request";
 import { ChessRequest } from "../entities/ChessRequest";
 import { SkiRequest } from "../entities/SkiRequest";
 
@@ -278,6 +279,36 @@ describe("Single Table Inheritance (Integration)", () => {
       // Re-hydrate from user side to refresh reverse relationships
       await storeB.query({ users: { requests: {} } });
       expect(hydratedUser!.requests.length).toBe(0);
+    });
+  });
+
+  describe("polymorphic getAll", () => {
+    it("should return all subclass instances when called with base class", async () => {
+      await createChessRequestInStoreA();
+      await createSkiRequestInStoreA();
+
+      await storeB.query({ requests: {} });
+
+      const allRequests = storeB.getAll(Request);
+
+      expect(allRequests.length).toBeGreaterThanOrEqual(2);
+      expect(allRequests).toContainEqual(expect.any(ChessRequest));
+      expect(allRequests).toContainEqual(expect.any(SkiRequest));
+    });
+
+    it("should still return only specific subclass when called with concrete class", async () => {
+      await createChessRequestInStoreA();
+      await createSkiRequestInStoreA();
+
+      await storeB.query({ requests: {} });
+
+      const chessRequests = storeB.getAll(ChessRequest);
+      const skiRequests = storeB.getAll(SkiRequest);
+
+      expect(chessRequests.length).toBeGreaterThanOrEqual(1);
+      expect(skiRequests.length).toBeGreaterThanOrEqual(1);
+      expect(chessRequests.every((r) => r instanceof ChessRequest)).toBe(true);
+      expect(skiRequests.every((r) => r instanceof SkiRequest)).toBe(true);
     });
   });
 });

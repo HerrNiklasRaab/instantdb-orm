@@ -10,6 +10,7 @@ export class ModelRegistry {
 
   private models = new Map<string, ModelConstructor<Model>>();
   private discriminators = new Map<string, Map<string, ModelConstructor<Model>>>();
+  private baseClassToSubclasses = new Map<Function, Set<ModelConstructor<Model>>>();
 
   private constructor() {}
 
@@ -43,6 +44,30 @@ export class ModelRegistry {
       this.discriminators.set(entityName, discriminatorMap);
     }
     discriminatorMap.set(discriminatorValue, ModelClass);
+  }
+
+  /**
+   * Register a subclass for a base class (for polymorphic getAll).
+   * Called by @model decorator when decorating subclasses.
+   */
+  registerSubclass(
+    BaseClass: Function,
+    SubClass: ModelConstructor<Model>
+  ): void {
+    let subclasses = this.baseClassToSubclasses.get(BaseClass);
+    if (!subclasses) {
+      subclasses = new Set();
+      this.baseClassToSubclasses.set(BaseClass, subclasses);
+    }
+    subclasses.add(SubClass);
+  }
+
+  /**
+   * Get all registered subclasses for a base class.
+   * Used by RootStore.getAll for polymorphic queries.
+   */
+  getSubclasses(BaseClass: Function): ModelConstructor<Model>[] {
+    return Array.from(this.baseClassToSubclasses.get(BaseClass) ?? []);
   }
 
   /**
@@ -107,6 +132,7 @@ export class ModelRegistry {
   clear(): void {
     this.models.clear();
     this.discriminators.clear();
+    this.baseClassToSubclasses.clear();
   }
 }
 
@@ -135,4 +161,8 @@ export function getRegisteredModelNames(): string[] {
 
 export function isRegisteredModel(name: string): boolean {
   return modelRegistry.isRegistered(name);
+}
+
+export function getSubclasses(BaseClass: Function): ModelConstructor<Model>[] {
+  return modelRegistry.getSubclasses(BaseClass);
 }
