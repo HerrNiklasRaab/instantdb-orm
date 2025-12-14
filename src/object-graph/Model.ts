@@ -1,7 +1,7 @@
-import { type EntityName } from "./store/EntityMeta";
+import { type EntityName, getEntityMeta } from "./store/EntityMeta";
 import { ChangeTracker } from "./persistence/ChangeTracker";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
-import { makeObservable as mobxMakeObservable, observable } from "mobx";
+import { makeObservable as mobxMakeObservable, observable, reaction } from "mobx";
 import { field } from "./decorators";
 
 export abstract class Model {
@@ -17,6 +17,13 @@ export abstract class Model {
   private _deletedAt: Date | null = null;
 
   _tracker: ChangeTracker | null = null;
+
+  /**
+   * Plain JS snapshot for debugging. Auto-updates via MobX reaction.
+   * Workaround for bun debugger not displaying MobX observables: https://github.com/oven-sh/bun/issues/25517
+   */
+  debugView: Record<string, unknown> | null = null;
+  private _debugViewDisposer: (() => void) | null = null;
 
   constructor(id?: string) {
     this.id = id ?? crypto.randomUUID();
@@ -55,6 +62,7 @@ export abstract class Model {
       _createdAt: observable,
       _updatedAt: observable,
       _deletedAt: observable,
+      debugView: false,
     });
   }
 
@@ -66,6 +74,59 @@ export abstract class Model {
   initTracking(isNew: boolean = true): void {
     this.makeObservable();
     this._tracker = new ChangeTracker(this, this.entityName, isNew);
+    this.setupDebugView();
+  }
+
+  private setupDebugView(): void {
+    const meta = getEntityMeta(this.entityName);
+    const record = this as unknown as Record<string, unknown>;
+
+    this._debugViewDisposer = reaction(
+      () => {
+        const values: unknown[] = [];
+        // Track scalars
+        for (const field of meta.scalarFields) {
+          const propName = field.getFieldNameOnModel(this);
+          values.push(record[propName]);
+        }
+        // Track relationships (reference identity)
+        for (const rel of meta.relationshipFields) {
+          const propName = rel.getFieldNameOnModel(this);
+          values.push(record[propName]);
+        }
+        return values;
+      },
+      () => {
+        this.debugView = this.buildDebugViewSnapshot();
+      },
+      { fireImmediately: true }
+    );
+  }
+
+  private buildDebugViewSnapshot(): Record<string, unknown> {
+    const meta = getEntityMeta(this.entityName);
+    const record = this as unknown as Record<string, unknown>;
+    const snapshot: Record<string, unknown> = { id: this.id };
+
+    // Scalars - serialize dates to ISO strings
+    for (const field of meta.scalarFields) {
+      const propName = field.getFieldNameOnModel(this);
+      const value = record[propName];
+
+      if (value instanceof Date) {
+        snapshot[field.fieldName] = value.toISOString();
+      } else {
+        snapshot[field.fieldName] = value;
+      }
+    }
+
+    // Relationships - keep as live Model references for expandable debugging
+    for (const rel of meta.relationshipFields) {
+      const propName = rel.getFieldNameOnModel(this);
+      snapshot[rel.fieldName] = record[propName];
+    }
+
+    return snapshot;
   }
 
   get entityName(): EntityName {
