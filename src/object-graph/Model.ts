@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from "uuid";
 import { type EntityName, getEntityMeta } from "./store/EntityMeta";
 import { ChangeTracker } from "./persistence/ChangeTracker";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
@@ -26,7 +27,7 @@ export abstract class Model {
   private _debugViewDisposer: (() => void) | null = null;
 
   constructor(id?: string) {
-    this.id = id ?? crypto.randomUUID();
+    this.id = id ?? uuidv4();
     this._createdAt = new Date();
     this._updatedAt = new Date();
   }
