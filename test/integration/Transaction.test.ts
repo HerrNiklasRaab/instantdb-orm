@@ -140,7 +140,6 @@ describe("Transaction (Integration)", () => {
 
       // Create a new user during transaction
       const newUser = createUser("New User");
-      store.getIdentityMap(User).set(newUser);
 
       // Verify new user is in identity map
       expect(store.getById(User, newUser.id)).toBe(newUser);
