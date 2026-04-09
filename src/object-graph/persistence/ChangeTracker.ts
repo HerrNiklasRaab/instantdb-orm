@@ -1,9 +1,10 @@
-import { observe } from "mobx";
+import { observe, intercept } from "mobx";
 import type { Model } from "../Model";
 import type { EntityName } from "../store/EntityMeta";
 import { getEntityMeta, RelationshipFieldMeta } from "../store/EntityMeta";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
+import { TransactionContext } from "./TransactionContext";
 
 export class ChangeTracker {
   private disposers: (() => void)[] = [];
@@ -45,11 +46,34 @@ export class ChangeTracker {
           } catch {
             // Array might not be observable, skip it
           }
+          try {
+            const interceptDisposer = intercept(array, (change) => {
+              this.claimForCurrentTransaction();
+              return change;
+            });
+            this.disposers.push(interceptDisposer);
+          } catch {
+            // Array might not be observable, skip it
+          }
         }
         continue;
       }
 
-      // Scalars and to-one relationships use property observer
+      // Scalars and to-one relationships use property observer + interceptor
+      try {
+        const interceptDisposer = intercept(
+          this.model as object,
+          propName as never,
+          (change) => {
+            this.claimForCurrentTransaction();
+            return change;
+          }
+        );
+        this.disposers.push(interceptDisposer);
+      } catch {
+        // Field might not be observable, skip it
+      }
+
       try {
         const disposer = observe(
           this.model as object,
@@ -64,6 +88,13 @@ export class ChangeTracker {
       } catch {
         // Field might not be observable, skip it
       }
+    }
+  }
+
+  private claimForCurrentTransaction(): void {
+    const tx = TransactionContext.current;
+    if (tx && !tx.has(this.model)) {
+      tx.claim(this.model);
     }
   }
 

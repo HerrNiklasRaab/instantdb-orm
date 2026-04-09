@@ -1,7 +1,8 @@
 export { ChangeTracker } from "./ChangeTracker";
 export { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 export { ModelSnapshot } from "./ModelSnapshot";
-export { Transaction, type TransactionStoreAccess } from "./Transaction";
+export { ScopedTransaction, type TransactionStoreAccess } from "./ScopedTransaction";
+export { TransactionContext } from "./TransactionContext";
 export type {
   InstantDBClient,
   TxChunk,

@@ -5,7 +5,8 @@ import { getModelClass, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
 import type { TxChunk } from "../persistence/types";
-import { Transaction, type TransactionStoreAccess } from "../persistence/Transaction";
+import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
+import { TransactionContext } from "../persistence/TransactionContext";
 import { addOnNewModel, removeOnNewModel } from "../NewModelRegistry";
 import type {
   RawEntityData,
@@ -21,89 +22,63 @@ export class RootStore implements TransactionStoreAccess {
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private subscriptions = new Map<string, { close(): void }>();
   private hydrator: ModelHydrator;
-  private activeTransaction: Transaction | null = null;
   readonly db: InstantDBClient;
 
   private readonly onNewModelCallback = (model: Model) => {
+    const tx = TransactionContext.current;
+    if (!tx) return;
+
+    // Auto-add to identity map when inside a transaction
     const entityName = model.entityName;
     const identityMap = this.identityMaps.get(entityName);
     if (identityMap && !identityMap.has(model.id)) {
       identityMap.set(model);
     }
+
+    tx.registerNew(model);
   };
 
   constructor(config: RootStoreConfig) {
     this.db = config.db;
     this.hydrator = new ModelHydrator(this);
     this.initializeIdentityMaps();
+    addOnNewModel(this.onNewModelCallback);
+  }
+
+  dispose(): void {
+    removeOnNewModel(this.onNewModelCallback);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Transaction API
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Check if a transaction is active */
-  get hasActiveTransaction(): boolean {
-    return this.activeTransaction !== null;
+  /**
+   * Create a long-lived transaction for manual commit/rollback.
+   * Use tx.run(() => { ... }) to make mutations within its scope.
+   */
+  createTransaction(): ScopedTransaction {
+    return new ScopedTransaction(this);
   }
 
-  /** Start a new transaction - captures current state for rollback */
-  startTransaction(): void {
-    if (this.activeTransaction) {
-      throw new Error("Transaction already active");
-    }
-    this.activeTransaction = new Transaction(this);
-
-    // Auto-register newly constructed models into this store's identity map
-    addOnNewModel(this.onNewModelCallback);
-
-    // Register callbacks to track new models added during transaction
-    for (const identityMap of this.identityMaps.values()) {
-      identityMap.setOnModelAdded((model) => {
-        this.activeTransaction?.registerNew(model);
-      });
-    }
-  }
-
-  /** Commit all dirty models atomically */
-  async commitTransaction(): Promise<void> {
-    if (!this.activeTransaction) {
-      throw new Error("No active transaction");
-    }
+  /**
+   * Run a callback within a short-lived transaction.
+   * Auto-commits on success, auto-rollback on error.
+   */
+  async transaction(fn: () => Promise<void> | void): Promise<void> {
+    const tx = this.createTransaction();
     try {
-      await this.activeTransaction.commit();
-    } finally {
-      this.clearTransactionHooks();
+      await TransactionContext.run(tx, fn);
+    } catch (e) {
+      tx.rollback();
+      throw e;
     }
-  }
-
-  /** Rollback all changes to pre-transaction state */
-  undoTransaction(): void {
-    if (!this.activeTransaction) {
-      throw new Error("No active transaction");
-    }
-    try {
-      this.activeTransaction.rollback();
-    } finally {
-      this.clearTransactionHooks();
-    }
-  }
-
-  private clearTransactionHooks(): void {
-    removeOnNewModel(this.onNewModelCallback);
-    for (const identityMap of this.identityMaps.values()) {
-      identityMap.clearOnModelAdded();
-    }
-    this.activeTransaction = null;
+    await tx.commit();
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TransactionStoreAccess implementation
   // ─────────────────────────────────────────────────────────────────────────────
-
-  getIdentityMaps(): Map<string, IdentityMap<Model>> {
-    return this.identityMaps;
-  }
 
   getIdentityMapByName(entityName: string): IdentityMap<Model> {
     const map = this.identityMaps.get(entityName);

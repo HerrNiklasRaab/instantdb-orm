@@ -16,7 +16,6 @@ describe("Transaction (Integration)", () => {
     store = new RootStore({ db });
   });
 
-  /** Creates a fresh store to verify persistence */
   function createVerificationStore(): RootStore {
     return new RootStore({ db });
   }
@@ -29,28 +28,47 @@ describe("Transaction (Integration)", () => {
     return new Post(title);
   }
 
-  describe("startTransaction / commitTransaction", () => {
+  describe("store.transaction() - short-lived", () => {
+    it("auto-commits on success", async () => {
+      const user = createUser("Original");
+      await store.save(user);
+
+      await store.transaction(async () => {
+        user.name = "Updated";
+      });
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      expect(storeB.getById(User, user.id)?.name).toBe("Updated");
+    });
+
+    it("auto-rollback on error", async () => {
+      const user = createUser("Original");
+      await store.save(user);
+
+      await expect(
+        store.transaction(async () => {
+          user.name = "Changed";
+          throw new Error("Simulated error");
+        })
+      ).rejects.toThrow("Simulated error");
+
+      expect(user.name).toBe("Original");
+    });
+
     it("commits multiple model changes atomically", async () => {
-      // Create and save initial entities
       const user1 = createUser("User 1");
       const user2 = createUser("User 2");
       await store.save(user1);
       await store.save(user2);
 
-      // Start transaction
-      store.startTransaction();
+      await store.transaction(async () => {
+        user1.name = "Updated User 1";
+        user2.name = "Updated User 2";
+      });
 
-      // Make changes to both entities
-      user1.name = "Updated User 1";
-      user2.name = "Updated User 2";
-
-      // Commit transaction
-      await store.commitTransaction();
-
-      // Verify changes were persisted via fresh store
       const storeB = createVerificationStore();
       await storeB.queryModel(User);
-
       expect(storeB.getById(User, user1.id)?.name).toBe("Updated User 1");
       expect(storeB.getById(User, user2.id)?.name).toBe("Updated User 2");
     });
@@ -59,54 +77,88 @@ describe("Transaction (Integration)", () => {
       const user = createUser();
       await store.save(user);
 
-      store.startTransaction();
-      user.name = "Changed";
-      expect(user.isDirty()).toBe(true);
-
-      await store.commitTransaction();
+      await store.transaction(async () => {
+        user.name = "Changed";
+        expect(user.isDirty()).toBe(true);
+      });
 
       expect(user.isDirty()).toBe(false);
     });
 
-    it("throws error when starting nested transaction", () => {
-      store.startTransaction();
+    it("captures newly constructed models", async () => {
+      const user = createUser("Author");
+      await store.save(user);
 
-      expect(() => store.startTransaction()).toThrow("Transaction already active");
+      let postId: string;
+      await store.transaction(async () => {
+        const post = createPost("New Post");
+        post.author = user;
+        postId = post.id;
+      });
 
-      // Clean up
-      store.undoTransaction();
+      const storeB = createVerificationStore();
+      await storeB.queryModel(Post);
+      await storeB.queryModel(User);
+      const savedPost = storeB.getById(Post, postId!);
+      expect(savedPost?.title).toBe("New Post");
+      expect(savedPost?.author?.id).toBe(user.id);
     });
 
-    it("throws error when committing without active transaction", async () => {
-      await expect(store.commitTransaction()).rejects.toThrow("No active transaction");
+    it("commits with no changes without error", async () => {
+      const user = createUser();
+      await store.save(user);
+
+      await store.transaction(async () => {
+        // no changes
+      });
+
+      expect(user.isDirty()).toBe(false);
     });
   });
 
-  describe("undoTransaction - scalar rollback", () => {
-    it("restores scalar field changes on rollback", async () => {
+  describe("createTransaction() - long-lived", () => {
+    it("commits only claimed models via run()", async () => {
+      const user = createUser("Original");
+      await store.save(user);
+
+      const tx = store.createTransaction();
+      tx.run(() => {
+        user.name = "Updated";
+      });
+
+      await tx.commit();
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      expect(storeB.getById(User, user.id)?.name).toBe("Updated");
+    });
+
+    it("rollback restores scalar fields", async () => {
       const user = createUser("Original Name");
       await store.save(user);
 
-      store.startTransaction();
-      user.name = "Changed Name";
+      const tx = store.createTransaction();
+      tx.run(() => {
+        user.name = "Changed Name";
+      });
 
       expect(user.name).toBe("Changed Name");
-
-      store.undoTransaction();
-
+      tx.rollback();
       expect(user.name).toBe("Original Name");
     });
 
-    it("restores multiple scalar fields on rollback", async () => {
+    it("rollback restores multiple scalar fields", async () => {
       const user = createUser("Original");
       const originalDate = user.testDate;
       await store.save(user);
 
-      store.startTransaction();
-      user.name = "Changed";
-      user.testDate = new Date("2024-01-01");
+      const tx = store.createTransaction();
+      tx.run(() => {
+        user.name = "Changed";
+        user.testDate = new Date("2024-01-01");
+      });
 
-      store.undoTransaction();
+      tx.rollback();
 
       expect(user.name).toBe("Original");
       expect(user.testDate).toEqual(originalDate);
@@ -116,66 +168,34 @@ describe("Transaction (Integration)", () => {
       const user = createUser();
       await store.save(user);
 
-      store.startTransaction();
-      user.name = "Changed";
+      const tx = store.createTransaction();
+      tx.run(() => {
+        user.name = "Changed";
+      });
       expect(user.isDirty()).toBe(true);
 
-      store.undoTransaction();
-
+      tx.rollback();
       expect(user.isDirty()).toBe(false);
     });
 
-    it("throws error when undoing without active transaction", () => {
-      expect(() => store.undoTransaction()).toThrow("No active transaction");
-    });
-  });
-
-  describe("undoTransaction - new model rollback", () => {
     it("removes new model from identity map on rollback", async () => {
-      // Start with an existing user
       const existingUser = createUser("Existing");
       await store.save(existingUser);
 
-      store.startTransaction();
+      const tx = store.createTransaction();
+      let newUser: User;
+      tx.run(() => {
+        newUser = createUser("New User");
+      });
 
-      // Create a new user during transaction
-      const newUser = createUser("New User");
+      expect(store.getById(User, newUser!.id)).toBe(newUser!);
 
-      // Verify new user is in identity map
-      expect(store.getById(User, newUser.id)).toBe(newUser);
+      tx.rollback();
 
-      store.undoTransaction();
-
-      // New user should be removed from identity map
-      expect(store.getById(User, newUser.id)).toBeUndefined();
-
-      // Existing user should still be there
+      expect(store.getById(User, newUser!.id)).toBeUndefined();
       expect(store.getById(User, existingUser.id)).toBe(existingUser);
     });
-  });
 
-  describe("new model commit", () => {
-    it("captures newly constructed models and persists them on commit", async () => {
-      const user = createUser("Author");
-      await store.save(user);
-
-      store.startTransaction();
-
-      const post = createPost("New Post");
-      post.author = user;
-
-      await store.commitTransaction();
-
-      const storeB = createVerificationStore();
-      await storeB.queryModel(Post);
-      await storeB.queryModel(User);
-      const savedPost = storeB.getById(Post, post.id);
-      expect(savedPost?.title).toBe("New Post");
-      expect(savedPost?.author?.id).toBe(user.id);
-    });
-  });
-
-  describe("undoTransaction - relationship rollback", () => {
     it("restores to-one relationship on rollback", async () => {
       const user = createUser();
       const post = createPost();
@@ -183,17 +203,14 @@ describe("Transaction (Integration)", () => {
       post.author = user;
       await store.save(post);
 
-      store.startTransaction();
+      const tx = store.createTransaction();
+      tx.run(() => {
+        const newUser = createUser("New Author");
+        post.author = newUser;
+      });
 
-      // Change the relationship
-      const newUser = createUser("New Author");
-      await store.save(newUser);
-      post.author = newUser;
-
-      expect(post.author).toBe(newUser);
-
-      store.undoTransaction();
-
+      expect(post.author?.name).toBe("New Author");
+      tx.rollback();
       expect(post.author).toBe(user);
     });
 
@@ -203,15 +220,15 @@ describe("Transaction (Integration)", () => {
       await store.save(user);
       await store.save(post);
 
-      // Post has no author initially
       expect(post.author).toBeNull();
 
-      store.startTransaction();
-      post.author = user;
+      const tx = store.createTransaction();
+      tx.run(() => {
+        post.author = user;
+      });
+
       expect(post.author).toBe(user);
-
-      store.undoTransaction();
-
+      tx.rollback();
       expect(post.author).toBeNull();
     });
 
@@ -219,7 +236,6 @@ describe("Transaction (Integration)", () => {
       const user = createUser();
       const post1 = createPost("Post 1");
       const post2 = createPost("Post 2");
-
       await store.save(user);
       await store.save(post1);
       await store.save(post2);
@@ -227,19 +243,16 @@ describe("Transaction (Integration)", () => {
       user.posts.push(post1);
       await store.save(user);
 
-      // User has one post
       expect(user.posts).toHaveLength(1);
-      expect(user.posts[0]).toBe(post1);
 
-      store.startTransaction();
+      const tx = store.createTransaction();
+      tx.run(() => {
+        user.posts.push(post2);
+      });
 
-      // Add another post
-      user.posts.push(post2);
       expect(user.posts).toHaveLength(2);
+      tx.rollback();
 
-      store.undoTransaction();
-
-      // Should be back to one post
       expect(user.posts).toHaveLength(1);
       expect(user.posts[0]).toBe(post1);
     });
@@ -247,7 +260,6 @@ describe("Transaction (Integration)", () => {
     it("restores removed items in to-many relationship on rollback", async () => {
       const user = createUser();
       const post = createPost();
-
       await store.save(user);
       await store.save(post);
 
@@ -256,89 +268,164 @@ describe("Transaction (Integration)", () => {
 
       expect(user.posts).toHaveLength(1);
 
-      store.startTransaction();
+      const tx = store.createTransaction();
+      tx.run(() => {
+        user.posts.pop();
+      });
 
-      // Remove the post
-      user.posts.pop();
       expect(user.posts).toHaveLength(0);
-
-      store.undoTransaction();
+      tx.rollback();
 
       expect(user.posts).toHaveLength(1);
       expect(user.posts[0]).toBe(post);
     });
+
+    it("throws when using a finalized transaction", async () => {
+      const tx = store.createTransaction();
+      await tx.commit();
+
+      expect(() => tx.run(() => {})).toThrow("Transaction has already been finalized");
+      await expect(tx.commit()).rejects.toThrow("Transaction has already been finalized");
+      expect(() => tx.rollback()).toThrow("Transaction has already been finalized");
+    });
   });
 
-  describe("empty transaction", () => {
-    it("commits successfully with no changes", async () => {
-      const user = createUser();
+  describe("parallel transactions", () => {
+    it("two transactions commit independently", async () => {
+      const user = createUser("User");
+      const post = createPost("Post");
+      await store.save(user);
+      await store.save(post);
+
+      const txUser = store.createTransaction();
+      const txPost = store.createTransaction();
+
+      txUser.run(() => {
+        user.name = "Updated User";
+      });
+
+      txPost.run(() => {
+        post.title = "Updated Post";
+      });
+
+      // Commit only user transaction
+      await txUser.commit();
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      await storeB.queryModel(Post);
+
+      expect(storeB.getById(User, user.id)?.name).toBe("Updated User");
+      // Post should NOT be persisted yet
+      expect(storeB.getById(Post, post.id)?.title).toBe("Post");
+
+      // Now commit post transaction
+      await txPost.commit();
+
+      const storeC = createVerificationStore();
+      await storeC.queryModel(Post);
+      expect(storeC.getById(Post, post.id)?.title).toBe("Updated Post");
+    });
+
+    it("rollback one does not affect the other", async () => {
+      const user = createUser("Original User");
+      const post = createPost("Original Post");
+      await store.save(user);
+      await store.save(post);
+
+      const txUser = store.createTransaction();
+      const txPost = store.createTransaction();
+
+      txUser.run(() => {
+        user.name = "Changed User";
+      });
+
+      txPost.run(() => {
+        post.title = "Changed Post";
+      });
+
+      // Rollback user transaction
+      txUser.rollback();
+
+      expect(user.name).toBe("Original User");
+      expect(post.title).toBe("Changed Post");
+
+      // Post transaction can still commit
+      await txPost.commit();
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(Post);
+      expect(storeB.getById(Post, post.id)?.title).toBe("Changed Post");
+    });
+
+    it("throws when same model is claimed by two transactions", async () => {
+      const user = createUser("User");
       await store.save(user);
 
-      store.startTransaction();
-      // No changes made
-      await store.commitTransaction();
+      const tx1 = store.createTransaction();
+      const tx2 = store.createTransaction();
 
-      // Should not throw, entity unchanged
-      expect(user.isDirty()).toBe(false);
+      tx1.run(() => {
+        user.name = "Changed by tx1";
+      });
+
+      expect(() => {
+        tx2.run(() => {
+          user.name = "Changed by tx2";
+        });
+      }).toThrow("Model is already claimed by another transaction");
+
+      tx1.rollback();
     });
 
-    it("undoes successfully with no changes", async () => {
-      const user = createUser();
-      await store.save(user);
-      const originalName = user.name;
-
-      store.startTransaction();
-      // No changes made
-      store.undoTransaction();
-
-      expect(user.name).toBe(originalName);
-    });
-  });
-
-  describe("hasActiveTransaction", () => {
-    it("returns false when no transaction is active", () => {
-      expect(store.hasActiveTransaction).toBe(false);
-    });
-
-    it("returns true when transaction is active", () => {
-      store.startTransaction();
-      expect(store.hasActiveTransaction).toBe(true);
-
-      // Clean up
-      store.undoTransaction();
-    });
-
-    it("returns false after commit", async () => {
-      store.startTransaction();
-      await store.commitTransaction();
-      expect(store.hasActiveTransaction).toBe(false);
-    });
-
-    it("returns false after undo", () => {
-      store.startTransaction();
-      store.undoTransaction();
-      expect(store.hasActiveTransaction).toBe(false);
-    });
-  });
-
-  describe("save() during transaction", () => {
-    it("save() works normally during active transaction", async () => {
+    it("model can be claimed by new transaction after previous one is finalized", async () => {
       const user = createUser("Original");
       await store.save(user);
 
-      store.startTransaction();
+      const tx1 = store.createTransaction();
+      tx1.run(() => {
+        user.name = "First change";
+      });
+      await tx1.commit();
 
-      // save() should work and persist immediately
-      user.name = "Saved During Transaction";
-      await store.save(user);
+      const tx2 = store.createTransaction();
+      tx2.run(() => {
+        user.name = "Second change";
+      });
+      await tx2.commit();
 
-      // Verify it was persisted via fresh store
       const storeB = createVerificationStore();
       await storeB.queryModel(User);
-      expect(storeB.getById(User, user.id)?.name).toBe("Saved During Transaction");
+      expect(storeB.getById(User, user.id)?.name).toBe("Second change");
+    });
 
-      // Complete the transaction (no additional changes to commit)
-      await store.commitTransaction();
+    it("new models created in parallel transactions are isolated", async () => {
+      const txUser = store.createTransaction();
+      const txPost = store.createTransaction();
+
+      let newUser: User;
+      let newPost: Post;
+
+      txUser.run(() => {
+        newUser = createUser("New User");
+      });
+
+      txPost.run(() => {
+        newPost = createPost("New Post");
+      });
+
+      // Rollback user transaction
+      txUser.rollback();
+
+      expect(store.getById(User, newUser!.id)).toBeUndefined();
+      expect(store.getById(Post, newPost!.id)).toBe(newPost!);
+
+      // Post transaction can still commit
+      await txPost.commit();
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(Post);
+      expect(storeB.getById(Post, newPost!.id)?.title).toBe("New Post");
     });
   });
 
@@ -347,23 +434,41 @@ describe("Transaction (Integration)", () => {
       const user = createUser();
       await store.save(user);
 
-      store.startTransaction();
-      user.name = "Changed";
+      const tx = store.createTransaction();
+      tx.run(() => {
+        user.name = "Changed";
+      });
 
-      // Mock a failed commit by replacing store.db.transact
       const originalTransact = store.db.transact.bind(store.db);
       store.db.transact = async () => {
         throw new Error("Simulated DB error");
       };
 
       try {
-        await expect(store.commitTransaction()).rejects.toThrow("Simulated DB error");
+        await expect(tx.commit()).rejects.toThrow("Simulated DB error");
       } finally {
         store.db.transact = originalTransact;
       }
+    });
 
-      // Transaction should be cleared even after failure
-      expect(store.hasActiveTransaction).toBe(false);
+    it("save() works independently of transactions", async () => {
+      const user = createUser("Original");
+      await store.save(user);
+
+      const tx = store.createTransaction();
+      tx.run(() => {
+        user.name = "In Transaction";
+      });
+
+      // Create and save a separate model outside any transaction
+      const post = createPost("Independent");
+      await store.save(post);
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(Post);
+      expect(storeB.getById(Post, post.id)?.title).toBe("Independent");
+
+      tx.rollback();
     });
   });
 });

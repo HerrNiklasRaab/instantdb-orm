@@ -21,6 +21,8 @@ export {
   type GetIdentityMap,
 } from "./store";
 export {
+  ScopedTransaction,
+  TransactionContext,
   type InstantDBClient,
   type TxChunk,
   type TxProxy,
