@@ -35,15 +35,10 @@ export class ScopedTransaction {
    */
   registerNew(model: Model): void {
     this.assertActive();
-    const existingOwner = ownershipMap.get(model);
-    if (existingOwner && existingOwner !== this) {
-      throw new Error("Model is already claimed by another transaction");
-    }
     if (this.newModels.has(model)) {
       return;
     }
     this.newModels.add(model);
-    ownershipMap.set(model, this);
   }
 
   has(model: Model): boolean {
@@ -163,12 +158,6 @@ export class ScopedTransaction {
   }
 
   private releaseAll(): void {
-    for (const [model] of this.claimedModels) {
-      ownershipMap.delete(model);
-    }
-    for (const model of this.newModels) {
-      ownershipMap.delete(model);
-    }
     this.claimedModels.clear();
     this.newModels.clear();
     this.finalized = true;

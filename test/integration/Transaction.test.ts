@@ -358,8 +358,8 @@ describe("Transaction (Integration)", () => {
       expect(storeB.getById(Post, post.id)?.title).toBe("Changed Post");
     });
 
-    it("throws when same model is claimed by two transactions", async () => {
-      const user = createUser("User");
+    it("last write wins when same model is claimed by two transactions", async () => {
+      const user = createUser("Original");
       await store.save(user);
 
       const tx1 = store.createTransaction();
@@ -369,13 +369,17 @@ describe("Transaction (Integration)", () => {
         user.name = "Changed by tx1";
       });
 
-      expect(() => {
-        tx2.run(() => {
-          user.name = "Changed by tx2";
-        });
-      }).toThrow("Model is already claimed by another transaction");
+      tx2.run(() => {
+        user.name = "Changed by tx2";
+      });
 
-      tx1.rollback();
+      // tx2 commits last — its value wins
+      await tx1.commit();
+      await tx2.commit();
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      expect(storeB.getById(User, user.id)?.name).toBe("Changed by tx2");
     });
 
     it("model can be claimed by new transaction after previous one is finalized", async () => {
