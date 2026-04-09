@@ -154,6 +154,27 @@ describe("Transaction (Integration)", () => {
     });
   });
 
+  describe("new model commit", () => {
+    it("captures newly constructed models and persists them on commit", async () => {
+      const user = createUser("Author");
+      await store.save(user);
+
+      store.startTransaction();
+
+      const post = createPost("New Post");
+      post.author = user;
+
+      await store.commitTransaction();
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(Post);
+      await storeB.queryModel(User);
+      const savedPost = storeB.getById(Post, post.id);
+      expect(savedPost?.title).toBe("New Post");
+      expect(savedPost?.author?.id).toBe(user.id);
+    });
+  });
+
   describe("undoTransaction - relationship rollback", () => {
     it("restores to-one relationship on rollback", async () => {
       const user = createUser();

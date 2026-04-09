@@ -6,6 +6,7 @@ import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
 import type { TxChunk } from "../persistence/types";
 import { Transaction, type TransactionStoreAccess } from "../persistence/Transaction";
+import { addOnNewModel, removeOnNewModel } from "../NewModelRegistry";
 import type {
   RawEntityData,
   RootStoreConfig,
@@ -22,6 +23,14 @@ export class RootStore implements TransactionStoreAccess {
   private hydrator: ModelHydrator;
   private activeTransaction: Transaction | null = null;
   readonly db: InstantDBClient;
+
+  private readonly onNewModelCallback = (model: Model) => {
+    const entityName = model.entityName;
+    const identityMap = this.identityMaps.get(entityName);
+    if (identityMap && !identityMap.has(model.id)) {
+      identityMap.set(model);
+    }
+  };
 
   constructor(config: RootStoreConfig) {
     this.db = config.db;
@@ -44,6 +53,9 @@ export class RootStore implements TransactionStoreAccess {
       throw new Error("Transaction already active");
     }
     this.activeTransaction = new Transaction(this);
+
+    // Auto-register newly constructed models into this store's identity map
+    addOnNewModel(this.onNewModelCallback);
 
     // Register callbacks to track new models added during transaction
     for (const identityMap of this.identityMaps.values()) {
@@ -78,6 +90,7 @@ export class RootStore implements TransactionStoreAccess {
   }
 
   private clearTransactionHooks(): void {
+    removeOnNewModel(this.onNewModelCallback);
     for (const identityMap of this.identityMaps.values()) {
       identityMap.clearOnModelAdded();
     }
