@@ -9,7 +9,9 @@ let asyncLocalStorage: AsyncLocalStorageLike<ScopedTransaction> | null = null;
 
 try {
   // Use AsyncLocalStorage in Node.js for async-safe context
-  const { AsyncLocalStorage } = require("node:async_hooks");
+  const { AsyncLocalStorage } = require("node:async_hooks") as {
+    AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
+  };
   asyncLocalStorage = new AsyncLocalStorage<ScopedTransaction>();
 } catch {
   // Browser/React Native — fall back to simple global
