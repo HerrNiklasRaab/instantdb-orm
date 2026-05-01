@@ -110,10 +110,10 @@ function applyModelDecorator<T extends ModelClassType>(
  * class AppUser extends Model { }
  *
  * @example STI
- * abstract class MatchRequest extends Model { }
+ * abstract class MatchInvitation extends Model { }
  *
  * @model
- * class ChessMatchRequest extends MatchRequest {
+ * class ChessMatchInvitation extends MatchInvitation {
  *   get modelType() { return "chess"; }
  * }
  */

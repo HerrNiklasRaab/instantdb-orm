@@ -1,9 +1,9 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
 import { model, field } from "../../src/object-graph";
-import { Request } from "./Request";
+import { Invitation } from "./Invitation";
 
 @model
-export class SkiRequest extends Request {
+export class SkiInvitation extends Invitation {
   get modelType(): "ski" {
     return "ski";
   }

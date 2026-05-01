@@ -1,7 +1,7 @@
 /** Symbol to store entity name on the class */
 export const ENTITY_NAME_KEY = Symbol("entityName");
 
-/** Derive entity name from class name: User → "users", MatchRequest → "matchRequests" */
+/** Derive entity name from class name: User → "users", MatchInvitation → "matchInvitations" */
 export function deriveEntityName(className: string): string {
   if (className.startsWith("$")) {
     return "$" + className.slice(1).toLowerCase() + "s";

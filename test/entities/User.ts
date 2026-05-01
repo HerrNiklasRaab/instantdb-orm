@@ -2,7 +2,7 @@ import { makeObservable as mobxMakeObservable, observable } from "mobx";
 import { Model, model, field } from "../../src/object-graph";
 import type { UserProfile } from "./Profile";
 import type { Post } from "./Post";
-import type { Request } from "./Request";
+import type { Invitation } from "./Invitation";
 import type { ChessMatch } from "./ChessMatch";
 import type { SkiMatch } from "./SkiMatch";
 
@@ -30,9 +30,9 @@ export class User extends Model {
   profile: UserProfile | null = null;  // public to-one
   referredBy: User | null = null;  // public to-one
   referrals: User[] = [];          // public to-many
-  requests: Request[] = [];  // STI: reverse of requests.requester
-  chessMatchs: ChessMatch[] = [];      // MTI: reverse of chessMatchs.requester
-  skiMatchs: SkiMatch[] = [];          // MTI: reverse of skiMatchs.requester
+  invitations: Invitation[] = [];  // STI: reverse of invitations.inviter
+  chessMatchs: ChessMatch[] = [];      // MTI: reverse of chessMatchs.inviter
+  skiMatchs: SkiMatch[] = [];          // MTI: reverse of skiMatchs.inviter
 
   // Private backing field for to-many relationship
   @field()
@@ -55,7 +55,7 @@ export class User extends Model {
       _posts: observable.shallow,
       referredBy: observable.ref,
       referrals: observable.shallow,
-      requests: observable.shallow,
+      invitations: observable.shallow,
       chessMatchs: observable.shallow,
       skiMatchs: observable.shallow,
     } as any);

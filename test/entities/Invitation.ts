@@ -3,16 +3,16 @@ import { Model } from "../../src/object-graph";
 import type { User } from "./User";
 
 // Abstract base - NOT decorated with @model (children are)
-export abstract class Request extends Model {
+export abstract class Invitation extends Model {
   abstract readonly modelType: string; // discriminator
 
   // Relationship to User
-  requester: User | null = null;
+  inviter: User | null = null;
 
   protected override makeObservable(): void {
     super.makeObservable();
     mobxMakeObservable(this, {
-      requester: observable.ref,
+      inviter: observable.ref,
     } as any);
   }
 

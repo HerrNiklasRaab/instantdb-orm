@@ -5,9 +5,9 @@ import {
   type TestInstantDBClient,
 } from "../utils/instantdb-test-utils";
 import { User } from "../entities/User";
-import { Request } from "../entities/Request";
-import { ChessRequest } from "../entities/ChessRequest";
-import { SkiRequest } from "../entities/SkiRequest";
+import { Invitation } from "../entities/Invitation";
+import { ChessInvitation } from "../entities/ChessInvitation";
+import { SkiInvitation } from "../entities/SkiInvitation";
 
 describe("Single Table Inheritance (Integration)", () => {
   let db: TestInstantDBClient;
@@ -31,60 +31,60 @@ describe("Single Table Inheritance (Integration)", () => {
     return user;
   }
 
-  // Helper to create ChessRequest through Store A
-  async function createChessRequestInStoreA(
+  // Helper to create ChessInvitation through Store A
+  async function createChessInvitationInStoreA(
     data: Partial<{
       timeControl: string;
       rated: boolean;
     }> = {}
-  ): Promise<ChessRequest> {
-    const request = new ChessRequest(
+  ): Promise<ChessInvitation> {
+    const invitation = new ChessInvitation(
       data.timeControl ?? "5+0",
       data.rated ?? true
     );
-    await storeA.save(request);
-    return request;
+    await storeA.save(invitation);
+    return invitation;
   }
 
-  // Helper to create SkiRequest through Store A
-  async function createSkiRequestInStoreA(
+  // Helper to create SkiInvitation through Store A
+  async function createSkiInvitationInStoreA(
     data: Partial<{
       resort: string;
       skillLevel: string;
     }> = {}
-  ): Promise<SkiRequest> {
-    const request = new SkiRequest(
+  ): Promise<SkiInvitation> {
+    const invitation = new SkiInvitation(
       data.resort ?? "Aspen",
       data.skillLevel ?? "intermediate"
     );
-    await storeA.save(request);
-    return request;
+    await storeA.save(invitation);
+    return invitation;
   }
 
   describe("hydration with type discriminator", () => {
     it("hydrates mixed types from same table with correct class instances", async () => {
       // Store A creates both types
-      const chessA = await createChessRequestInStoreA({
+      const chessA = await createChessInvitationInStoreA({
         timeControl: "10+5",
         rated: false,
       });
-      const skiA = await createSkiRequestInStoreA({
+      const skiA = await createSkiInvitationInStoreA({
         resort: "Vail",
         skillLevel: "beginner",
       });
 
-      // Store B hydrates all requests
-      await storeB.query({ requests: {} });
+      // Store B hydrates all invitations
+      await storeB.query({ invitations: {} });
 
-      const chess = storeB.getById(ChessRequest, chessA.id);
-      const ski = storeB.getById(SkiRequest, skiA.id);
+      const chess = storeB.getById(ChessInvitation, chessA.id);
+      const ski = storeB.getById(SkiInvitation, skiA.id);
 
       // Each should be the correct subclass instance
-      expect(chess).toBeInstanceOf(ChessRequest);
+      expect(chess).toBeInstanceOf(ChessInvitation);
       expect(chess!.modelType).toBe("chess");
       expect(chess!.timeControl).toBe("10+5");
 
-      expect(ski).toBeInstanceOf(SkiRequest);
+      expect(ski).toBeInstanceOf(SkiInvitation);
       expect(ski!.modelType).toBe("ski");
       expect(ski!.resort).toBe("Vail");
     });
@@ -92,54 +92,54 @@ describe("Single Table Inheritance (Integration)", () => {
 
   describe("relationships with inherited types", () => {
     it("sets forward relationship (subtype → User) correctly", async () => {
-      // Create user and chess request with requester link
+      // Create user and chess invitation with inviter link
       const user = await createUserInStoreA({ name: "Alice" });
-      const chess = await createChessRequestInStoreA({
+      const chess = await createChessInvitationInStoreA({
         timeControl: "5+0",
         rated: true,
       });
-      chess.requester = user;
+      chess.inviter = user;
       await storeA.save(chess);
 
       // Store B hydrates
-      await storeB.query({ requests: { requester: {} } });
+      await storeB.query({ invitations: { inviter: {} } });
 
-      const hydratedChess = storeB.getById(ChessRequest, chess.id);
+      const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       const hydratedUser = storeB.getById(User, user.id);
 
-      expect(hydratedChess!.requester).toBe(hydratedUser);
+      expect(hydratedChess!.inviter).toBe(hydratedUser);
     });
 
     it("sets reverse relationship (User → subtypes) correctly", async () => {
-      // Create user with two different request types
+      // Create user with two different invitation types
       const user = await createUserInStoreA({ name: "Bob" });
 
-      const chess = await createChessRequestInStoreA({
+      const chess = await createChessInvitationInStoreA({
         timeControl: "3+2",
         rated: false,
       });
-      chess.requester = user;
+      chess.inviter = user;
       await storeA.save(chess);
 
-      const ski = await createSkiRequestInStoreA({
+      const ski = await createSkiInvitationInStoreA({
         resort: "Aspen",
         skillLevel: "advanced",
       });
-      ski.requester = user;
+      ski.inviter = user;
       await storeA.save(ski);
 
       // Store B hydrates
-      await storeB.query({ users: { requests: {} } });
+      await storeB.query({ users: { invitations: {} } });
 
       const hydratedUser = storeB.getById(User, user.id);
 
-      // User.requests should contain both subtypes
-      expect(hydratedUser!.requests.length).toBe(2);
-      expect(hydratedUser!.requests).toContainEqual(
-        expect.any(ChessRequest)
+      // User.invitations should contain both subtypes
+      expect(hydratedUser!.invitations.length).toBe(2);
+      expect(hydratedUser!.invitations).toContainEqual(
+        expect.any(ChessInvitation)
       );
-      expect(hydratedUser!.requests).toContainEqual(
-        expect.any(SkiRequest)
+      expect(hydratedUser!.invitations).toContainEqual(
+        expect.any(SkiInvitation)
       );
     });
   });
@@ -156,159 +156,159 @@ describe("Single Table Inheritance (Integration)", () => {
 
     it("removes deleted STI entity from identity map", async () => {
       // Create entity
-      const chess = await createChessRequestInStoreA({ timeControl: "5+0" });
+      const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
 
       // Hydrate in store B
-      await storeB.query({ requests: {} });
-      expect(storeB.getById(ChessRequest, chess.id)).toBeDefined();
+      await storeB.query({ invitations: {} });
+      expect(storeB.getById(ChessInvitation, chess.id)).toBeDefined();
 
       // Mark as deleted in DB (simulating deletion from another device)
-      await markAsDeletedInDb("requests", chess.id);
+      await markAsDeletedInDb("invitations", chess.id);
 
       // Re-hydrate - should be removed
-      await storeB.query({ requests: {} });
-      expect(storeB.getById(ChessRequest, chess.id)).toBeUndefined();
+      await storeB.query({ invitations: {} });
+      expect(storeB.getById(ChessInvitation, chess.id)).toBeUndefined();
     });
 
-    it("sets forward relationship to null when User is deleted (request.requester → null)", async () => {
-      // Create user and linked request
+    it("sets forward relationship to null when User is deleted (invitation.inviter → null)", async () => {
+      // Create user and linked invitation
       const user = await createUserInStoreA({ name: "Alice" });
-      const chess = await createChessRequestInStoreA({ timeControl: "5+0" });
-      chess.requester = user;
+      const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
+      chess.inviter = user;
       await storeA.save(chess);
 
       // Hydrate in store B
-      await storeB.query({ requests: { requester: {} } });
-      const hydratedChess = storeB.getById(ChessRequest, chess.id);
-      expect(hydratedChess!.requester).toBeDefined();
+      await storeB.query({ invitations: { inviter: {} } });
+      const hydratedChess = storeB.getById(ChessInvitation, chess.id);
+      expect(hydratedChess!.inviter).toBeDefined();
 
       // Delete user in DB
       await markAsDeletedInDb("users", user.id);
 
-      // Re-hydrate - chess.requester should be null
+      // Re-hydrate - chess.inviter should be null
       await storeB.query({ users: {} });
-      expect(hydratedChess!.requester).toBeNull();
+      expect(hydratedChess!.inviter).toBeNull();
     });
 
-    it("removes deleted STI entity from reverse array (user.requests)", async () => {
-      // Create user with 2 requests
+    it("removes deleted STI entity from reverse array (user.invitations)", async () => {
+      // Create user with 2 invitations
       const user = await createUserInStoreA({ name: "Bob" });
-      const chess1 = await createChessRequestInStoreA({ timeControl: "3+2" });
-      chess1.requester = user;
+      const chess1 = await createChessInvitationInStoreA({ timeControl: "3+2" });
+      chess1.inviter = user;
       await storeA.save(chess1);
 
-      const chess2 = await createChessRequestInStoreA({ timeControl: "10+5" });
-      chess2.requester = user;
+      const chess2 = await createChessInvitationInStoreA({ timeControl: "10+5" });
+      chess2.inviter = user;
       await storeA.save(chess2);
 
       // Hydrate
-      await storeB.query({ users: { requests: {} } });
+      await storeB.query({ users: { invitations: {} } });
       const hydratedUser = storeB.getById(User, user.id);
-      expect(hydratedUser!.requests.length).toBe(2);
+      expect(hydratedUser!.invitations.length).toBe(2);
 
-      // Delete one request
-      await markAsDeletedInDb("requests", chess1.id);
+      // Delete one invitation
+      await markAsDeletedInDb("invitations", chess1.id);
 
-      // Re-hydrate - should only have 1 request
-      await storeB.query({ requests: {} });
-      expect(hydratedUser!.requests.length).toBe(1);
-      expect(hydratedUser!.requests[0]!.id).toBe(chess2.id);
+      // Re-hydrate - should only have 1 invitation
+      await storeB.query({ invitations: {} });
+      expect(hydratedUser!.invitations.length).toBe(1);
+      expect(hydratedUser!.invitations[0]!.id).toBe(chess2.id);
     });
 
     it("handles mixed STI types in reverse array cleanup", async () => {
-      // Create user with ChessRequest + SkiRequest
+      // Create user with ChessInvitation + SkiInvitation
       const user = await createUserInStoreA({ name: "Charlie" });
 
-      const chess = await createChessRequestInStoreA({ timeControl: "5+0" });
-      chess.requester = user;
+      const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
+      chess.inviter = user;
       await storeA.save(chess);
 
-      const ski = await createSkiRequestInStoreA({ resort: "Aspen" });
-      ski.requester = user;
+      const ski = await createSkiInvitationInStoreA({ resort: "Aspen" });
+      ski.inviter = user;
       await storeA.save(ski);
 
       // Hydrate
-      await storeB.query({ users: { requests: {} } });
+      await storeB.query({ users: { invitations: {} } });
       const hydratedUser = storeB.getById(User, user.id);
-      expect(hydratedUser!.requests.length).toBe(2);
+      expect(hydratedUser!.invitations.length).toBe(2);
 
-      // Delete ChessRequest
-      await markAsDeletedInDb("requests", chess.id);
+      // Delete ChessInvitation
+      await markAsDeletedInDb("invitations", chess.id);
 
       // Re-hydrate
-      await storeB.query({ requests: {} });
-      expect(hydratedUser!.requests.length).toBe(1);
-      expect(hydratedUser!.requests[0]).toBeInstanceOf(SkiRequest);
+      await storeB.query({ invitations: {} });
+      expect(hydratedUser!.invitations.length).toBe(1);
+      expect(hydratedUser!.invitations[0]).toBeInstanceOf(SkiInvitation);
     });
   });
 
   describe("relationship removal", () => {
-    it("clears forward 1:1 when set to null (request.requester = null)", async () => {
+    it("clears forward 1:1 when set to null (invitation.inviter = null)", async () => {
       // Create linked entities
       const user = await createUserInStoreA({ name: "Dave" });
-      const chess = await createChessRequestInStoreA({ timeControl: "5+0" });
-      chess.requester = user;
+      const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
+      chess.inviter = user;
       await storeA.save(chess);
 
       // Clear the relationship
-      chess.requester = null;
+      chess.inviter = null;
       await storeA.save(chess);
 
       // Verify in store B
-      await storeB.query({ requests: { requester: {} } });
-      const hydratedChess = storeB.getById(ChessRequest, chess.id);
-      expect(hydratedChess!.requester).toBeNull();
+      await storeB.query({ invitations: { inviter: {} } });
+      const hydratedChess = storeB.getById(ChessInvitation, chess.id);
+      expect(hydratedChess!.inviter).toBeNull();
     });
 
     it("removes from reverse 1:n when forward cleared", async () => {
       // Create linked entities
       const user = await createUserInStoreA({ name: "Eve" });
-      const chess = await createChessRequestInStoreA({ timeControl: "5+0" });
-      chess.requester = user;
+      const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
+      chess.inviter = user;
       await storeA.save(chess);
 
       // Hydrate and verify relationship
-      await storeB.query({ users: { requests: {} } });
+      await storeB.query({ users: { invitations: {} } });
       const hydratedUser = storeB.getById(User, user.id);
-      expect(hydratedUser!.requests.length).toBe(1);
+      expect(hydratedUser!.invitations.length).toBe(1);
 
       // Clear relationship in store A
-      chess.requester = null;
+      chess.inviter = null;
       await storeA.save(chess);
 
       // Re-hydrate from user side to refresh reverse relationships
-      await storeB.query({ users: { requests: {} } });
-      expect(hydratedUser!.requests.length).toBe(0);
+      await storeB.query({ users: { invitations: {} } });
+      expect(hydratedUser!.invitations.length).toBe(0);
     });
   });
 
   describe("polymorphic getAll", () => {
     it("should return all subclass instances when called with base class", async () => {
-      await createChessRequestInStoreA();
-      await createSkiRequestInStoreA();
+      await createChessInvitationInStoreA();
+      await createSkiInvitationInStoreA();
 
-      await storeB.query({ requests: {} });
+      await storeB.query({ invitations: {} });
 
-      const allRequests = storeB.getAll(Request);
+      const allInvitations = storeB.getAll(Invitation);
 
-      expect(allRequests.length).toBeGreaterThanOrEqual(2);
-      expect(allRequests).toContainEqual(expect.any(ChessRequest));
-      expect(allRequests).toContainEqual(expect.any(SkiRequest));
+      expect(allInvitations.length).toBeGreaterThanOrEqual(2);
+      expect(allInvitations).toContainEqual(expect.any(ChessInvitation));
+      expect(allInvitations).toContainEqual(expect.any(SkiInvitation));
     });
 
     it("should still return only specific subclass when called with concrete class", async () => {
-      await createChessRequestInStoreA();
-      await createSkiRequestInStoreA();
+      await createChessInvitationInStoreA();
+      await createSkiInvitationInStoreA();
 
-      await storeB.query({ requests: {} });
+      await storeB.query({ invitations: {} });
 
-      const chessRequests = storeB.getAll(ChessRequest);
-      const skiRequests = storeB.getAll(SkiRequest);
+      const chessInvitations = storeB.getAll(ChessInvitation);
+      const skiInvitations = storeB.getAll(SkiInvitation);
 
-      expect(chessRequests.length).toBeGreaterThanOrEqual(1);
-      expect(skiRequests.length).toBeGreaterThanOrEqual(1);
-      expect(chessRequests.every((r) => r instanceof ChessRequest)).toBe(true);
-      expect(skiRequests.every((r) => r instanceof SkiRequest)).toBe(true);
+      expect(chessInvitations.length).toBeGreaterThanOrEqual(1);
+      expect(skiInvitations.length).toBeGreaterThanOrEqual(1);
+      expect(chessInvitations.every((r) => r instanceof ChessInvitation)).toBe(true);
+      expect(skiInvitations.every((r) => r instanceof SkiInvitation)).toBe(true);
     });
   });
 });

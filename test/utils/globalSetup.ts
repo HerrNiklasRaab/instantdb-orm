@@ -123,7 +123,7 @@ export async function teardown() {
     users: {},
     profiles: {},
     posts: {},
-    requests: {},
+    invitations: {},
     chessMatchs: {},
     skiMatchs: {},
   });
@@ -145,9 +145,9 @@ export async function teardown() {
     txChunks.push(db.tx.posts[post.id].delete());
   }
 
-  // Delete all requests (STI)
-  for (const request of (result.requests ?? []) as { id: string }[]) {
-    txChunks.push(db.tx.requests[request.id].delete());
+  // Delete all invitations (STI)
+  for (const invitation of (result.invitations ?? []) as { id: string }[]) {
+    txChunks.push(db.tx.invitations[invitation.id].delete());
   }
 
   // Delete all chessMatchs (MTI)

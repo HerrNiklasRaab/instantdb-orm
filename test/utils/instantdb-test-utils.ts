@@ -14,8 +14,8 @@ import "../entities/User";
 import "../entities/Profile";
 import "../entities/Post";
 // STI entities (single table with type discriminator)
-import "../entities/ChessRequest";
-import "../entities/SkiRequest";
+import "../entities/ChessInvitation";
+import "../entities/SkiInvitation";
 // MTI entities (separate tables)
 import "../entities/ChessMatch";
 import "../entities/SkiMatch";

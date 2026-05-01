@@ -26,7 +26,7 @@ const _schema = i.schema({
       updatedAt: i.date().indexed(),
       deletedAt: i.date().indexed().optional(),
     }),
-    requests: i.entity({
+    invitations: i.entity({
       modelType: i.string(), // discriminator: 'chess' | 'ski'
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
@@ -39,7 +39,7 @@ const _schema = i.schema({
       // Soft delete
       deletedAt: i.date().indexed().optional(),
     }),
-    // MTI: Each concrete class has its own table (separate from STI requests)
+    // MTI: Each concrete class has its own table (separate from STI invitations)
     chessMatchs: i.entity({
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
@@ -92,24 +92,24 @@ const _schema = i.schema({
         label: "referrals",
       },
     },
-    requestsRequester: {
+    invitationsInviter: {
       forward: {
-        on: "requests",
+        on: "invitations",
         has: "one",
-        label: "requester",
+        label: "inviter",
       },
       reverse: {
         on: "users",
         has: "many",
-        label: "requests",
+        label: "invitations",
       },
     },
     // MTI links: each concrete table has its own relationship
-    chessMatchsRequester: {
+    chessMatchsInviter: {
       forward: {
         on: "chessMatchs",
         has: "one",
-        label: "requester",
+        label: "inviter",
       },
       reverse: {
         on: "users",
@@ -117,11 +117,11 @@ const _schema = i.schema({
         label: "chessMatchs",
       },
     },
-    skiMatchsRequester: {
+    skiMatchsInviter: {
       forward: {
         on: "skiMatchs",
         has: "one",
-        label: "requester",
+        label: "inviter",
       },
       reverse: {
         on: "users",

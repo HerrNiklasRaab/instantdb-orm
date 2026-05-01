@@ -17,7 +17,7 @@ const rules = {
   // Allow all operations on other test entities (no restrictions)
   profiles: { allow: { $default: "true" } },
   posts: { allow: { $default: "true" } },
-  matchRequests: { allow: { $default: "true" } },
+  invitations: { allow: { $default: "true" } },
   chessMatchs: { allow: { $default: "true" } },
   skiMatchs: { allow: { $default: "true" } },
 };
