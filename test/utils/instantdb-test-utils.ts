@@ -29,6 +29,11 @@ type AdminDB = ReturnType<typeof init>;
 // Type for user-scoped DB instance (returned by asUser)
 type UserScopedDB = ReturnType<AdminDB["asUser"]>;
 
+// Hardcoded credentials for the dedicated InstantDB *test* app. Tests must
+// never hit any other app — teardown deletes every row of every test entity.
+export const TEST_INSTANTDB_APP_ID = "51633990-ecae-4480-b1fe-ec9ae671033d";
+export const TEST_INSTANTDB_ADMIN_TOKEN = "5e859b49-b627-4960-934f-2c414a4b36f5";
+
 // Admin DB instance (singleton)
 let adminDb: AdminDB | null = null;
 
@@ -41,14 +46,9 @@ export interface TestInstantDBClient extends InstantDBClient {
  */
 export function getAdminDb(): AdminDB {
   if (!adminDb) {
-    if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
-      throw new Error(
-        "INSTANTDB_APP_ID and INSTANTDB_ADMIN_TOKEN environment variables are required"
-      );
-    }
     adminDb = init({
-      appId: process.env.INSTANTDB_APP_ID,
-      adminToken: process.env.INSTANTDB_ADMIN_TOKEN,
+      appId: TEST_INSTANTDB_APP_ID,
+      adminToken: TEST_INSTANTDB_ADMIN_TOKEN,
       schema: schema as Parameters<typeof init>[0]["schema"],
     });
   }
@@ -118,15 +118,9 @@ export function initTestDatabaseAsUser(email: string): TestInstantDBClient {
 }
 
 export function initTestDatabase(): TestInstantDBClient {
-  if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
-    throw new Error(
-      "INSTANTDB_APP_ID and INSTANTDB_ADMIN_TOKEN environment variables are required for integration tests"
-    );
-  }
-
   adminDb = init({
-    appId: process.env.INSTANTDB_APP_ID,
-    adminToken: process.env.INSTANTDB_ADMIN_TOKEN,
+    appId: TEST_INSTANTDB_APP_ID,
+    adminToken: TEST_INSTANTDB_ADMIN_TOKEN,
     // Cast schema to work around type incompatibility between @instantdb/react and @instantdb/admin
     schema: schema as Parameters<typeof init>[0]["schema"],
   });

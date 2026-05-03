@@ -184,6 +184,24 @@ describe("RootStore hydration (Integration)", () => {
       expect(user!.posts).toContain(post);
     });
 
+    it("late-hydrated child does not dirty the previously-hydrated parent", async () => {
+      // Parent hydrated first with empty `posts` — tracker baseline locked in.
+      const user = await createUserInStoreA({ name: "John" });
+      await storeB.queryModel(User);
+      const hydratedUser = storeB.getById(User, user.id)!;
+      expect(hydratedUser.posts.length).toBe(0);
+      expect(hydratedUser.isDirty()).toBe(false);
+
+      // Child arrives via a separate hydration; ModelHydrator wires the
+      // reverse link by pushing it into the parent's array.
+      await createPostInStoreA({ author: user });
+      await storeB.queryAll();
+      expect(hydratedUser.posts.length).toBe(1);
+
+      // Nobody mutated the parent.
+      expect(hydratedUser.isDirty()).toBe(false);
+    });
+
     it("resolves multiple items in collection", async () => {
       const user = await createUserInStoreA({ name: "John" });
       const post1 = await createPostInStoreA({ title: "Post 1", author: user });

@@ -124,6 +124,24 @@ export class ChangeTracker {
     this.currentSnapshot = this.originalSnapshot;
   }
 
+  /**
+   * Treat the current value of one relationship as part of the baseline.
+   * Used by ModelHydrator's reverse-link wiring: when a child is
+   * late-hydrated and pushed into a parent's array, that push is
+   * bookkeeping, not a user mutation, so it must not show up as a change.
+   */
+  acceptCurrentRelationship(fieldName: string): void {
+    const meta = getEntityMeta(this.entityName);
+    const rel = meta.relationshipFields.find((r) => r.fieldName === fieldName);
+    if (!rel) return;
+    const propName = rel.getFieldNameOnModel(this.model);
+    const value = (this.model as unknown as Record<string, unknown>)[propName];
+    const baseline = rel.isToMany()
+      ? ((value as Model[] | undefined) ?? []).map((m) => m.id)
+      : ((value as Model | null)?.id ?? null);
+    this.originalSnapshot.relationships.set(fieldName, baseline);
+  }
+
   dispose(): void {
     for (const disposer of this.disposers) {
       disposer();

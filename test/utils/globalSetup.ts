@@ -1,36 +1,27 @@
-import * as dotenv from "dotenv";
 import * as fs from "fs";
 import { resolve } from "path";
 import { init } from "@instantdb/admin";
 import { execSync } from "child_process";
-
-// Load test environment variables
-dotenv.config({ path: resolve(__dirname, "../../.env.test") });
+import { TEST_INSTANTDB_APP_ID, TEST_INSTANTDB_ADMIN_TOKEN } from "./instantdb-test-utils";
 
 /**
  * Push schema to InstantDB before running tests using the CLI.
  * This ensures the remote schema matches the local schema definition.
  */
 async function pushSchema() {
-  if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
-    console.warn("Skipping schema push: missing INSTANTDB_APP_ID or INSTANTDB_ADMIN_TOKEN");
-    return;
-  }
-
   const schemaPath = resolve(__dirname, "../instant.schema.ts");
-  const appId = process.env.INSTANTDB_APP_ID;
 
   try {
     // Use the CLI to push schema
     // -y auto-confirms prompts, --skip-check-types allows destructive changes
     const result = execSync(
-      `npx instant-cli push schema --app ${appId} --skip-check-types -y`,
+      `npx instant-cli push schema --app ${TEST_INSTANTDB_APP_ID} --skip-check-types -y`,
       {
         cwd: resolve(__dirname, "../.."),
         env: {
           ...process.env,
-          INSTANT_APP_ID: appId,
-          INSTANT_ADMIN_TOKEN: process.env.INSTANTDB_ADMIN_TOKEN,
+          INSTANT_APP_ID: TEST_INSTANTDB_APP_ID,
+          INSTANT_ADMIN_TOKEN: TEST_INSTANTDB_ADMIN_TOKEN,
           INSTANT_SCHEMA_FILE_PATH: schemaPath,
         },
         stdio: ["pipe", "pipe", "pipe"],
@@ -52,13 +43,7 @@ async function pushSchema() {
  * This ensures the remote permissions match the local permissions definition.
  */
 async function pushPerms() {
-  if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
-    console.warn("Skipping perms push: missing INSTANTDB_APP_ID or INSTANTDB_ADMIN_TOKEN");
-    return;
-  }
-
   const permsPath = resolve(__dirname, "../instant.perms.ts");
-  const appId = process.env.INSTANTDB_APP_ID;
 
   // The instant-cli ignores INSTANT_PERMS_FILE_PATH and only looks in package root
   // So we copy the test perms file to the root, push, then clean up
@@ -70,13 +55,13 @@ async function pushPerms() {
     console.log("Pushing perms from:", permsPath);
 
     const result = execSync(
-      `npx instant-cli push perms --app ${appId} -y`,
+      `npx instant-cli push perms --app ${TEST_INSTANTDB_APP_ID} -y`,
       {
         cwd: resolve(__dirname, "../.."),
         env: {
           ...process.env,
-          INSTANT_APP_ID: appId,
-          INSTANT_ADMIN_TOKEN: process.env.INSTANTDB_ADMIN_TOKEN,
+          INSTANT_APP_ID: TEST_INSTANTDB_APP_ID,
+          INSTANT_ADMIN_TOKEN: TEST_INSTANTDB_ADMIN_TOKEN,
         },
         stdio: ["pipe", "pipe", "pipe"],
         timeout: 60000,
@@ -105,16 +90,12 @@ export async function setup() {
 }
 
 export async function teardown() {
-  if (!process.env.INSTANTDB_APP_ID || !process.env.INSTANTDB_ADMIN_TOKEN) {
-    return;
-  }
-
   // Dynamic import to avoid issues with schema types
   const { default: schema } = await import("../instant.schema");
 
   const db = init({
-    appId: process.env.INSTANTDB_APP_ID,
-    adminToken: process.env.INSTANTDB_ADMIN_TOKEN,
+    appId: TEST_INSTANTDB_APP_ID,
+    adminToken: TEST_INSTANTDB_ADMIN_TOKEN,
     schema: schema as Parameters<typeof init>[0]["schema"],
   });
 

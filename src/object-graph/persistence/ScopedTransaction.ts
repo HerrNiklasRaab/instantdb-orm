@@ -2,6 +2,7 @@ import { runInAction } from "mobx";
 import type { Model } from "../Model";
 import type { TxChunk } from "./types";
 import { ModelSnapshot } from "./ModelSnapshot";
+import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
 
 export interface TransactionStoreAccess {
@@ -56,17 +57,21 @@ export class ScopedTransaction {
 
   /**
    * Commit only this transaction's claimed models atomically.
+   *
+   * Existing (claimed) models are diffed against the snapshot taken at
+   * *claim time* — so only mutations that happened inside this transaction
+   * are persisted. Out-of-transaction mutations or hydration side effects
+   * accumulated earlier are not flushed.
    */
   async commit(): Promise<void> {
     this.assertActive();
     try {
       const chunks: TxChunk[] = [];
 
-      for (const [model] of this.claimedModels) {
-        if (model._tracker?.hasChanges()) {
-          model.setUpdatedAt();
-          chunks.push(this.buildTxChunk(model));
-        }
+      for (const [model, claimSnapshot] of this.claimedModels) {
+        if (!this.diffFromClaim(model, claimSnapshot).hasChanges()) continue;
+        model.setUpdatedAt();
+        chunks.push(this.buildTxChunkFromDiff(model, this.diffFromClaim(model, claimSnapshot)));
       }
 
       for (const model of this.newModels) {
@@ -89,6 +94,15 @@ export class ScopedTransaction {
     } finally {
       this.releaseAll();
     }
+  }
+
+  private diffFromClaim(model: Model, claimSnapshot: ModelSnapshot): ModelSnapshotDiff {
+    return new ModelSnapshotDiff(
+      claimSnapshot,
+      new ModelSnapshot(model, false),
+      model.entityName,
+      false
+    );
   }
 
   /**
@@ -120,24 +134,27 @@ export class ScopedTransaction {
   }
 
   private buildTxChunk(model: Model): TxChunk {
+    return this.buildTxChunkFromDiff(model, model._tracker!.getChanges());
+  }
+
+  private buildTxChunkFromDiff(model: Model, diff: ModelSnapshotDiff): TxChunk {
     const entityName = model.entityName;
-    const changes = model._tracker!.getChanges();
     let tx: TxChunk = this.store.db.tx[entityName][model.id];
 
-    if (changes.scalars.size > 0) {
+    if (diff.scalars.size > 0) {
       const updateData: Record<string, unknown> = {};
-      for (const [field, value] of changes.scalars) {
+      for (const [field, value] of diff.scalars) {
         updateData[field] = value instanceof Date ? value.toISOString() : value;
       }
       tx = tx.update(updateData);
     }
 
-    for (const [linkName, ids] of changes.links) {
+    for (const [linkName, ids] of diff.links) {
       const label = this.store.getLinkLabel(entityName, linkName);
       tx = tx.link({ [label]: ids.length === 1 ? ids[0] : ids });
     }
 
-    for (const [linkName, ids] of changes.unlinks) {
+    for (const [linkName, ids] of diff.unlinks) {
       const label = this.store.getLinkLabel(entityName, linkName);
       tx = tx.unlink({ [label]: ids.length === 1 ? ids[0] : ids });
     }

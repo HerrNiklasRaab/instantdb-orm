@@ -266,9 +266,11 @@ export class ModelHydrator {
       const array = targetRecord[propName] as Model[];
       if (Array.isArray(array) && !array.includes(model)) {
         array.push(model);
+        targetModel._tracker?.acceptCurrentRelationship(reverseRel.fieldName);
       }
     } else {
       targetRecord[propName] = model;
+      targetModel._tracker?.acceptCurrentRelationship(reverseRel.fieldName);
     }
   }
 }

@@ -114,6 +114,30 @@ describe("Transaction (Integration)", () => {
 
       expect(user.isDirty()).toBe(false);
     });
+
+    it("does not flush mutations made outside of any transaction", async () => {
+      // A transaction must persist exactly what it mutated — not earlier
+      // out-of-transaction mutations sitting on the model. Otherwise stale
+      // state from anywhere (uncommitted user edits, hydration side effects,
+      // etc.) leaks into the next save and bloats payloads.
+      const user = createUser("Original");
+      await store.save(user);
+
+      // Stray mutation outside any transaction.
+      user.name = "stray";
+
+      // Real mutation, inside a transaction, on a different field.
+      await store.transaction(async () => {
+        user.testDate = new Date("2026-06-01T00:00:00.000Z");
+      });
+
+      // DB truth via a fresh store: testDate is persisted, name is not.
+      const verify = createVerificationStore();
+      await verify.queryModel(User);
+      const refreshed = verify.getById(User, user.id)!;
+      expect(refreshed.testDate?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+      expect(refreshed.name).toBe("Original");
+    });
   });
 
   describe("createTransaction() - long-lived", () => {
