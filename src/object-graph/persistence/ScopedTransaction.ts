@@ -7,7 +7,11 @@ import { TransactionContext } from "./TransactionContext";
 
 export interface TransactionStoreAccess {
   readonly db: { tx: Record<string, Record<string, TxChunk>>; transact(chunks: TxChunk[]): Promise<unknown> };
-  getIdentityMapByName(entityName: string): { delete(id: string): boolean };
+  getIdentityMapByName(entityName: string): {
+    has(id: string): boolean;
+    set(model: Model): void;
+    delete(id: string): boolean;
+  };
   getLinkLabel(entityName: string, linkName: string): string;
   rehydrateModel(model: Model, rawData: { id: string; [key: string]: unknown }): void;
 }
@@ -40,6 +44,11 @@ export class ScopedTransaction {
       return;
     }
     this.newModels.add(model);
+
+    const identityMap = this.store.getIdentityMapByName(model.entityName);
+    if (!identityMap.has(model.id)) {
+      identityMap.set(model);
+    }
   }
 
   has(model: Model): boolean {

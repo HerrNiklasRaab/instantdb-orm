@@ -7,7 +7,6 @@ import { getEntityNameFromClass } from "../decorators";
 import type { TxChunk } from "../persistence/types";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
 import { TransactionContext } from "../persistence/TransactionContext";
-import { addOnNewModel, removeOnNewModel } from "../NewModelRegistry";
 import type {
   RawEntityData,
   RootStoreConfig,
@@ -24,30 +23,13 @@ export class RootStore implements TransactionStoreAccess {
   private hydrator: ModelHydrator;
   readonly db: InstantDBClient;
 
-  private readonly onNewModelCallback = (model: Model) => {
-    const tx = TransactionContext.current;
-    if (!tx) return;
-
-    // Auto-add to identity map when inside a transaction
-    const entityName = model.entityName;
-    const identityMap = this.identityMaps.get(entityName);
-    if (identityMap && !identityMap.has(model.id)) {
-      identityMap.set(model);
-    }
-
-    tx.registerNew(model);
-  };
-
   constructor(config: RootStoreConfig) {
     this.db = config.db;
     this.hydrator = new ModelHydrator(this);
     this.initializeIdentityMaps();
-    addOnNewModel(this.onNewModelCallback);
   }
 
-  dispose(): void {
-    removeOnNewModel(this.onNewModelCallback);
-  }
+  dispose(): void {}
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Transaction API

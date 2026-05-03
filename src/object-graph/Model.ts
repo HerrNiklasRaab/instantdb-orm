@@ -4,7 +4,7 @@ import { ChangeTracker } from "./persistence/ChangeTracker";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
 import { makeObservable as mobxMakeObservable, observable, reaction } from "mobx";
 import { field } from "./decorators";
-import { notifyNewModel } from "./NewModelRegistry";
+import { TransactionContext } from "./persistence/TransactionContext";
 
 export abstract class Model {
   readonly id: string;
@@ -78,7 +78,7 @@ export abstract class Model {
     this._tracker = new ChangeTracker(this, this.entityName, isNew);
     this.setupDebugView();
     if (isNew) {
-      notifyNewModel(this);
+      TransactionContext.current?.registerNew(this);
     }
   }
 
