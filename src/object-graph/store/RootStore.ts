@@ -180,28 +180,47 @@ export class RootStore implements TransactionStoreAccess {
 
   /** Get all entities of a class (supports polymorphic queries for base classes) */
   getAll<T extends Model>(EntityClass: ModelClass<T>): T[] {
-    const subclasses = getSubclasses(EntityClass);
-
-    if (subclasses.length > 0) {
-      const results: T[] = [];
-      for (const SubClass of subclasses) {
-        results.push(...this.getIdentityMap(SubClass).values() as T[]);
+    const result: T[] = [];
+    for (const map of this.identityMapsFor(EntityClass)) {
+      for (const entity of map.values()) {
+        if (entity instanceof (EntityClass as Function)) result.push(entity as T);
       }
-      return results;
     }
-
-    // Filter by instanceof to handle STI (where identity map is shared across subtypes)
-    return this.getIdentityMap(EntityClass)
-      .values()
-      .filter((entity) => entity instanceof EntityClass) as T[];
+    return result;
   }
 
-  /** Get entity by ID */
+  /** Get entity by ID (supports polymorphic lookup for base classes) */
   getById<T extends Model>(
     EntityClass: ModelClass<T>,
     id: string
   ): T | undefined {
-    return this.getIdentityMap(EntityClass).get(id) as T | undefined;
+    for (const map of this.identityMapsFor(EntityClass)) {
+      const found = map.get(id);
+      if (found && found instanceof (EntityClass as Function)) return found as T;
+    }
+    return undefined;
+  }
+
+  /**
+   * Identity maps that may contain instances of `EntityClass`. For an abstract
+   * base class, returns the deduplicated maps of its registered subclasses
+   * (STI subclasses share a single map; MTI ones don't). For a concrete class,
+   * returns its own map.
+   */
+  private identityMapsFor<T extends Model>(
+    EntityClass: ModelClass<T>
+  ): IdentityMap<T>[] {
+    const subclasses = getSubclasses(EntityClass);
+    const classes = subclasses.length > 0 ? subclasses : [EntityClass];
+    const seen = new Set<IdentityMap<Model>>();
+    const result: IdentityMap<T>[] = [];
+    for (const cls of classes) {
+      const map = this.getIdentityMap(cls);
+      if (seen.has(map)) continue;
+      seen.add(map);
+      result.push(map as IdentityMap<T>);
+    }
+    return result;
   }
 
   /** One-time query and hydrate all entities of a class */
