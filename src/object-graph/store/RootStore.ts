@@ -458,11 +458,11 @@ export class RootStore implements TransactionStoreAccess {
               return;
             }
             const callbackStore = new RootStore(config);
-            callbackStore.hydrateResult(data);
             try {
+              callbackStore.hydrateResult(data);
               await handler(callbackStore, prevStore);
             } catch (err) {
-              console.error("subscribeQueryIsolated handler threw:", err);
+              console.error("subscribeQueryIsolated callback failed:", err);
             } finally {
               prevStore?.dispose();
               prevStore = callbackStore;
