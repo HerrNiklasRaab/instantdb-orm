@@ -414,4 +414,77 @@ export class RootStore implements TransactionStoreAccess {
 
     return { close };
   }
+
+  /**
+   * Subscribe to a query and invoke `handler` with a freshly hydrated, isolated
+   * store on each update. The handler also receives the previous callback's store
+   * (or `null` on the first callback), so it can compare states — e.g. detect
+   * entered/removed/changed entities by walking identity maps. The previous store
+   * is disposed after the handler returns; do not retain references to its models.
+   * Overlapping updates are serialized — handler N+1 starts only after handler N
+   * finishes (or rejects). The outer store is not mutated.
+   */
+  async subscribeQueryIsolated(
+    queryObj: Record<string, unknown>,
+    handler: (store: RootStore, prev: RootStore | null) => Promise<void> | void
+  ): Promise<{ close(): void }> {
+    const expandedQuery = this.buildQueryWithRelationships(queryObj);
+    const config: RootStoreConfig = { db: this.db };
+
+    let prevStore: RootStore | null = null;
+    let queue: Promise<void> = Promise.resolve();
+    let closed = false;
+    let firstResolved = false;
+
+    return new Promise<{ close(): void }>((resolve, reject) => {
+      const unsubscribe = this.db.subscribeQuery<QueryResult>(
+        expandedQuery,
+        ({ error, data }) => {
+          if (closed) return;
+          if (error) {
+            console.error("subscribeQueryIsolated error:", error.message);
+            if (!firstResolved) {
+              firstResolved = true;
+              reject(new Error(error.message));
+            }
+            return;
+          }
+          if (!data) return;
+
+          queue = queue.then(async () => {
+            if (closed) {
+              prevStore?.dispose();
+              prevStore = null;
+              return;
+            }
+            const callbackStore = new RootStore(config);
+            callbackStore.hydrateResult(data);
+            try {
+              await handler(callbackStore, prevStore);
+            } catch (err) {
+              console.error("subscribeQueryIsolated handler threw:", err);
+            } finally {
+              prevStore?.dispose();
+              prevStore = callbackStore;
+            }
+          });
+
+          if (!firstResolved) {
+            firstResolved = true;
+            resolve({
+              close: () => {
+                closed = true;
+                unsubscribe();
+                const cleanup = () => {
+                  prevStore?.dispose();
+                  prevStore = null;
+                };
+                queue = queue.then(cleanup, cleanup);
+              },
+            });
+          }
+        }
+      );
+    });
+  }
 }

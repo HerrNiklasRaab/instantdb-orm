@@ -41,7 +41,7 @@ export class ModelSnapshotDiff {
         if (field.fieldName === "id") continue;
         const originalValue = this.original.scalars.get(field.fieldName);
         const currentValue = this.current.scalars.get(field.fieldName);
-        if (originalValue !== currentValue) {
+        if (!scalarsEqual(originalValue, currentValue)) {
           this.scalars.set(field.fieldName, currentValue);
         }
       }
@@ -135,4 +135,10 @@ export class ModelSnapshotDiff {
       }
     }
   }
+}
+
+function scalarsEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  return false;
 }
