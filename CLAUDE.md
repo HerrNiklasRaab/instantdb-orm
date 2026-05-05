@@ -128,6 +128,24 @@ export class SkiMatch extends Match { }    // → skiMatchs table
 ### `@model` Decorator
 Marks a class as a persistable entity. Required on all concrete model classes.
 
+The entity (table) name is derived from the class name by lowercasing the first letter and appending `"s"`: `User` → `users`, `ChatMembership` → `chatMemberships`. **The pluralizer is naive — it just appends `s`.** Class names whose English plural isn't `+s` need an explicit override:
+
+```typescript
+@model("parties")        // Party → partys (wrong) → "parties"
+export class Party extends Model { ... }
+
+@model("activities")     // Activity → activitys (wrong) → "activities"
+export class Activity extends Model { ... }
+```
+
+If you skip the override and the schema's entity is named differently, you'll get a runtime error like:
+
+```
+Unknown entity type: parties. Did you add @model decorator to the model class?
+```
+
+Rule of thumb: if the class name ends in `y`, `s`, `x`, `ch`, or `sh`, pass an explicit entity name to `@model(...)`.
+
 ### `@field()` Decorator
 Registers field-to-schema attribute mappings for hydration. Use when the field name differs from the schema attribute name.
 
