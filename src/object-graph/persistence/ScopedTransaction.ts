@@ -89,20 +89,24 @@ export class ScopedTransaction {
   async commit(): Promise<void> {
     this.assertActive();
     try {
-      const chunks: TxChunk[] = [];
-
-      for (const [model, claim] of this.claimedModels) {
-        if (!this.diffFromClaim(model, claim.data).hasChanges()) continue;
-        model.setUpdatedAt();
-        chunks.push(this.buildTxChunkFromDiff(model, this.diffFromClaim(model, claim.data)));
-      }
-
-      for (const model of this.newModels) {
-        if (model._tracker?.hasChanges()) {
+      // setUpdatedAt() writes an observed property; running inside the tx
+      // context keeps `claimForCurrentTransaction` from treating those
+      // bookkeeping writes as out-of-tx user mutations.
+      const chunks = TransactionContext.run(this, () => {
+        const built: TxChunk[] = [];
+        for (const [model, claim] of this.claimedModels) {
+          if (!this.diffFromClaim(model, claim.data).hasChanges()) continue;
           model.setUpdatedAt();
-          chunks.push(this.buildTxChunk(model));
+          built.push(this.buildTxChunkFromDiff(model, this.diffFromClaim(model, claim.data)));
         }
-      }
+        for (const model of this.newModels) {
+          if (model._tracker?.hasChanges()) {
+            model.setUpdatedAt();
+            built.push(this.buildTxChunk(model));
+          }
+        }
+        return built;
+      });
 
       if (chunks.length > 0) {
         await this.store.db.transact(chunks);

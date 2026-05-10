@@ -17,8 +17,7 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
 
   it("lets the handler detect deletion by diffing identity maps", async () => {
     const seedStore = new RootStore({ db });
-    const u = new User("doomed");
-    await seedStore.save(u);
+    const u = await seedStore.transaction(() => new User("doomed"));
 
     const store = new RootStore({ db });
     const removalEvents: string[] = [];
@@ -43,7 +42,7 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
 
     const deleteStore = new RootStore({ db });
     await deleteStore.queryModel(User);
-    await deleteStore.delete(deleteStore.getById(User, u.id)!);
+    await deleteStore.transaction(() => deleteStore.getById(User, u.id)!.delete());
 
     await waitFor(() => removalEvents.includes(u.id), 8000);
 
@@ -53,8 +52,7 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
   it("lets the handler detect a status x → y transition", async () => {
     // Seed an entity in state x.
     const seedStore = new RootStore({ db });
-    const u = new User("transitioning");
-    await seedStore.save(u);
+    const u = await seedStore.transaction(() => new User("transitioning"));
 
     const store = new RootStore({ db });
     const transitions: { id: string; before: string; after: string }[] = [];

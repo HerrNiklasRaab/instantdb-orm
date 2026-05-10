@@ -26,9 +26,7 @@ describe("Single Table Inheritance (Integration)", () => {
       name: string;
     }> = {}
   ): Promise<User> {
-    const user = new User(data.name ?? "Test User");
-    await storeA.save(user);
-    return user;
+    return storeA.transaction(() => new User(data.name ?? "Test User"));
   }
 
   // Helper to create ChessInvitation through Store A
@@ -38,12 +36,9 @@ describe("Single Table Inheritance (Integration)", () => {
       rated: boolean;
     }> = {}
   ): Promise<ChessInvitation> {
-    const invitation = new ChessInvitation(
-      data.timeControl ?? "5+0",
-      data.rated ?? true
+    return storeA.transaction(
+      () => new ChessInvitation(data.timeControl ?? "5+0", data.rated ?? true)
     );
-    await storeA.save(invitation);
-    return invitation;
   }
 
   // Helper to create SkiInvitation through Store A
@@ -53,12 +48,13 @@ describe("Single Table Inheritance (Integration)", () => {
       skillLevel: string;
     }> = {}
   ): Promise<SkiInvitation> {
-    const invitation = new SkiInvitation(
-      data.resort ?? "Aspen",
-      data.skillLevel ?? "intermediate"
+    return storeA.transaction(
+      () =>
+        new SkiInvitation(
+          data.resort ?? "Aspen",
+          data.skillLevel ?? "intermediate"
+        )
     );
-    await storeA.save(invitation);
-    return invitation;
   }
 
   describe("hydration with type discriminator", () => {
@@ -98,8 +94,9 @@ describe("Single Table Inheritance (Integration)", () => {
         timeControl: "5+0",
         rated: true,
       });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       // Store B hydrates
       await storeB.query({ invitations: { inviter: {} } });
@@ -118,15 +115,17 @@ describe("Single Table Inheritance (Integration)", () => {
         timeControl: "3+2",
         rated: false,
       });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       const ski = await createSkiInvitationInStoreA({
         resort: "Aspen",
         skillLevel: "advanced",
       });
-      ski.inviter = user;
-      await storeA.save(ski);
+      await storeA.transaction(() => {
+        ski.inviter = user;
+      });
 
       // Store B hydrates
       await storeB.query({ users: { invitations: {} } });
@@ -174,8 +173,9 @@ describe("Single Table Inheritance (Integration)", () => {
       // Create user and linked invitation
       const user = await createUserInStoreA({ name: "Alice" });
       const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       // Hydrate in store B
       await storeB.query({ invitations: { inviter: {} } });
@@ -194,12 +194,14 @@ describe("Single Table Inheritance (Integration)", () => {
       // Create user with 2 invitations
       const user = await createUserInStoreA({ name: "Bob" });
       const chess1 = await createChessInvitationInStoreA({ timeControl: "3+2" });
-      chess1.inviter = user;
-      await storeA.save(chess1);
+      await storeA.transaction(() => {
+        chess1.inviter = user;
+      });
 
       const chess2 = await createChessInvitationInStoreA({ timeControl: "10+5" });
-      chess2.inviter = user;
-      await storeA.save(chess2);
+      await storeA.transaction(() => {
+        chess2.inviter = user;
+      });
 
       // Hydrate
       await storeB.query({ users: { invitations: {} } });
@@ -220,12 +222,14 @@ describe("Single Table Inheritance (Integration)", () => {
       const user = await createUserInStoreA({ name: "Charlie" });
 
       const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       const ski = await createSkiInvitationInStoreA({ resort: "Aspen" });
-      ski.inviter = user;
-      await storeA.save(ski);
+      await storeA.transaction(() => {
+        ski.inviter = user;
+      });
 
       // Hydrate
       await storeB.query({ users: { invitations: {} } });
@@ -247,12 +251,14 @@ describe("Single Table Inheritance (Integration)", () => {
       // Create linked entities
       const user = await createUserInStoreA({ name: "Dave" });
       const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       // Clear the relationship
-      chess.inviter = null;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = null;
+      });
 
       // Verify in store B
       await storeB.query({ invitations: { inviter: {} } });
@@ -264,8 +270,9 @@ describe("Single Table Inheritance (Integration)", () => {
       // Create linked entities
       const user = await createUserInStoreA({ name: "Eve" });
       const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       // Hydrate and verify relationship
       await storeB.query({ users: { invitations: {} } });
@@ -273,8 +280,9 @@ describe("Single Table Inheritance (Integration)", () => {
       expect(hydratedUser!.invitations.length).toBe(1);
 
       // Clear relationship in store A
-      chess.inviter = null;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = null;
+      });
 
       // Re-hydrate from user side to refresh reverse relationships
       await storeB.query({ users: { invitations: {} } });

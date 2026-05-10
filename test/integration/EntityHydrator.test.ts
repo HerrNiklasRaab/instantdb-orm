@@ -31,12 +31,13 @@ describe("RootStore hydration (Integration)", () => {
       testDate: Date;
     }> = {}
   ): Promise<User> {
-    const user = new User(data.name ?? "Test User");
-    if (data.testDate) {
-      user.testDate = data.testDate;
-    }
-    await storeA.save(user);
-    return user;
+    return storeA.transaction(() => {
+      const user = new User(data.name ?? "Test User");
+      if (data.testDate) {
+        user.testDate = data.testDate;
+      }
+      return user;
+    });
   }
 
   // Helper to create post through Store A
@@ -47,13 +48,14 @@ describe("RootStore hydration (Integration)", () => {
       author: User;
     }> = {}
   ): Promise<Post> {
-    const post = new Post(data.title ?? "Test Post");
-    post.content = data.content;
-    if (data.author) {
-      post.author = data.author;
-    }
-    await storeA.save(post);
-    return post;
+    return storeA.transaction(() => {
+      const post = new Post(data.title ?? "Test Post");
+      post.content = data.content ?? null;
+      if (data.author) {
+        post.author = data.author;
+      }
+      return post;
+    });
   }
 
   // Helper to create post through Store B
@@ -64,13 +66,14 @@ describe("RootStore hydration (Integration)", () => {
       author: User;
     }> = {}
   ): Promise<Post> {
-    const post = new Post(data.title ?? "Test Post");
-    post.content = data.content;
-    if (data.author) {
-      post.author = data.author;
-    }
-    await storeB.save(post);
-    return post;
+    return storeB.transaction(() => {
+      const post = new Post(data.title ?? "Test Post");
+      post.content = data.content ?? null;
+      if (data.author) {
+        post.author = data.author;
+      }
+      return post;
+    });
   }
 
   // Helper to create profile through Store A
@@ -81,14 +84,15 @@ describe("RootStore hydration (Integration)", () => {
       user: User;
     }> = {}
   ): Promise<UserProfile> {
-    const profile = new UserProfile();
-    profile.bio = data.bio;
-    profile.avatarUrl = data.avatarUrl;
-    if (data.user) {
-      profile.user = data.user;
-    }
-    await storeA.save(profile);
-    return profile;
+    return storeA.transaction(() => {
+      const profile = new UserProfile();
+      profile.bio = data.bio ?? null;
+      profile.avatarUrl = data.avatarUrl ?? null;
+      if (data.user) {
+        profile.user = data.user;
+      }
+      return profile;
+    });
   }
 
   // Helper to create post with dangling link directly in DB (for edge case tests)
@@ -135,8 +139,9 @@ describe("RootStore hydration (Integration)", () => {
       const users1 = await storeB.queryModel(User);
       const user1 = users1.find((u) => u.id === userA.id);
 
-      userA.name = "John Updated";
-      await storeA.save(userA);
+      await storeA.transaction(() => {
+        userA.name = "John Updated";
+      });
 
       const users2 = await storeB.queryModel(User);
       const user2 = users2.find((u) => u.id === userA.id);
@@ -171,8 +176,7 @@ describe("RootStore hydration (Integration)", () => {
       expect(post!.author).toBeNull();
 
       // Create user later
-      const userA = new User("John", userId);
-      await storeA.save(userA);
+      await storeA.transaction(() => new User("John", userId));
 
       // Re-hydrate to pick up user
       await storeB.queryAll();
@@ -190,7 +194,7 @@ describe("RootStore hydration (Integration)", () => {
       await storeB.queryModel(User);
       const hydratedUser = storeB.getById(User, user.id)!;
       expect(hydratedUser.posts.length).toBe(0);
-      expect(hydratedUser.isDirty()).toBe(false);
+      expect(hydratedUser._tracker!.hasChanges()).toBe(false);
 
       // Child arrives via a separate hydration; ModelHydrator wires the
       // reverse link by pushing it into the parent's array.
@@ -199,7 +203,7 @@ describe("RootStore hydration (Integration)", () => {
       expect(hydratedUser.posts.length).toBe(1);
 
       // Nobody mutated the parent.
-      expect(hydratedUser.isDirty()).toBe(false);
+      expect(hydratedUser._tracker!.hasChanges()).toBe(false);
     });
 
     it("resolves multiple items in collection", async () => {
@@ -236,29 +240,6 @@ describe("RootStore hydration (Integration)", () => {
       expect(hydratedUser!.posts[0]).toBe(hydratedPost);
     });
 
-    it("preserves local dirty state when a sibling re-hydrates", async () => {
-      const user = await createUserInStoreA({ name: "Alice" });
-      const post1 = await createPostInStoreA({ author: user });
-      await storeB.queryAll();
-      const hydratedUser = storeB.getById(User, user.id)!;
-
-      // Local edit creates a posts diff on hydratedUser.
-      hydratedUser.posts.push(new Post("local"));
-      expect(hydratedUser.isDirty()).toBe(true);
-
-      // Remote detaches post1 from its author. Re-querying Post (only)
-      // delivers the update through the hydrator → ChangeTracker observers
-      // → wirer pipeline, which splices post1 out of hydratedUser.posts.
-      post1.author = null;
-      await storeA.save(post1);
-      await storeB.queryModel(Post);
-
-      // The wirer must not absorb hydratedUser's local diff into the
-      // baseline via acceptCurrentRelationship — the local edit still
-      // needs to be saveable.
-      expect(hydratedUser.isDirty()).toBe(true);
-    });
-
   });
 
   describe("one-to-one relationships (User ↔ Profile)", () => {
@@ -267,8 +248,9 @@ describe("RootStore hydration (Integration)", () => {
     it("resolves both directions via late hydration", async () => {
       const user = await createUserInStoreA({ name: "John" });
       const profile = await createProfileInStoreA({ bio: "Hello", user });
-      user.profile = profile;
-      await storeA.save(user);
+      await storeA.transaction(() => {
+        user.profile = profile;
+      });
 
       // Hydrate Profile FIRST (before User)
       const profiles = await storeB.queryModel(UserProfile);
@@ -314,8 +296,9 @@ describe("RootStore hydration (Integration)", () => {
       // Create User with Profile
       const user = await createUserInStoreA({ name: "John" });
       const profile = await createProfileInStoreA({ bio: "Hello", user });
-      user.profile = profile;
-      await storeA.save(user);
+      await storeA.transaction(() => {
+        user.profile = profile;
+      });
 
       // Create two posts linked to the same User
       const post1 = await createPostInStoreA({ author: user });

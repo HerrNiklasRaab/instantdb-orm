@@ -42,7 +42,7 @@ export abstract class Model {
     return this._updatedAt;
   }
 
-  /** Sets updatedAt timestamp to now. Called by RootStore/Transaction before save. */
+  /** Sets updatedAt timestamp to now. Called by ScopedTransaction.commit before flushing. */
   setUpdatedAt(): void {
     this._updatedAt = new Date();
   }
@@ -51,8 +51,11 @@ export abstract class Model {
     return this._deletedAt;
   }
 
-  /** Marks this model as deleted locally. Call store.save() to persist. */
-  markDeleted(): void {
+  /**
+   * Soft-delete this model. Stamps `deletedAt`; the surrounding transaction
+   * commits it.
+   */
+  delete(): void {
     this._deletedAt = new Date();
   }
 
@@ -166,10 +169,6 @@ export abstract class Model {
     }
     // Fallback for classes without @model decorator
     return deriveEntityName(this.constructor.name) as EntityName;
-  }
-
-  isDirty(): boolean {
-    return this._tracker!.hasChanges();
   }
 
   get isNew(): boolean {

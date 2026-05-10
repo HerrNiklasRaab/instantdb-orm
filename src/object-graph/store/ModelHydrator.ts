@@ -11,6 +11,7 @@ import type { ModelInstanceFor } from "./types";
 import { getEntityMeta } from "./EntityMeta";
 import type { RawEntityData } from "./types";
 import { RootStore } from "./RootStore";
+import { withHydration } from "./hydrationContext";
 
 export type GetIdentityMap = <K extends EntityName>(
   entityName: K
@@ -20,6 +21,16 @@ export class ModelHydrator {
   constructor(private store: RootStore) { }
 
   hydrate<K extends EntityName>(
+    entityName: K,
+    rawData: RawEntityData,
+    getIdentityMap: GetIdentityMap
+  ): ModelInstanceFor<K> | null {
+    return withHydration(() =>
+      this.hydrateUnguarded(entityName, rawData, getIdentityMap)
+    );
+  }
+
+  private hydrateUnguarded<K extends EntityName>(
     entityName: K,
     rawData: RawEntityData,
     getIdentityMap: GetIdentityMap
@@ -95,7 +106,9 @@ export class ModelHydrator {
     rawData: RawEntityData,
     getIdentityMap: GetIdentityMap
   ): void {
-    this.updateModelFields(model, model.entityName as EntityName, rawData, getIdentityMap);
+    withHydration(() =>
+      this.updateModelFields(model, model.entityName as EntityName, rawData, getIdentityMap)
+    );
   }
 
   private updateModelFields(

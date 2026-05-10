@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it as vitIt } from "vitest";
 import { configureEntityMeta } from "../../src/object-graph";
 import schema from "../instant.schema";
 import { User } from "../entities/User";
@@ -10,10 +10,16 @@ import { SkiInvitation } from "../entities/SkiInvitation";
 import { ChessMatch } from "../entities/ChessMatch";
 import { SkiMatch } from "../entities/SkiMatch";
 import { Container } from "../entities/Container";
+import { withTestTransaction } from "../../src/testing";
 
 beforeAll(() => {
   configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
 });
+
+// Auto-wrap every `it` body in a tx context — ChangeTracker enforces
+// tx-only mutations, but these in-memory tests never hit a RootStore.
+const it = (name: string, fn: () => void): void =>
+  vitIt(name, () => withTestTransaction(fn));
 
 describe("Reverse link wiring (in-memory)", () => {
   // ---------------------------------------------------------------------------
@@ -243,9 +249,9 @@ describe("Reverse link wiring (in-memory)", () => {
       invitation.inviter = inviter;
 
       // Holder (the side the user mutated) is dirty
-      expect(invitation.isDirty()).toBe(true);
+      expect(invitation._tracker!.hasChanges()).toBe(true);
       // Wired side (the back-ref owner) stays clean
-      expect(inviter.isDirty()).toBe(false);
+      expect(inviter._tracker!.hasChanges()).toBe(false);
     });
 
     it("D3: pushing onto the to-many array dirties the array owner, not the child", () => {
@@ -256,8 +262,8 @@ describe("Reverse link wiring (in-memory)", () => {
 
       inviter.invitations.push(invitation);
 
-      expect(inviter.isDirty()).toBe(true);
-      expect(invitation.isDirty()).toBe(false);
+      expect(inviter._tracker!.hasChanges()).toBe(true);
+      expect(invitation._tracker!.hasChanges()).toBe(false);
     });
   });
 

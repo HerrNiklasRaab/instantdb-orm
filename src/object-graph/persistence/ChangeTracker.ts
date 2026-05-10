@@ -3,6 +3,7 @@ import type { Model } from "../Model";
 import type { EntityName } from "../store/EntityMeta";
 import { getEntityMeta, RelationshipFieldMeta } from "../store/EntityMeta";
 import { wireReverseLink, isWiringInProgress } from "../store/reverseLinkWiring";
+import { isHydrationInProgress } from "../store/hydrationContext";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
@@ -137,8 +138,17 @@ export class ChangeTracker {
     // `link` op is what InstantDB persists), so the wired side should not
     // be drawn into the active transaction's commit.
     if (isWiringInProgress()) return;
+    // Hydration writes scalars and relationships through MobX-observed
+    // properties; those mutations are framework-internal, not user intent.
+    if (isHydrationInProgress()) return;
     const tx = TransactionContext.current;
-    if (tx && !tx.has(this.model)) {
+    if (!tx) {
+      throw new Error(
+        `Cannot mutate ${this.entityName} ${this.model.id} outside of a transaction. ` +
+        `Wrap the mutation in store.transaction(() => ...).`
+      );
+    }
+    if (!tx.has(this.model)) {
       tx.claim(this.model);
     }
   }

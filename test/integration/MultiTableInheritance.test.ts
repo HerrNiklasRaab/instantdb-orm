@@ -27,12 +27,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
       rated: boolean;
     }> = {}
   ): Promise<ChessMatch> {
-    const match = new ChessMatch(
-      data.timeControl ?? "5+0",
-      data.rated ?? true
+    return storeA.transaction(
+      () => new ChessMatch(data.timeControl ?? "5+0", data.rated ?? true)
     );
-    await storeA.save(match);
-    return match;
   }
 
   async function createSkiMatchInStoreA(
@@ -41,12 +38,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
       skillLevel: string;
     }> = {}
   ): Promise<SkiMatch> {
-    const match = new SkiMatch(
-      data.resort ?? "Aspen",
-      data.skillLevel ?? "intermediate"
+    return storeA.transaction(
+      () => new SkiMatch(data.resort ?? "Aspen", data.skillLevel ?? "intermediate")
     );
-    await storeA.save(match);
-    return match;
   }
 
   async function createUserInStoreA(
@@ -54,9 +48,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       name: string;
     }> = {}
   ): Promise<User> {
-    const user = new User(data.name ?? "Test User");
-    await storeA.save(user);
-    return user;
+    return storeA.transaction(() => new User(data.name ?? "Test User"));
   }
 
   describe("hydration from separate tables", () => {
@@ -110,8 +102,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
         timeControl: "5+0",
         rated: true,
       });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       await storeB.query({ chessMatchs: { inviter: {} } });
 
@@ -127,14 +120,16 @@ describe("Multi-Table Inheritance (Integration)", () => {
       const chess1 = await createChessMatchInStoreA({
         timeControl: "1+0",
       });
-      chess1.inviter = user;
-      await storeA.save(chess1);
+      await storeA.transaction(() => {
+        chess1.inviter = user;
+      });
 
       const chess2 = await createChessMatchInStoreA({
         timeControl: "15+10",
       });
-      chess2.inviter = user;
-      await storeA.save(chess2);
+      await storeA.transaction(() => {
+        chess2.inviter = user;
+      });
 
       await storeB.query({ users: { chessMatchs: {} } });
 
@@ -149,12 +144,14 @@ describe("Multi-Table Inheritance (Integration)", () => {
       const chess = await createChessMatchInStoreA({
         timeControl: "5+3",
       });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       const ski = await createSkiMatchInStoreA({ resort: "Aspen" });
-      ski.inviter = user;
-      await storeA.save(ski);
+      await storeA.transaction(() => {
+        ski.inviter = user;
+      });
 
       await storeB.query({
         users: { chessMatchs: {}, skiMatchs: {} },
@@ -214,8 +211,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Create user and linked match
       const user = await createUserInStoreA({ name: "Alice" });
       const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       // Hydrate in store B
       await storeB.query({ chessMatchs: { inviter: {} } });
@@ -234,12 +232,14 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Create user with 2 chess matches
       const user = await createUserInStoreA({ name: "Bob" });
       const chess1 = await createChessMatchInStoreA({ timeControl: "3+2" });
-      chess1.inviter = user;
-      await storeA.save(chess1);
+      await storeA.transaction(() => {
+        chess1.inviter = user;
+      });
 
       const chess2 = await createChessMatchInStoreA({ timeControl: "10+5" });
-      chess2.inviter = user;
-      await storeA.save(chess2);
+      await storeA.transaction(() => {
+        chess2.inviter = user;
+      });
 
       // Hydrate
       await storeB.query({ users: { chessMatchs: {} } });
@@ -259,12 +259,14 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Create user with 2 ski matches
       const user = await createUserInStoreA({ name: "Charlie" });
       const ski1 = await createSkiMatchInStoreA({ resort: "Aspen" });
-      ski1.inviter = user;
-      await storeA.save(ski1);
+      await storeA.transaction(() => {
+        ski1.inviter = user;
+      });
 
       const ski2 = await createSkiMatchInStoreA({ resort: "Vail" });
-      ski2.inviter = user;
-      await storeA.save(ski2);
+      await storeA.transaction(() => {
+        ski2.inviter = user;
+      });
 
       // Hydrate
       await storeB.query({ users: { skiMatchs: {} } });
@@ -285,12 +287,14 @@ describe("Multi-Table Inheritance (Integration)", () => {
       const user = await createUserInStoreA({ name: "Dave" });
 
       const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       const ski = await createSkiMatchInStoreA({ resort: "Aspen" });
-      ski.inviter = user;
-      await storeA.save(ski);
+      await storeA.transaction(() => {
+        ski.inviter = user;
+      });
 
       // Hydrate
       await storeB.query({ users: { chessMatchs: {}, skiMatchs: {} } });
@@ -315,12 +319,14 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Create linked entities
       const user = await createUserInStoreA({ name: "Eve" });
       const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       // Clear the relationship
-      chess.inviter = null;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = null;
+      });
 
       // Verify in store B
       await storeB.query({ chessMatchs: { inviter: {} } });
@@ -332,8 +338,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Create linked entities
       const user = await createUserInStoreA({ name: "Frank" });
       const chess = await createChessMatchInStoreA({ timeControl: "5+0" });
-      chess.inviter = user;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = user;
+      });
 
       // Hydrate and verify relationship
       await storeB.query({ users: { chessMatchs: {} } });
@@ -341,8 +348,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
       expect(hydratedUser!.chessMatchs.length).toBe(1);
 
       // Clear relationship in store A
-      chess.inviter = null;
-      await storeA.save(chess);
+      await storeA.transaction(() => {
+        chess.inviter = null;
+      });
 
       // Re-hydrate from user side to refresh reverse relationships
       await storeB.query({ users: { chessMatchs: {} } });
@@ -353,12 +361,14 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Create linked entities
       const user = await createUserInStoreA({ name: "Grace" });
       const ski = await createSkiMatchInStoreA({ resort: "Whistler" });
-      ski.inviter = user;
-      await storeA.save(ski);
+      await storeA.transaction(() => {
+        ski.inviter = user;
+      });
 
       // Clear the relationship
-      ski.inviter = null;
-      await storeA.save(ski);
+      await storeA.transaction(() => {
+        ski.inviter = null;
+      });
 
       // Verify in store B
       await storeB.query({ skiMatchs: { inviter: {} } });
@@ -370,8 +380,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Create linked entities
       const user = await createUserInStoreA({ name: "Henry" });
       const ski = await createSkiMatchInStoreA({ resort: "Tahoe" });
-      ski.inviter = user;
-      await storeA.save(ski);
+      await storeA.transaction(() => {
+        ski.inviter = user;
+      });
 
       // Hydrate and verify relationship
       await storeB.query({ users: { skiMatchs: {} } });
@@ -379,8 +390,9 @@ describe("Multi-Table Inheritance (Integration)", () => {
       expect(hydratedUser!.skiMatchs.length).toBe(1);
 
       // Clear relationship in store A
-      ski.inviter = null;
-      await storeA.save(ski);
+      await storeA.transaction(() => {
+        ski.inviter = null;
+      });
 
       // Re-hydrate from user side to refresh reverse relationships
       await storeB.query({ users: { skiMatchs: {} } });

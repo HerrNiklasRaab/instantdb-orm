@@ -4,7 +4,6 @@ import { getEntityNames, isValidEntityName, getEntityMeta } from "./EntityMeta";
 import { getModelClass, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
-import type { TxChunk } from "../persistence/types";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
 import { TransactionContext } from "../persistence/TransactionContext";
 import type {
@@ -46,16 +45,19 @@ export class RootStore implements TransactionStoreAccess {
   /**
    * Run a callback within a short-lived transaction.
    * Auto-commits on success, auto-rollback on error.
+   * Returns whatever the callback returns.
    */
-  async transaction(fn: () => Promise<void> | void): Promise<void> {
+  async transaction<T>(fn: () => T | Promise<T>): Promise<T> {
     const tx = this.createTransaction();
+    let result: T;
     try {
-      await TransactionContext.run(tx, fn);
+      result = await TransactionContext.run(tx, fn);
     } catch (e) {
       tx.rollback();
       throw e;
     }
     await tx.commit();
+    return result;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -78,56 +80,6 @@ export class RootStore implements TransactionStoreAccess {
 
   rehydrateModel(model: Model, rawData: RawEntityData): void {
     this.hydrator.rehydrate(model, rawData, this.getIdentityMapByName.bind(this));
-  }
-
-  /** Save model changes to the database */
-  async save(model: Model): Promise<void> {
-    if (!model._tracker!.hasChanges()) {
-      return;
-    }
-
-    // Auto-add to identity map if not present (enables automatic transaction tracking)
-    const entityName = model.entityName;
-    const identityMap = this.getIdentityMapByName(entityName);
-    if (!identityMap.has(model.id)) {
-      identityMap.set(model);
-    }
-
-    // Update timestamp before getting changes
-    model.setUpdatedAt();
-
-    const changes = model._tracker!.getChanges();
-    let tx: TxChunk = this.db.tx[entityName][model.id];
-
-    // Scalar updates
-    if (changes.scalars.size > 0) {
-      const updateData: Record<string, unknown> = {};
-      for (const [field, value] of changes.scalars) {
-        updateData[field] = value instanceof Date ? value.toISOString() : value;
-      }
-      tx = tx.update(updateData);
-    }
-
-    // Link operations
-    for (const [linkName, ids] of changes.links) {
-      const label = this.getLinkLabel(entityName, linkName);
-      tx = tx.link({ [label]: ids.length === 1 ? ids[0] : ids });
-    }
-
-    // Unlink operations
-    for (const [linkName, ids] of changes.unlinks) {
-      const label = this.getLinkLabel(entityName, linkName);
-      tx = tx.unlink({ [label]: ids.length === 1 ? ids[0] : ids });
-    }
-
-    await this.db.transact([tx]);
-    model._tracker!.reset();
-  }
-
-  /** Delete a model (soft delete) */
-  async delete(model: Model): Promise<void> {
-    model.markDeleted();
-    await this.save(model);
   }
 
   private initializeIdentityMaps(): void {
