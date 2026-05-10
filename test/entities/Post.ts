@@ -1,6 +1,7 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
 import { Model, model } from "../../src/object-graph";
 import type { User } from "./User";
+import type { Tag } from "./Tag";
 
 @model
 export class Post extends Model {
@@ -12,6 +13,7 @@ export class Post extends Model {
 
   // Relationships
   author: User | null = null;
+  tags: Tag[] = [];
 
   protected override makeObservable(): void {
     super.makeObservable();
@@ -19,7 +21,8 @@ export class Post extends Model {
       title: observable,
       content: observable,
       author: observable.ref,
-    });
+      tags: observable.shallow,
+    } as any);
   }
 
   constructor(title: string, author?: User, id?: string) {

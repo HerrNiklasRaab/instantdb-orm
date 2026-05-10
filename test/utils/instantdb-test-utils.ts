@@ -13,6 +13,9 @@ import schema from "../instant.schema";
 import "../entities/User";
 import "../entities/Profile";
 import "../entities/Post";
+import "../entities/Tag";
+import "../entities/Container";
+import "../entities/Item";
 // STI entities (single table with type discriminator)
 import "../entities/ChessInvitation";
 import "../entities/SkiInvitation";

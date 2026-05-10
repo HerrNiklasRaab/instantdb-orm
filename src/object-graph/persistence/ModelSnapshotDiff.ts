@@ -64,31 +64,20 @@ export class ModelSnapshotDiff {
     const currentId = this.current.relationships.get(rel.fieldName) as
       | string
       | null;
+    const originalId = this.original.relationships.get(rel.fieldName) as
+      | string
+      | null;
 
-    if (this.isNew) {
-      // New entity: include current relationship as link
+    if (originalId !== currentId) {
+      if (originalId) {
+        const existing = this.unlinks.get(rel.linkName) ?? [];
+        existing.push(originalId);
+        this.unlinks.set(rel.linkName, existing);
+      }
       if (currentId) {
         const existing = this.links.get(rel.linkName) ?? [];
         existing.push(currentId);
         this.links.set(rel.linkName, existing);
-      }
-    } else {
-      // Existing entity: compare original vs current
-      const originalId = this.original.relationships.get(rel.fieldName) as
-        | string
-        | null;
-
-      if (originalId !== currentId) {
-        if (originalId) {
-          const existing = this.unlinks.get(rel.linkName) ?? [];
-          existing.push(originalId);
-          this.unlinks.set(rel.linkName, existing);
-        }
-        if (currentId) {
-          const existing = this.links.get(rel.linkName) ?? [];
-          existing.push(currentId);
-          this.links.set(rel.linkName, existing);
-        }
       }
     }
   }
@@ -99,31 +88,24 @@ export class ModelSnapshotDiff {
   }): void {
     const currentIds =
       (this.current.relationships.get(rel.fieldName) as string[]) ?? [];
+    const originalIds =
+      (this.original.relationships.get(rel.fieldName) as string[]) ?? [];
+    const origSet = new Set(originalIds);
+    const currSet = new Set(currentIds);
 
-    if (this.isNew) {
-      // New entity: include all current array members as links
-      if (currentIds.length > 0) {
-        this.links.set(rel.linkName, currentIds);
+    // Find added (to link)
+    const toLink: string[] = [];
+    for (const id of currSet) {
+      if (!origSet.has(id)) {
+        toLink.push(id);
       }
-    } else {
-      // Existing entity: compute diffs
-      const originalIds =
-        (this.original.relationships.get(rel.fieldName) as string[]) ?? [];
-      const origSet = new Set(originalIds);
-      const currSet = new Set(currentIds);
+    }
+    if (toLink.length > 0) {
+      this.links.set(rel.linkName, toLink);
+    }
 
-      // Find added (to link)
-      const toLink: string[] = [];
-      for (const id of currSet) {
-        if (!origSet.has(id)) {
-          toLink.push(id);
-        }
-      }
-      if (toLink.length > 0) {
-        this.links.set(rel.linkName, toLink);
-      }
-
-      // Find removed (to unlink)
+    // Find removed (to unlink) — only meaningful for existing entities
+    if (!this.isNew) {
       const toUnlink: string[] = [];
       for (const id of origSet) {
         if (!currSet.has(id)) {

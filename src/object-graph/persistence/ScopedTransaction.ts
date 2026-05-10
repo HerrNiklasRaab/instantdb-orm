@@ -16,8 +16,19 @@ export interface TransactionStoreAccess {
   rehydrateModel(model: Model, rawData: { id: string; [key: string]: unknown }): void;
 }
 
+interface ClaimRecord {
+  /** Snapshot of the model's data at claim time — used to restore data on rollback. */
+  data: ModelSnapshot;
+  /**
+   * Clone of the tracker's `originalSnapshot` at claim time — used to
+   * restore it on rollback so any pre-transaction local diff between
+   * current and original survives the rollback.
+   */
+  original: ModelSnapshot;
+}
+
 export class ScopedTransaction {
-  private claimedModels = new Map<Model, ModelSnapshot>();
+  private claimedModels = new Map<Model, ClaimRecord>();
   private newModels = new Set<Model>();
   private finalized = false;
 
@@ -32,7 +43,10 @@ export class ScopedTransaction {
     if (this.claimedModels.has(model) || this.newModels.has(model)) {
       return;
     }
-    this.claimedModels.set(model, new ModelSnapshot(model));
+    this.claimedModels.set(model, {
+      data: new ModelSnapshot(model),
+      original: model._tracker?.snapshotOriginal() ?? new ModelSnapshot(model),
+    });
   }
 
   /**
@@ -77,10 +91,10 @@ export class ScopedTransaction {
     try {
       const chunks: TxChunk[] = [];
 
-      for (const [model, claimSnapshot] of this.claimedModels) {
-        if (!this.diffFromClaim(model, claimSnapshot).hasChanges()) continue;
+      for (const [model, claim] of this.claimedModels) {
+        if (!this.diffFromClaim(model, claim.data).hasChanges()) continue;
         model.setUpdatedAt();
-        chunks.push(this.buildTxChunkFromDiff(model, this.diffFromClaim(model, claimSnapshot)));
+        chunks.push(this.buildTxChunkFromDiff(model, this.diffFromClaim(model, claim.data)));
       }
 
       for (const model of this.newModels) {
@@ -121,8 +135,8 @@ export class ScopedTransaction {
     this.assertActive();
     try {
       runInAction(() => {
-        for (const [model, snapshot] of this.claimedModels) {
-          this.restoreFromSnapshot(model, snapshot);
+        for (const [model, claim] of this.claimedModels) {
+          this.restoreFromSnapshot(model, claim);
         }
 
         for (const model of this.newModels) {
@@ -171,15 +185,18 @@ export class ScopedTransaction {
     return tx;
   }
 
-  private restoreFromSnapshot(model: Model, snapshot: ModelSnapshot): void {
-    const rawData = snapshot.toRawEntityData(model.id);
+  private restoreFromSnapshot(model: Model, claim: ClaimRecord): void {
+    const rawData = claim.data.toRawEntityData(model.id);
     this.store.rehydrateModel(model, rawData);
 
-    if (snapshot.wasNew) {
+    if (claim.data.wasNew) {
       model._tracker?.dispose();
       model.initTracking();
     } else {
-      model._tracker?.reset();
+      // Restore the pre-claim originalSnapshot rather than collapsing it to
+      // current. reset() would absorb pre-transaction local diffs into the
+      // originalSnapshot.
+      model._tracker?.restoreOriginal(claim.original);
     }
   }
 

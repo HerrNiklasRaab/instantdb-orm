@@ -236,6 +236,29 @@ describe("RootStore hydration (Integration)", () => {
       expect(hydratedUser!.posts[0]).toBe(hydratedPost);
     });
 
+    it("preserves local dirty state when a sibling re-hydrates", async () => {
+      const user = await createUserInStoreA({ name: "Alice" });
+      const post1 = await createPostInStoreA({ author: user });
+      await storeB.queryAll();
+      const hydratedUser = storeB.getById(User, user.id)!;
+
+      // Local edit creates a posts diff on hydratedUser.
+      hydratedUser.posts.push(new Post("local"));
+      expect(hydratedUser.isDirty()).toBe(true);
+
+      // Remote detaches post1 from its author. Re-querying Post (only)
+      // delivers the update through the hydrator → ChangeTracker observers
+      // → wirer pipeline, which splices post1 out of hydratedUser.posts.
+      post1.author = null;
+      await storeA.save(post1);
+      await storeB.queryModel(Post);
+
+      // The wirer must not absorb hydratedUser's local diff into the
+      // baseline via acceptCurrentRelationship — the local edit still
+      // needs to be saveable.
+      expect(hydratedUser.isDirty()).toBe(true);
+    });
+
   });
 
   describe("one-to-one relationships (User ↔ Profile)", () => {

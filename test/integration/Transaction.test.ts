@@ -220,31 +220,43 @@ describe("Transaction (Integration)", () => {
       expect(store.getById(User, existingUser.id)).toBe(existingUser);
     });
 
-    it("restores to-one relationship on rollback", async () => {
+    it("restores to-one relationship on rollback (and the reverse side)", async () => {
       const user = createUser();
       const post = createPost();
       await store.save(user);
       post.author = user;
       await store.save(post);
 
+      expect(user.posts).toContain(post);
+
+      let newUser!: User;
       const tx = store.createTransaction();
       tx.run(() => {
-        const newUser = createUser("New Author");
+        newUser = createUser("New Author");
         post.author = newUser;
       });
 
       expect(post.author?.name).toBe("New Author");
+      // Wirer should have moved the post off `user` and onto `newUser`.
+      expect(newUser.posts).toContain(post);
+      expect(user.posts).not.toContain(post);
+
       tx.rollback();
+
       expect(post.author).toBe(user);
+      // Reverse side rolls back too: post is back on `user`, off `newUser`.
+      expect(user.posts).toContain(post);
+      expect(newUser.posts).not.toContain(post);
     });
 
-    it("restores to-one relationship to null on rollback", async () => {
+    it("restores to-one relationship to null on rollback (and the reverse side)", async () => {
       const user = createUser();
       const post = createPost();
       await store.save(user);
       await store.save(post);
 
       expect(post.author).toBeNull();
+      expect(user.posts).not.toContain(post);
 
       const tx = store.createTransaction();
       tx.run(() => {
@@ -252,11 +264,15 @@ describe("Transaction (Integration)", () => {
       });
 
       expect(post.author).toBe(user);
+      expect(user.posts).toContain(post);
+
       tx.rollback();
+
       expect(post.author).toBeNull();
+      expect(user.posts).not.toContain(post);
     });
 
-    it("restores to-many relationship on rollback", async () => {
+    it("restores to-many relationship on rollback (and the reverse side)", async () => {
       const user = createUser();
       const post1 = createPost("Post 1");
       const post2 = createPost("Post 2");
@@ -268,6 +284,8 @@ describe("Transaction (Integration)", () => {
       await store.save(user);
 
       expect(user.posts).toHaveLength(1);
+      expect(post1.author).toBe(user);
+      expect(post2.author).toBeNull();
 
       const tx = store.createTransaction();
       tx.run(() => {
@@ -275,13 +293,18 @@ describe("Transaction (Integration)", () => {
       });
 
       expect(user.posts).toHaveLength(2);
+      expect(post2.author).toBe(user);
+
       tx.rollback();
 
       expect(user.posts).toHaveLength(1);
       expect(user.posts[0]).toBe(post1);
+      // Reverse side rolls back too: post2's author goes back to null.
+      expect(post2.author).toBeNull();
+      expect(post1.author).toBe(user);
     });
 
-    it("restores removed items in to-many relationship on rollback", async () => {
+    it("restores removed items in to-many relationship on rollback (and the reverse side)", async () => {
       const user = createUser();
       const post = createPost();
       await store.save(user);
@@ -291,6 +314,7 @@ describe("Transaction (Integration)", () => {
       await store.save(user);
 
       expect(user.posts).toHaveLength(1);
+      expect(post.author).toBe(user);
 
       const tx = store.createTransaction();
       tx.run(() => {
@@ -298,17 +322,58 @@ describe("Transaction (Integration)", () => {
       });
 
       expect(user.posts).toHaveLength(0);
+      // Wirer should have cleared post.author when it was popped.
+      expect(post.author).toBeNull();
+
       tx.rollback();
 
       expect(user.posts).toHaveLength(1);
       expect(user.posts[0]).toBe(post);
+      // Reverse side rolls back too: post.author goes back to user.
+      expect(post.author).toBe(user);
+    });
+
+    it("rollback preserves pre-transaction local dirty state on the wired side", async () => {
+      // Synced: user owns post1. post2 exists but is not linked to user.
+      const user = createUser("Alice");
+      const post1 = createPost("First");
+      post1.author = user;
+      const post2 = createPost("Second");
+      await store.save(user);
+      await store.save(post1);
+      await store.save(post2);
+
+      // Pre-transaction local edit: link post2 to user via the back-ref
+      // array. user is now dirty for posts (+post2).
+      user.posts.push(post2);
+      expect(user.isDirty()).toBe(true);
+
+      // Inside the transaction, mutate a SIBLING of user. The wirer fires
+      // on user.posts (splicing post1 out) which causes the transaction to
+      // claim user. Then we abort.
+      const tx = store.createTransaction();
+      tx.run(() => {
+        post1.author = null;
+      });
+      tx.rollback();
+
+      // Data restoration is fine: post1 back on user, post2 still there.
+      expect(user.posts).toContain(post1);
+      expect(user.posts).toContain(post2);
+
+      // The pre-transaction local diff (+post2) must survive the rollback.
+      // ScopedTransaction.restoreFromSnapshot rehydrates from the claim
+      // snapshot and then calls _tracker.reset() — which sets the baseline
+      // to the claim-time current state (which already included post2),
+      // silently absorbing the pre-transaction diff.
+      expect(user.isDirty()).toBe(true);
     });
 
     it("throws when using a finalized transaction", async () => {
       const tx = store.createTransaction();
       await tx.commit();
 
-      expect(() => tx.run(() => {})).toThrow("Transaction has already been finalized");
+      expect(() => tx.run(() => { })).toThrow("Transaction has already been finalized");
       await expect(tx.commit()).rejects.toThrow("Transaction has already been finalized");
       expect(() => tx.rollback()).toThrow("Transaction has already been finalized");
     });

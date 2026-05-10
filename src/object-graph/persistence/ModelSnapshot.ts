@@ -39,6 +39,46 @@ export class ModelSnapshot {
     this.wasNew = wasNew ?? model._tracker?.isNew ?? true;
   }
 
+  /**
+   * Shallow copy of this snapshot. Use when capturing the live
+   * `originalSnapshot` of a tracker for later restoration — its Map gets
+   * mutated by `acceptRelationshipDelta`, so a reference would silently
+   * change underneath the holder. Inner array values are safe to share
+   * because `acceptRelationshipDelta` always replaces them via Map.set
+   * rather than mutating the array in place.
+   */
+  clone(): ModelSnapshot {
+    const cloned = Object.create(ModelSnapshot.prototype) as ModelSnapshot;
+    Object.defineProperty(cloned, "scalars", {
+      value: new Map(this.scalars),
+      enumerable: true,
+    });
+    Object.defineProperty(cloned, "relationships", {
+      value: new Map(this.relationships),
+      enumerable: true,
+    });
+    Object.defineProperty(cloned, "wasNew", {
+      value: this.wasNew,
+      enumerable: true,
+    });
+    return cloned;
+  }
+
+  /**
+   * Empty `originalSnapshot` for not-yet-persisted entities — represents
+   * "nothing in DB yet." Diffing against this means the current snapshot
+   * is fully emitted as additions. `acceptRelationshipDelta` can promote
+   * individual wirer-driven deltas into the original snapshot to suppress
+   * wired-side re-emission.
+   */
+  static emptyOriginal(): ModelSnapshot {
+    return Object.create(ModelSnapshot.prototype, {
+      scalars: { value: new Map(), enumerable: true },
+      relationships: { value: new Map(), enumerable: true },
+      wasNew: { value: true, enumerable: true },
+    }) as ModelSnapshot;
+  }
+
   toRawEntityData(id: string): RawEntityData {
     const data: RawEntityData = { id };
 

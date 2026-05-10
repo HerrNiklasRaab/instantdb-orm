@@ -7,7 +7,11 @@ const rules = {
     allow: {
       view: "true", // Anyone can view users
       create: "true",
-      update: "true",
+      // Only the user themselves may update their own row. Used to verify
+      // that wirer-driven reverse-link mutations on a non-owner do not
+      // emit an update chunk against that user (which would fail this
+      // rule and surface as a permission-denied transaction).
+      update: "isOwner",
       delete: "true",
     },
     fields: {

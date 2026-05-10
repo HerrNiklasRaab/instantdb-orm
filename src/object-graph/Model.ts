@@ -5,6 +5,7 @@ import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
 import { makeObservable as mobxMakeObservable, observable, reaction } from "mobx";
 import { field } from "./decorators";
 import { TransactionContext } from "./persistence/TransactionContext";
+import { wireReverseLink } from "./store/reverseLinkWiring";
 
 export abstract class Model {
   readonly id: string;
@@ -79,6 +80,29 @@ export abstract class Model {
     this.setupDebugView();
     if (isNew) {
       TransactionContext.current?.registerNew(this);
+      this.wireConstructorRelationships();
+    }
+  }
+
+  /**
+   * One-shot reverse-link wiring for relationships set in the constructor
+   * (before observables existed). Walks current relationship values and
+   * pushes them to the reverse side. ChangeTracker observers handle later
+   * mutations.
+   */
+  private wireConstructorRelationships(): void {
+    const meta = getEntityMeta(this.entityName);
+    const record = this as unknown as Record<string, unknown>;
+    for (const rel of meta.relationshipFields) {
+      const propName = rel.getFieldNameOnModel(this);
+      const value = record[propName];
+      if (rel.isToOne()) {
+        if (value) wireReverseLink(this, value as Model, rel, true);
+      } else if (Array.isArray(value)) {
+        for (const child of value as Model[]) {
+          wireReverseLink(this, child, rel, true);
+        }
+      }
     }
   }
 

@@ -2,6 +2,7 @@ import { observe, intercept } from "mobx";
 import type { Model } from "../Model";
 import type { EntityName } from "../store/EntityMeta";
 import { getEntityMeta, RelationshipFieldMeta } from "../store/EntityMeta";
+import { wireReverseLink, isWiringInProgress } from "../store/reverseLinkWiring";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
@@ -18,8 +19,10 @@ export class ChangeTracker {
     isNew: boolean = true
   ) {
     this._isNew = isNew;
-    this.originalSnapshot = new ModelSnapshot(model, isNew);
-    this.currentSnapshot = this.originalSnapshot;
+    this.originalSnapshot = isNew
+      ? ModelSnapshot.emptyOriginal()
+      : new ModelSnapshot(model, false);
+    this.currentSnapshot = new ModelSnapshot(model, isNew);
     this.setupObservers();
   }
 
@@ -38,10 +41,21 @@ export class ChangeTracker {
 
       // To-many relationships need array observer
       if (field instanceof RelationshipFieldMeta && field.isToMany()) {
+        const rel = field;
         const array = record[propName] as Model[] | undefined;
         if (array && Array.isArray(array)) {
           try {
-            const disposer = observe(array, () => this.updateSnapshot());
+            const disposer = observe(array, (change) => {
+              if (change.type === "splice") {
+                for (const added of change.added as Model[]) {
+                  wireReverseLink(this.model, added, rel, true);
+                }
+                for (const removed of change.removed as Model[]) {
+                  wireReverseLink(this.model, removed, rel, false);
+                }
+              }
+              this.updateSnapshot();
+            });
             this.disposers.push(disposer);
           } catch {
             // Array might not be observable, skip it
@@ -49,6 +63,19 @@ export class ChangeTracker {
           try {
             const interceptDisposer = intercept(array, (change) => {
               this.claimForCurrentTransaction();
+              if (change.type === "splice") {
+                // Drop adds for items already present so push() is idempotent
+                const filteredAdded = change.added.filter(
+                  (item) => !array.includes(item as Model)
+                );
+                if (
+                  filteredAdded.length === 0 &&
+                  change.removedCount === 0
+                ) {
+                  return null;
+                }
+                change.added = filteredAdded;
+              }
               return change;
             });
             this.disposers.push(interceptDisposer);
@@ -75,11 +102,24 @@ export class ChangeTracker {
       }
 
       try {
+        const isToOneRel =
+          field instanceof RelationshipFieldMeta && field.isToOne();
+        const rel = isToOneRel ? (field as RelationshipFieldMeta) : null;
         const disposer = observe(
           this.model as object,
           propName as never,
-          (change) => {
+          (change: any) => {
             if (change.type === "update") {
+              if (rel) {
+                const oldVal = change.oldValue as Model | null | undefined;
+                const newVal = change.newValue as Model | null | undefined;
+                if (oldVal && oldVal !== newVal) {
+                  wireReverseLink(this.model, oldVal, rel, false);
+                }
+                if (newVal && oldVal !== newVal) {
+                  wireReverseLink(this.model, newVal, rel, true);
+                }
+              }
               this.updateSnapshot();
             }
           }
@@ -92,6 +132,11 @@ export class ChangeTracker {
   }
 
   private claimForCurrentTransaction(): void {
+    // Skip claims that originate from reverse-link wiring. The wirer's
+    // mutation on the wired side is bookkeeping (the forward-side row's
+    // `link` op is what InstantDB persists), so the wired side should not
+    // be drawn into the active transaction's commit.
+    if (isWiringInProgress()) return;
     const tx = TransactionContext.current;
     if (tx && !tx.has(this.model)) {
       tx.claim(this.model);
@@ -125,21 +170,56 @@ export class ChangeTracker {
   }
 
   /**
-   * Treat the current value of one relationship as part of the baseline.
-   * Used by ModelHydrator's reverse-link wiring: when a child is
-   * late-hydrated and pushed into a parent's array, that push is
-   * bookkeeping, not a user mutation, so it must not show up as a change.
+   * Returns a clone of `originalSnapshot` suitable for later restoration
+   * via `restoreOriginal`. Cloning is required because
+   * `acceptRelationshipDelta` mutates the live `originalSnapshot` — a
+   * plain reference would silently change.
    */
-  acceptCurrentRelationship(fieldName: string): void {
+  snapshotOriginal(): ModelSnapshot {
+    return this.originalSnapshot.clone();
+  }
+
+  /**
+   * Restore `originalSnapshot` to a previously-captured snapshot. Used by
+   * ScopedTransaction.rollback to undo wirer-driven mutations to
+   * `originalSnapshot` that happened during the transaction, preserving
+   * any pre-transaction local diff between current and original.
+   */
+  restoreOriginal(original: ModelSnapshot): void {
+    this._isNew = false;
+    this.originalSnapshot = original;
+    this.currentSnapshot = new ModelSnapshot(this.model, false);
+  }
+
+  /**
+   * Apply a single add/remove delta to `originalSnapshot` for one
+   * relationship. Used by reverse-link wiring: when the wirer
+   * pushes/sets/splices on the wired side, that mutation is bookkeeping
+   * (not user intent), so `originalSnapshot` should track the *same*
+   * delta — leaving any independent local diff on the wired side intact.
+   *
+   * Critically this is NOT "set originalSnapshot to current state." That
+   * would absorb unrelated local edits — including, during hydration,
+   * edits that haven't been saved yet.
+   */
+  acceptRelationshipDelta(fieldName: string, targetId: string, add: boolean): void {
     const meta = getEntityMeta(this.entityName);
     const rel = meta.relationshipFields.find((r) => r.fieldName === fieldName);
     if (!rel) return;
-    const propName = rel.getFieldNameOnModel(this.model);
-    const value = (this.model as unknown as Record<string, unknown>)[propName];
-    const baseline = rel.isToMany()
-      ? ((value as Model[] | undefined) ?? []).map((m) => m.id)
-      : ((value as Model | null)?.id ?? null);
-    this.originalSnapshot.relationships.set(fieldName, baseline);
+    const original = this.originalSnapshot.relationships;
+
+    if (rel.isToMany()) {
+      const ids = (original.get(fieldName) as string[] | undefined) ?? [];
+      if (add) {
+        if (!ids.includes(targetId)) {
+          original.set(fieldName, [...ids, targetId]);
+        }
+      } else {
+        original.set(fieldName, ids.filter((id) => id !== targetId));
+      }
+    } else {
+      original.set(fieldName, add ? targetId : null);
+    }
   }
 
   dispose(): void {

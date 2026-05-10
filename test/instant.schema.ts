@@ -54,6 +54,24 @@ const _schema = i.schema({
       skillLevel: i.string(),
       deletedAt: i.date().indexed().optional(),
     }),
+    tags: i.entity({
+      name: i.string(),
+      createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
+      deletedAt: i.date().indexed().optional(),
+    }),
+    containers: i.entity({
+      name: i.string(),
+      createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
+      deletedAt: i.date().indexed().optional(),
+    }),
+    items: i.entity({
+      name: i.string(),
+      createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
+      deletedAt: i.date().indexed().optional(),
+    }),
   },
   links: {
     usersProfile: {
@@ -127,6 +145,32 @@ const _schema = i.schema({
         on: "users",
         has: "many",
         label: "skiMatchs",
+      },
+    },
+    // Many-to-many fixture: posts <-> tags
+    postsTags: {
+      forward: {
+        on: "posts",
+        has: "many",
+        label: "tags",
+      },
+      reverse: {
+        on: "tags",
+        has: "many",
+        label: "posts",
+      },
+    },
+    // 1:N fixture where parent builds children inside its own constructor
+    containersItems: {
+      forward: {
+        on: "items",
+        has: "one",
+        label: "container",
+      },
+      reverse: {
+        on: "containers",
+        has: "many",
+        label: "items",
       },
     },
   },
