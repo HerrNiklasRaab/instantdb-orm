@@ -3,11 +3,11 @@ import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   setupTestDatabase,
   initTestDatabaseAsUser,
-  createAuthUser,
+  seedAuthUser,
   id,
   type TestInstantDBClient,
-} from "../utils/instantdb-test-utils";
-import { User } from "../entities/User";
+} from "./support/instantdb-test-utils";
+import { User } from "../support/entities/User";
 
 /**
  * Integration tests for property-level permissions.
@@ -31,7 +31,7 @@ describe("Property-level permissions (Integration)", () => {
       const email = `owner-${id()}@example.com`;
 
       // 1. Create auth user and get their $users ID
-      const authUserId = await createAuthUser(email);
+      const authUserId = await seedAuthUser(email);
 
       // 2. Create test user with SAME ID as $users (so auth.id == data.id)
       await adminDb.transact([
@@ -60,8 +60,8 @@ describe("Property-level permissions (Integration)", () => {
       const viewerEmail = `viewer-${id()}@example.com`;
 
       // Create owner and their user record
-      const ownerId = await createAuthUser(ownerEmail);
-      await createAuthUser(viewerEmail);
+      const ownerId = await seedAuthUser(ownerEmail);
+      await seedAuthUser(viewerEmail);
 
       await adminDb.transact([
         adminDb.tx.users[ownerId].update({

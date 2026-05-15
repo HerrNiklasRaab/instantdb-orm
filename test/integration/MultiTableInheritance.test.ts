@@ -3,11 +3,11 @@ import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   setupTestDatabase,
   type TestInstantDBClient,
-} from "../utils/instantdb-test-utils";
-import { User } from "../entities/User";
-import { Match } from "../entities/Match";
-import { ChessMatch } from "../entities/ChessMatch";
-import { SkiMatch } from "../entities/SkiMatch";
+} from "./support/instantdb-test-utils";
+import { User } from "../support/entities/User";
+import { Match } from "../support/entities/Match";
+import { ChessMatch } from "../support/entities/ChessMatch";
+import { SkiMatch } from "../support/entities/SkiMatch";
 
 describe("Multi-Table Inheritance (Integration)", () => {
   let db: TestInstantDBClient;

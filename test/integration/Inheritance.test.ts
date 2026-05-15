@@ -3,11 +3,11 @@ import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   setupTestDatabase,
   type TestInstantDBClient,
-} from "../utils/instantdb-test-utils";
-import { User } from "../entities/User";
-import { Invitation } from "../entities/Invitation";
-import { ChessInvitation } from "../entities/ChessInvitation";
-import { SkiInvitation } from "../entities/SkiInvitation";
+} from "./support/instantdb-test-utils";
+import { User } from "../support/entities/User";
+import { Invitation } from "../support/entities/Invitation";
+import { ChessInvitation } from "../support/entities/ChessInvitation";
+import { SkiInvitation } from "../support/entities/SkiInvitation";
 
 describe("Single Table Inheritance (Integration)", () => {
   let db: TestInstantDBClient;

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { configureEntityMeta } from "../../src/object-graph";
-import schema from "../instant.schema";
-import { User } from "../entities/User";
+import schema from "../support/instant.schema";
+import { User } from "../support/entities/User";
 import { withTestTransaction } from "../../src/testing";
 
 // Configure entity metadata before tests (no database needed)

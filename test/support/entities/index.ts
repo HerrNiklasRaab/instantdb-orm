@@ -5,4 +5,4 @@ export { Tag } from "./Tag";
 export { Container } from "./Container";
 export { Item } from "./Item";
 // Re-export Model from src for convenience
-export { Model } from "../../src/object-graph/Model";
+export { Model } from "../../../src/object-graph/Model";

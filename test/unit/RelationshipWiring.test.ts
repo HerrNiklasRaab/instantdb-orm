@@ -1,15 +1,15 @@
 import { beforeAll, describe, expect, it as vitIt } from "vitest";
 import { configureEntityMeta } from "../../src/object-graph";
-import schema from "../instant.schema";
-import { User } from "../entities/User";
-import { UserProfile } from "../entities/Profile";
-import { Post } from "../entities/Post";
-import { Tag } from "../entities/Tag";
-import { ChessInvitation } from "../entities/ChessInvitation";
-import { SkiInvitation } from "../entities/SkiInvitation";
-import { ChessMatch } from "../entities/ChessMatch";
-import { SkiMatch } from "../entities/SkiMatch";
-import { Container } from "../entities/Container";
+import schema from "../support/instant.schema";
+import { User } from "../support/entities/User";
+import { UserProfile } from "../support/entities/Profile";
+import { Post } from "../support/entities/Post";
+import { Tag } from "../support/entities/Tag";
+import { ChessInvitation } from "../support/entities/ChessInvitation";
+import { SkiInvitation } from "../support/entities/SkiInvitation";
+import { ChessMatch } from "../support/entities/ChessMatch";
+import { SkiMatch } from "../support/entities/SkiMatch";
+import { Container } from "../support/entities/Container";
 import { withTestTransaction } from "../../src/testing";
 
 beforeAll(() => {
