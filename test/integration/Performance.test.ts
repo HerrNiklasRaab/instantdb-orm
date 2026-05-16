@@ -68,15 +68,25 @@ describe("performance", () => {
 
     const fresh = new RootStore({ db });
 
-    const trap = trapArrayScans();
+    const hydrator = (fresh as unknown as { hydrator: { hydrateMany: Function } }).hydrator;
+    const origHydrateMany = hydrator.hydrateMany.bind(hydrator);
     let calls = 0;
+    hydrator.hydrateMany = function (...args: unknown[]) {
+      const trap = trapArrayScans();
+      try {
+        return origHydrateMany(...args);
+      } finally {
+        calls += trap.stop();
+      }
+    };
+
     try {
       await fresh.queryAll();
     } finally {
-      calls = trap.stop();
+      hydrator.hydrateMany = origHydrateMany;
     }
 
-    expect(calls).toBeLessThan(N * 4 + 100);
+    expect(calls).toBeLessThan(N * 4 + 50);
   });
 
   it("hydrating posts under a watched user fires reactions at most once per batch", async () => {
