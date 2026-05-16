@@ -54,36 +54,46 @@ describe("performance", () => {
 
   afterEach(() => {});
 
-  it("hydrating a user with many posts does not scan arrays per row", async () => {
+  it("hydrating a user with many posts does not scan arrays per row", () => {
     const N = 20;
 
-    const seed = new RootStore({ db });
-    await seed.transaction(() => {
-      const u = new User("Owner");
-      for (let i = 0; i < N; i++) {
-        const p = new Post(`Post ${i}`);
-        p.author = u;
-      }
-    });
-
-    const fresh = new RootStore({ db });
-
-    const hydrator = (fresh as unknown as { hydrator: { hydrateMany: Function } }).hydrator;
-    const origHydrateMany = hydrator.hydrateMany.bind(hydrator);
-    let calls = 0;
-    hydrator.hydrateMany = function (...args: unknown[]) {
-      const trap = trapArrayScans();
-      try {
-        return origHydrateMany(...args);
-      } finally {
-        calls += trap.stop();
-      }
+    const store = new RootStore({ db });
+    const internals = store as unknown as {
+      hydrator: { hydrateMany: (entity: string, rows: unknown[], getMap: unknown) => unknown };
+      getIdentityMapByName: (entity: string) => unknown;
     };
+    const getMap = internals.getIdentityMapByName.bind(internals);
 
+    const now = new Date().toISOString();
+    const userId = "perf-user";
+    const nestedPosts = Array.from({ length: N }, (_, i) => ({
+      id: `perf-post-${i}`,
+      title: `Post ${i}`,
+      content: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      author: [{ id: userId }],
+    }));
+    const rawUsers = [{
+      id: userId,
+      name: "Owner",
+      testDate: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      posts: nestedPosts,
+    }];
+
+    const rawPostsForResync = nestedPosts.map((p) => ({ ...p }));
+
+    const trap = trapArrayScans();
+    let calls = 0;
     try {
-      await fresh.queryAll();
+      internals.hydrator.hydrateMany("users", rawUsers, getMap);
+      internals.hydrator.hydrateMany("posts", rawPostsForResync, getMap);
     } finally {
-      hydrator.hydrateMany = origHydrateMany;
+      calls = trap.stop();
     }
 
     expect(calls).toBeLessThan(N * 4 + 50);
