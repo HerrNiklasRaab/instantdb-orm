@@ -29,15 +29,6 @@ describe("Entity persistence via transaction (Integration)", () => {
     return new UserProfile();
   }
 
-  describe("hydration cleanliness", () => {
-    it("queried entity is not dirty", async () => {
-      await store.transaction(() => createUser());
-
-      const [hydratedUser] = await store.queryModel(User);
-      expect(hydratedUser!._tracker!.hasChanges()).toBe(false);
-    });
-  });
-
   describe("basic flow", () => {
     it("persists relationship set in constructor", async () => {
       const user = await store.transaction(() => createUser());

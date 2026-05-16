@@ -70,15 +70,9 @@ export class ModelHydrator {
       return instance;
     });
 
-    // Set scalar fields from raw data
     this.updateModelFields(model, entityName, rawData, getIdentityMap);
 
-    // Mark model as not new and clear dirty state (it exists in database)
-    model._tracker?.reset();
-
-    // Check if model is soft-deleted
     if (model.deletedAt != null) {
-      // Clean up relationships and remove from identity map
       this.store.cleanupRelationships(entityName, model);
       identityMap.delete(rawData.id);
       return null;
@@ -92,9 +86,11 @@ export class ModelHydrator {
     rawDataArray: RawEntityData[],
     getIdentityMap: GetIdentityMap
   ): ModelInstanceFor<K>[] {
-    return rawDataArray
-      .map((rawData) => this.hydrate(entityName, rawData, getIdentityMap))
-      .filter((model): model is ModelInstanceFor<K> => model !== null);
+    return runInAction(() =>
+      rawDataArray
+        .map((rawData) => this.hydrate(entityName, rawData, getIdentityMap))
+        .filter((model): model is ModelInstanceFor<K> => model !== null)
+    );
   }
 
   /**
@@ -121,10 +117,11 @@ export class ModelHydrator {
     const meta = getEntityMeta(entityName);
 
     runInAction(() => {
-      // Update ALL scalar fields from raw data (handles re-hydration of existing models)
-      // Use private backing field if exists (e.g., _name for schema field "name")
       for (const field of meta.scalarFields) {
-        if (field.fieldName === "modelType") continue; // Don't update modelType (STI discriminator is a getter)
+        if (field.fieldName === "modelType") continue;
+        // Skip fields the user has locally mutated in any active tx —
+        // a remote update must not stomp an in-progress edit.
+        if (model.isFieldTouched(field.fieldName)) continue;
         const value = rawData[field.fieldName];
         if (value !== undefined) {
           const propName = field.getFieldNameOnModel(model);
@@ -134,7 +131,6 @@ export class ModelHydrator {
         }
       }
 
-      // Resolve relationships from nested data
       this.resolveRelationshipsFromNestedData(
         model,
         entityName,
@@ -159,6 +155,8 @@ export class ModelHydrator {
       // Skip if relationship data wasn't included in query (undefined)
       // But process null explicitly - it means "clear the relationship"
       if (nestedData === undefined) continue;
+      // Skip if the user has locally mutated this relationship in any active tx.
+      if (model.isFieldTouched(rel.fieldName)) continue;
 
       // Normalize nested data to array format
       // InstantDB returns arrays for simple queries, but objects for deeply nested queries
@@ -206,10 +204,8 @@ export class ModelHydrator {
               targetModel = targetMap.get(item.id) ?? null;
             }
 
-            if (targetModel && !existingArray.includes(targetModel)) {
+            if (targetModel) {
               existingArray.push(targetModel);
-
-              // Set up bidirectional relationship
               this.setReverseRelationship(model, targetModel, rel);
             }
           }
@@ -277,13 +273,11 @@ export class ModelHydrator {
 
     if (reverseRel.isToMany()) {
       const array = targetRecord[propName] as Model[];
-      if (Array.isArray(array) && !array.includes(model)) {
+      if (Array.isArray(array)) {
         array.push(model);
-        targetModel._tracker?.acceptRelationshipDelta(reverseRel.fieldName, model.id, true);
       }
     } else {
       targetRecord[propName] = model;
-      targetModel._tracker?.acceptRelationshipDelta(reverseRel.fieldName, model.id, true);
     }
   }
 }

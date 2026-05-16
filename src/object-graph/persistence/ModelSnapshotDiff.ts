@@ -4,7 +4,7 @@ import type { ModelSnapshot } from "./ModelSnapshot";
 
 /**
  * Computes the difference between two ModelSnapshots.
- * Used by ChangeTracker to determine what needs to be persisted.
+ * Used by ScopedTransaction to determine what needs to be persisted.
  */
 export class ModelSnapshotDiff {
   readonly scalars = new Map<string, unknown>();

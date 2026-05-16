@@ -1,5 +1,5 @@
 import { IdentityMap } from "../IdentityMap";
-import type { Model } from "../Model";
+import { setDebugViewEnabled, type Model } from "../Model";
 import { getEntityNames, isValidEntityName, getEntityMeta } from "./EntityMeta";
 import { getModelClass, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
@@ -24,6 +24,7 @@ export class RootStore implements TransactionStoreAccess {
 
   constructor(config: RootStoreConfig) {
     this.db = config.db;
+    setDebugViewEnabled(config.debugView ?? false);
     this.hydrator = new ModelHydrator(this);
     this.initializeIdentityMaps();
   }

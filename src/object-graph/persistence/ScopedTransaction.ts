@@ -4,6 +4,7 @@ import type { TxChunk } from "./types";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
+import { getEntityMeta } from "../store/EntityMeta";
 
 export interface TransactionStoreAccess {
   readonly db: { tx: Record<string, Record<string, TxChunk>>; transact(chunks: TxChunk[]): Promise<unknown> };
@@ -16,15 +17,17 @@ export interface TransactionStoreAccess {
   rehydrateModel(model: Model, rawData: { id: string; [key: string]: unknown }): void;
 }
 
-interface ClaimRecord {
-  /** Snapshot of the model's data at claim time — used to restore data on rollback. */
-  data: ModelSnapshot;
-  /**
-   * Clone of the tracker's `originalSnapshot` at claim time — used to
-   * restore it on rollback so any pre-transaction local diff between
-   * current and original survives the rollback.
-   */
-  original: ModelSnapshot;
+/**
+ * Per-tx, per-model claim. `data` is the snapshot at first touch (the
+ * rollback target). `touched` is the set of fields the user has actually
+ * mutated in this tx. All three field-level decisions read from `touched`:
+ *  - commit emits chunks only for touched fields;
+ *  - rollback restores only touched fields to `data` values;
+ *  - hydrator skips writes to fields in any active claim's `touched` set.
+ */
+export interface ClaimRecord {
+  readonly data: ModelSnapshot;
+  readonly touched: Set<string>;
 }
 
 export class ScopedTransaction {
@@ -35,18 +38,26 @@ export class ScopedTransaction {
   constructor(private store: TransactionStoreAccess) {}
 
   /**
-   * Claim an existing model for this transaction.
-   * Captures a snapshot BEFORE the mutation lands (called from MobX interceptor).
+   * Claim an existing model for this transaction AND mark `fieldName` as
+   * user-touched. Called from MobX interceptors with the schema field name
+   * that's about to be mutated. Captures the model snapshot on first claim;
+   * subsequent calls only extend the touched set.
+   *
+   * New models (already in newModels) don't get claimed — they emit their
+   * full state at commit, no touched-set needed.
    */
-  claim(model: Model): void {
+  claim(model: Model, fieldName: string): void {
     this.assertActive();
-    if (this.claimedModels.has(model) || this.newModels.has(model)) {
-      return;
+    if (this.newModels.has(model)) return;
+
+    let record = this.claimedModels.get(model);
+    if (!record) {
+      record = { data: new ModelSnapshot(model), touched: new Set() };
+      this.claimedModels.set(model, record);
+      if (!model._activeClaims) model._activeClaims = new Set();
+      model._activeClaims.add(record);
     }
-    this.claimedModels.set(model, {
-      data: new ModelSnapshot(model),
-      original: model._tracker?.snapshotOriginal() ?? new ModelSnapshot(model),
-    });
+    record.touched.add(fieldName);
   }
 
   /**
@@ -79,31 +90,33 @@ export class ScopedTransaction {
   }
 
   /**
-   * Commit only this transaction's claimed models atomically.
+   * Commit this transaction's claimed and newly-registered models.
    *
-   * Existing (claimed) models are diffed against the snapshot taken at
-   * *claim time* — so only mutations that happened inside this transaction
-   * are persisted. Out-of-transaction mutations or hydration side effects
-   * accumulated earlier are not flushed.
+   * For claimed (existing) models, emit chunks for fields in the touched
+   * set — not for every field that drifted from claim.data. Hydrator writes
+   * to untouched fields are NOT re-emitted from this tx.
+   *
+   * New models emit their full current state (diff against an empty
+   * baseline).
    */
   async commit(): Promise<void> {
     this.assertActive();
     try {
-      // setUpdatedAt() writes an observed property; running inside the tx
-      // context keeps `claimForCurrentTransaction` from treating those
-      // bookkeeping writes as out-of-tx user mutations.
       const chunks = TransactionContext.run(this, () => {
         const built: TxChunk[] = [];
         for (const [model, claim] of this.claimedModels) {
-          if (!this.diffFromClaim(model, claim.data).hasChanges()) continue;
+          if (claim.touched.size === 0) continue;
           model.setUpdatedAt();
-          built.push(this.buildTxChunkFromDiff(model, this.diffFromClaim(model, claim.data)));
+          const chunk = this.buildChunkFromTouched(model, claim);
+          if (chunk) built.push(chunk);
         }
         for (const model of this.newModels) {
-          if (model._tracker?.hasChanges()) {
-            model.setUpdatedAt();
-            built.push(this.buildTxChunk(model));
-          }
+          // Bump updatedAt BEFORE snapshotting so the diff carries the
+          // bumped timestamp out to the DB.
+          model.setUpdatedAt();
+          const diff = this.diffNew(model);
+          if (!diff.hasChanges()) continue;
+          built.push(this.buildTxChunkFromDiff(model, diff));
         }
         return built;
       });
@@ -111,42 +124,41 @@ export class ScopedTransaction {
       if (chunks.length > 0) {
         await this.store.db.transact(chunks);
       }
-
-      for (const [model] of this.claimedModels) {
-        model._tracker?.reset();
-      }
-      for (const model of this.newModels) {
-        model._tracker?.reset();
-      }
     } finally {
       this.releaseAll();
     }
   }
 
-  private diffFromClaim(model: Model, claimSnapshot: ModelSnapshot): ModelSnapshotDiff {
+  private diffNew(model: Model): ModelSnapshotDiff {
     return new ModelSnapshotDiff(
-      claimSnapshot,
-      new ModelSnapshot(model, false),
+      ModelSnapshot.emptyOriginal(),
+      new ModelSnapshot(model),
       model.entityName,
-      false
+      true
     );
   }
 
   /**
    * Rollback all changes to pre-transaction state.
+   *
+   * For claimed models: restore ONLY the fields the user touched, back to
+   * their claim.data value. Untouched fields (which may have been written
+   * by mid-tx hydration of remote updates) are left alone.
+   *
+   * For new models: drop from the identity map and dispose their observers.
    */
   rollback(): void {
     this.assertActive();
     try {
       runInAction(() => {
         for (const [model, claim] of this.claimedModels) {
-          this.restoreFromSnapshot(model, claim);
+          this.restoreTouchedFields(model, claim);
         }
 
         for (const model of this.newModels) {
           const identityMap = this.store.getIdentityMapByName(model.entityName);
           identityMap.delete(model.id);
-          model._tracker?.dispose();
+          model.disposeTracking();
         }
       });
     } finally {
@@ -160,8 +172,95 @@ export class ScopedTransaction {
     }
   }
 
-  private buildTxChunk(model: Model): TxChunk {
-    return this.buildTxChunkFromDiff(model, model._tracker!.getChanges());
+  private restoreTouchedFields(model: Model, claim: ClaimRecord): void {
+    if (claim.touched.size === 0) return;
+    const fields = [...claim.touched];
+    // Clear our own touched set so the hydrator's isFieldTouched check
+    // doesn't refuse to overwrite the fields we're trying to restore.
+    // (We're about to release the claim anyway via releaseAll.)
+    claim.touched.clear();
+
+    const fullRaw = claim.data.toRawEntityData(model.id);
+    const filtered: { id: string; [key: string]: unknown } = { id: model.id };
+    for (const fieldName of fields) {
+      if (fieldName in fullRaw) {
+        filtered[fieldName] = fullRaw[fieldName];
+      }
+    }
+    this.store.rehydrateModel(model, filtered);
+  }
+
+  private buildChunkFromTouched(model: Model, claim: ClaimRecord): TxChunk | null {
+    const entityName = model.entityName;
+    const meta = getEntityMeta(entityName);
+    const record = model as unknown as Record<string, unknown>;
+
+    const updateData: Record<string, unknown> = {};
+    const links = new Map<string, string[]>();
+    const unlinks = new Map<string, string[]>();
+
+    for (const fieldName of claim.touched) {
+      const scalarField = meta.scalarFields.find(f => f.fieldName === fieldName);
+      if (scalarField && scalarField.fieldName !== "id") {
+        const propName = scalarField.getFieldNameOnModel(model);
+        const value = record[propName];
+        updateData[fieldName] = value instanceof Date ? value.toISOString() : value;
+        continue;
+      }
+
+      const relField = meta.relationshipFields.find(r => r.fieldName === fieldName);
+      if (!relField) continue;
+      const propName = relField.getFieldNameOnModel(model);
+      const value = record[propName];
+
+      if (relField.isToOne()) {
+        const currentId = (value as Model | null)?.id ?? null;
+        const originalId = (claim.data.relationships.get(fieldName) as string | null) ?? null;
+        if (currentId !== originalId) {
+          if (originalId) {
+            this.pushInto(unlinks, relField.linkName, originalId);
+          }
+          if (currentId) {
+            this.pushInto(links, relField.linkName, currentId);
+          }
+        }
+      } else {
+        const currentIds = (value as Model[] | undefined)?.map(m => m.id) ?? [];
+        const originalIds = (claim.data.relationships.get(fieldName) as string[] | undefined) ?? [];
+        const origSet = new Set(originalIds);
+        const currSet = new Set(currentIds);
+        for (const id of currSet) {
+          if (!origSet.has(id)) this.pushInto(links, relField.linkName, id);
+        }
+        for (const id of origSet) {
+          if (!currSet.has(id)) this.pushInto(unlinks, relField.linkName, id);
+        }
+      }
+    }
+
+    if (Object.keys(updateData).length === 0 && links.size === 0 && unlinks.size === 0) {
+      return null;
+    }
+
+    let tx: TxChunk = this.store.db.tx[entityName][model.id];
+    if (Object.keys(updateData).length > 0) {
+      tx = tx.update(updateData);
+    }
+    for (const [linkName, ids] of links) {
+      const label = this.store.getLinkLabel(entityName, linkName);
+      tx = tx.link({ [label]: ids.length === 1 ? ids[0] : ids });
+    }
+    for (const [linkName, ids] of unlinks) {
+      const label = this.store.getLinkLabel(entityName, linkName);
+      tx = tx.unlink({ [label]: ids.length === 1 ? ids[0] : ids });
+    }
+    return tx;
+  }
+
+  private pushInto(map: Map<string, string[]>, key: string, value: string): void {
+    const arr = map.get(key) ?? [];
+    arr.push(value);
+    map.set(key, arr);
   }
 
   private buildTxChunkFromDiff(model: Model, diff: ModelSnapshotDiff): TxChunk {
@@ -189,22 +288,13 @@ export class ScopedTransaction {
     return tx;
   }
 
-  private restoreFromSnapshot(model: Model, claim: ClaimRecord): void {
-    const rawData = claim.data.toRawEntityData(model.id);
-    this.store.rehydrateModel(model, rawData);
-
-    if (claim.data.wasNew) {
-      model._tracker?.dispose();
-      model.initTracking();
-    } else {
-      // Restore the pre-claim originalSnapshot rather than collapsing it to
-      // current. reset() would absorb pre-transaction local diffs into the
-      // originalSnapshot.
-      model._tracker?.restoreOriginal(claim.original);
-    }
-  }
-
   private releaseAll(): void {
+    for (const [model, record] of this.claimedModels) {
+      model._activeClaims?.delete(record);
+      if (model._activeClaims && model._activeClaims.size === 0) {
+        model._activeClaims = null;
+      }
+    }
     this.claimedModels.clear();
     this.newModels.clear();
     this.finalized = true;

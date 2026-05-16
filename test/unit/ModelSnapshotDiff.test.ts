@@ -20,11 +20,11 @@ describe("ModelSnapshotDiff", () => {
 
       const u1 = new User("u");
       (u1 as unknown as { _updatedAt: Date })._updatedAt = new Date(t);
-      const before = new ModelSnapshot(u1, false);
+      const before = new ModelSnapshot(u1);
 
       const u2 = new User("u");
       (u2 as unknown as { _updatedAt: Date })._updatedAt = new Date(t);
-      const after = new ModelSnapshot(u2, false);
+      const after = new ModelSnapshot(u2);
 
       const diff = new ModelSnapshotDiff(before, after, "users", false);
 
@@ -36,11 +36,11 @@ describe("ModelSnapshotDiff", () => {
     withTestTransaction(() => {
       const u1 = new User("u");
       (u1 as unknown as { _updatedAt: Date })._updatedAt = new Date("2026-05-03T12:00:00.000Z");
-      const before = new ModelSnapshot(u1, false);
+      const before = new ModelSnapshot(u1);
 
       const u2 = new User("u");
       (u2 as unknown as { _updatedAt: Date })._updatedAt = new Date("2026-05-03T12:00:01.000Z");
-      const after = new ModelSnapshot(u2, false);
+      const after = new ModelSnapshot(u2);
 
       const diff = new ModelSnapshotDiff(before, after, "users", false);
 

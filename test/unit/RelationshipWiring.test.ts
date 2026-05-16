@@ -10,14 +10,15 @@ import { SkiInvitation } from "../entities/SkiInvitation";
 import { ChessMatch } from "../entities/ChessMatch";
 import { SkiMatch } from "../entities/SkiMatch";
 import { Container } from "../entities/Container";
+import { Item } from "../entities/Item";
 import { withTestTransaction } from "../../src/testing";
 
 beforeAll(() => {
   configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
 });
 
-// Auto-wrap every `it` body in a tx context — ChangeTracker enforces
-// tx-only mutations, but these in-memory tests never hit a RootStore.
+// Auto-wrap every `it` body in a tx context — Model enforces tx-only
+// mutations, but these in-memory tests never hit a RootStore.
 const it = (name: string, fn: () => void): void =>
   vitIt(name, () => withTestTransaction(fn));
 
@@ -234,40 +235,6 @@ describe("Reverse link wiring (in-memory)", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Group D — Dirty tracking semantics
-  // ---------------------------------------------------------------------------
-  describe("Group D — dirty tracking on the auto-wired side", () => {
-    it("D1: assigning a to-one ref dirties the holder, not the back-ref owner", () => {
-      const inviter = new User("Inviter");
-      // Reset both: clear the constructor-time `isNew` dirtiness by simulating a clean baseline.
-      // We can't actually persist here, so instead measure relative dirtiness via tracker snapshots.
-      // The wired side must NOT be marked as having changed `invitations`.
-      inviter._tracker?.reset();
-      const invitation = new ChessInvitation("5+0", true);
-      invitation._tracker?.reset();
-
-      invitation.inviter = inviter;
-
-      // Holder (the side the user mutated) is dirty
-      expect(invitation._tracker!.hasChanges()).toBe(true);
-      // Wired side (the back-ref owner) stays clean
-      expect(inviter._tracker!.hasChanges()).toBe(false);
-    });
-
-    it("D3: pushing onto the to-many array dirties the array owner, not the child", () => {
-      const inviter = new User("Inviter");
-      inviter._tracker?.reset();
-      const invitation = new ChessInvitation("5+0", true);
-      invitation._tracker?.reset();
-
-      inviter.invitations.push(invitation);
-
-      expect(inviter._tracker!.hasChanges()).toBe(true);
-      expect(invitation._tracker!.hasChanges()).toBe(false);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
   // Group E — Many-to-many
   // ---------------------------------------------------------------------------
   describe("Group E — many-to-many wiring", () => {
@@ -374,5 +341,28 @@ describe("Reverse link wiring (in-memory)", () => {
       expect(userB.referrals).toHaveLength(0);
       expect(userA.referredBy).toBeNull();
     });
+
+    // -------------------------------------------------------------------------
+    // Symmetric case to A4. A4 protects against the wirer writing back to a
+    // *parent* that is mid-construction (its own constructor will populate).
+    // Here the *child* is mid-construction and a fully-tracked party pushes
+    // it into its observable collection — the wirer should propagate the
+    // back-ref. The narrower guard (`_disposers == null` AND we're inside
+    // some model's `wireConstructorRelationships` sweep) distinguishes the
+    // two cases by call-stack location.
+    // -------------------------------------------------------------------------
+    vitIt("F4: external push of mid-construction child wires child's back-ref", () => withTestTransaction(() => {
+      const container = new Container("box", []);
+
+      // Mid-construction stand-in: prototype is there but no initializers ran.
+      const midItem = Object.create(Item.prototype) as Item;
+
+      container.items.push(midItem);
+
+      expect(container.items).toContain(midItem);
+      // The wirer runs outside any constructor sweep, so the narrower guard
+      // lets it write `midItem.container = container` instead of skipping.
+      expect(midItem.container).toBe(container);
+    }));
   });
 });

@@ -1,33 +1,45 @@
 import type { Model } from "../Model";
 import { getEntityMeta, RelationshipFieldMeta } from "./EntityMeta";
+import { makeAsyncDepth } from "./asyncDepth";
 
 /**
- * Re-entrancy guard for reverse-link wiring. While >0, MobX intercepts
- * driven by the wirer's own array push/splice or scalar set must NOT claim
- * the affected model into the active transaction — those mutations are
- * bookkeeping (the *forward* side of the link is what the user mutated and
- * is being persisted with a `link` op), not user intent on the wired side.
+ * Two stack-scoped guards backing the wirer:
  *
- * Without this guard, a `post.author = otherUser` mutation would also cause
- * `otherUser`'s row to be claimed, diffed, and emitted as an `update` op
- * on the wired side — which fails the wired side's `update` perm when the
- * actor isn't `otherUser`.
+ *  1. **Wiring depth** — while active, MobX intercepts triggered by the
+ *     wirer's own array push/splice or scalar set must NOT claim the
+ *     affected model into the active transaction. Those mutations are
+ *     bookkeeping; the *forward* side of the link is what the user
+ *     mutated, and that's the row InstantDB persists with a `link` op.
+ *     Without this guard, `post.author = otherUser` would also claim
+ *     `otherUser`'s row and emit a stray `update` chunk against it,
+ *     failing the wired side's `update` perm when the actor isn't
+ *     `otherUser`.
+ *
+ *  2. **Constructor-sweep depth** — while active, the wirer must NOT
+ *     write to a mid-construction owner. A parent building children
+ *     inline does its own explicit `this.items.push(...)`; a wirer-driven
+ *     push from each child's `wireConstructorRelationships` sweep would
+ *     double-add. Outside any sweep, a mid-construction owner means an
+ *     external party reached into us; the wirer should propagate the
+ *     back-ref normally.
  */
-let wiringDepth = 0;
+const wiring = makeAsyncDepth();
+const sweep = makeAsyncDepth();
 
 export function isWiringInProgress(): boolean {
-  return wiringDepth > 0;
+  return wiring.isActive();
+}
+
+export function withConstructorSweep<T>(fn: () => T): T {
+  return sweep.wrap(fn);
 }
 
 /**
  * Mutates `owner`'s reverse field for `rel` to add or remove `value`.
  * Uses idempotent state checks so re-entrant observer callbacks bottom out
- * naturally (no flags needed). Applies the same add/remove delta to the
- * wired side's `originalSnapshot` via `acceptRelationshipDelta` so the
- * wirer's own mutation never shows up as a diff — but unrelated local
- * edits on the wired side stay dirty (this is what makes hydration safe:
- * a remote update splicing a sibling out won't clobber other local
- * additions).
+ * naturally (no flags needed). The `isWiringInProgress` guard in
+ * `claimForCurrentTransaction` ensures these wirer-driven mutations don't
+ * draw the wired side into the active transaction's commit.
  */
 function applyReverseChange(
   owner: Model,
@@ -35,12 +47,14 @@ function applyReverseChange(
   reverseRel: RelationshipFieldMeta,
   add: boolean
 ): void {
-  // Owner is mid-construction (its own initTracking hasn't run yet). Its
-  // constructor is responsible for whatever back-ref state it wants;
-  // wiring would race with constructor-internal pushes and double-add.
-  // Once the owner finishes initTracking its constructor sweep will pick
-  // up any current relationship state.
-  if (owner._tracker == null) return;
+  // Owner is mid-construction (its own initTracking hasn't run yet) AND
+  // the wire was triggered from inside someone's wireConstructorRelationships
+  // sweep — i.e. an inline-built child is trying to wire back to its still-
+  // building parent. The parent's constructor does its own explicit
+  // back-ref push; we skip here to avoid double-adding. Outside any sweep,
+  // a mid-construction owner means an external party touched us; the wirer
+  // proceeds.
+  if (owner._disposers == null && sweep.isActive()) return;
 
   const propName = reverseRel.getFieldNameOnModel(owner);
   const record = owner as unknown as Record<string, unknown>;
@@ -49,7 +63,6 @@ function applyReverseChange(
     const arr = record[propName] as Model[] | undefined;
     if (!Array.isArray(arr)) return;
     if (add) {
-      if (arr.includes(value)) return;
       arr.push(value);
     } else {
       const idx = arr.indexOf(value);
@@ -65,8 +78,6 @@ function applyReverseChange(
       record[propName] = null;
     }
   }
-
-  owner._tracker?.acceptRelationshipDelta(reverseRel.fieldName, value.id, add);
 }
 
 /**
@@ -82,10 +93,5 @@ export function wireReverseLink(
   const targetMeta = getEntityMeta(rel.targetEntity);
   const reverseRel = targetMeta.findReverseRelationship(rel.linkName, rel.fieldName);
   if (!reverseRel) return;
-  wiringDepth++;
-  try {
-    applyReverseChange(target, holder, reverseRel, add);
-  } finally {
-    wiringDepth--;
-  }
+  wiring.wrap(() => applyReverseChange(target, holder, reverseRel, add));
 }

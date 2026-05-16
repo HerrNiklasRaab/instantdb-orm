@@ -6,9 +6,9 @@ import type { TransactionStoreAccess } from "./object-graph/persistence/ScopedTr
 
 /**
  * Opens a ScopedTransaction for the duration of `fn` so unit tests can
- * mutate observed properties without hitting the tx-only enforcement in
- * ChangeTracker. The tx never commits or rolls back — its only purpose is
- * to satisfy `claimForCurrentTransaction`.
+ * mutate observed properties without hitting the tx-only enforcement on
+ * Model. The tx never commits or rolls back — its only purpose is to
+ * satisfy `claimForCurrentTransaction`.
  *
  * Use only in low-level unit tests that don't have a RootStore. Integration
  * tests should drive mutations through `store.transaction(...)`.
