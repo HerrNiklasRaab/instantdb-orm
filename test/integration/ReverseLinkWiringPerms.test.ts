@@ -3,11 +3,11 @@ import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   setupTestDatabase,
   initTestDatabaseAsUser,
-  createAuthUser,
+  seedAuthUser,
   id,
-} from "../utils/instantdb-test-utils";
-import { User } from "../entities/User";
-import { Post } from "../entities/Post";
+} from "./support/instantdb-test-utils";
+import { User } from "../support/entities/User";
+import { Post } from "../support/entities/Post";
 
 /**
  * When the user code mutates the *forward* side of a relationship
@@ -31,9 +31,9 @@ describe("Reverse-link wiring perms", () => {
     // Two distinct $users users. Author email is the actor; otherUser is
     // the target of the reverse-wiring.
     const authorEmail = `author-${id()}@example.com`;
-    const authorId = await createAuthUser(authorEmail);
+    const authorId = await seedAuthUser(authorEmail);
     const otherEmail = `other-${id()}@example.com`;
-    const otherId = await createAuthUser(otherEmail);
+    const otherId = await seedAuthUser(otherEmail);
 
     // Seed both users into the `users` table with matching ids (admin
     // bypasses perms).

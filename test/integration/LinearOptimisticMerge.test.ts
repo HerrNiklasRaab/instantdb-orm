@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   setupTestDatabase,
   type TestInstantDBClient,
-} from "../utils/instantdb-test-utils";
+} from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import { User } from "../entities/User";
-import { Post } from "../entities/Post";
-import { Tag } from "../entities/Tag";
+import { User } from "../support/entities/User";
+import { Post } from "../support/entities/Post";
+import { Tag } from "../support/entities/Tag";
 
 /**
  * Field-level optimistic merge — the "Linear contract".

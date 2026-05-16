@@ -5,13 +5,13 @@ import {
   id,
   waitFor,
   type TestInstantDBClient,
-} from "../utils/instantdb-test-utils";
-import { User } from "../entities/User";
-import { Post } from "../entities/Post";
-import { UserProfile } from "../entities/Profile";
+} from "./support/instantdb-test-utils";
+import { User } from "../support/entities/User";
+import { Post } from "../support/entities/Post";
+import { UserProfile } from "../support/entities/Profile";
 // Import MTI entities to register them with model registry
-import "../entities/ChessMatch";
-import "../entities/SkiMatch";
+import "../support/entities/ChessMatch";
+import "../support/entities/SkiMatch";
 
 describe("RootStore hydration (Integration)", () => {
   let db: TestInstantDBClient;

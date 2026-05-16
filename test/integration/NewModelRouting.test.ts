@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   setupTestDatabase,
   type TestInstantDBClient,
-} from "../utils/instantdb-test-utils";
+} from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import { User } from "../entities/User";
+import { User } from "../support/entities/User";
 
 describe("New model routing (Plan A)", () => {
   let db: TestInstantDBClient;

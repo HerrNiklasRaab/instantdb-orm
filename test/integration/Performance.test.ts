@@ -3,10 +3,10 @@ import { reaction } from "mobx";
 import {
   setupTestDatabase,
   type TestInstantDBClient,
-} from "../utils/instantdb-test-utils";
+} from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import { User } from "../entities/User";
-import { Post } from "../entities/Post";
+import { User } from "../support/entities/User";
+import { Post } from "../support/entities/Post";
 
 const SCAN_METHODS = [
   "includes",

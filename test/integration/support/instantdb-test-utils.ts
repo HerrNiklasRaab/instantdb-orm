@@ -2,26 +2,26 @@ import {
   getAdminDb as sharedGetAdminDb,
   initTestDatabase as sharedInitTestDatabase,
   initTestDatabaseAsUser as sharedInitTestDatabaseAsUser,
-  createAuthUser as sharedCreateAuthUser,
+  seedAuthUser as sharedSeedAuthUser,
   type TestInstantDBClient as SharedTestInstantDBClient,
 } from "@upfor/shared/test";
-import type { InstantDBClient } from "../../src/object-graph/persistence/types";
-import { configureEntityMeta } from "../../src/object-graph";
-import schema from "../instant.schema";
+import type { InstantDBClient } from "../../../src/object-graph/persistence/types";
+import { configureEntityMeta } from "../../../src/object-graph";
+import schema from "../../support/instant.schema";
 
 // Side-effect imports: @model decorator auto-registers these entities
-import "../entities/User";
-import "../entities/Profile";
-import "../entities/Post";
-import "../entities/Tag";
-import "../entities/Container";
-import "../entities/Item";
+import "../../support/entities/User";
+import "../../support/entities/Profile";
+import "../../support/entities/Post";
+import "../../support/entities/Tag";
+import "../../support/entities/Container";
+import "../../support/entities/Item";
 // STI entities (single table with type discriminator)
-import "../entities/ChessInvitation";
-import "../entities/SkiInvitation";
+import "../../support/entities/ChessInvitation";
+import "../../support/entities/SkiInvitation";
 // MTI entities (separate tables)
-import "../entities/ChessMatch";
-import "../entities/SkiMatch";
+import "../../support/entities/ChessMatch";
+import "../../support/entities/SkiMatch";
 
 // Re-export shared utilities so existing call sites don't have to change.
 export {
@@ -57,9 +57,9 @@ export function initTestDatabaseAsUser(email: string): TestInstantDBClient {
   ) as TestInstantDBClient;
 }
 
-export function createAuthUser(email: string): Promise<string> {
-  return sharedCreateAuthUser(
-    schema as Parameters<typeof sharedCreateAuthUser>[0],
+export function seedAuthUser(email: string): Promise<string> {
+  return sharedSeedAuthUser(
+    schema as Parameters<typeof sharedSeedAuthUser>[0],
     email
   );
 }

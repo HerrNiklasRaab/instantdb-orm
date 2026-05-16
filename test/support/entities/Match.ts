@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { Model } from "../../src/object-graph";
+import { Model } from "../../../src/object-graph";
 import type { User } from "./User";
 
 // Abstract base for MTI - NOT decorated with @model (concrete children are)

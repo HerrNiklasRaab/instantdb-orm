@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { Model, model, field } from "../../src/object-graph";
+import { Model, model, field } from "../../../src/object-graph";
 import type { User } from "./User";
 
 @model("profiles")

@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { model, field } from "../../src/object-graph";
+import { model, field } from "../../../src/object-graph";
 import { Match } from "./Match";
 
 // MTI: No type getter → each class gets its own table (chessMatchs)

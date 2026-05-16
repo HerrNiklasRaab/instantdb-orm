@@ -3,10 +3,10 @@ import {
   setupTestDatabase,
   waitFor,
   type TestInstantDBClient,
-} from "../utils/instantdb-test-utils";
+} from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import { User } from "../entities/User";
-import { UserProfile } from "../entities/Profile";
+import { User } from "../support/entities/User";
+import { UserProfile } from "../support/entities/Profile";
 
 describe("subscribeQueryIsolated (curr, prev)", () => {
   let db: TestInstantDBClient;

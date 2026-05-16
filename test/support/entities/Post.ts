@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { Model, model } from "../../src/object-graph";
+import { Model, model } from "../../../src/object-graph";
 import type { User } from "./User";
 import type { Tag } from "./Tag";
 
