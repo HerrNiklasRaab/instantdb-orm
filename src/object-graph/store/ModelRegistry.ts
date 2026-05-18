@@ -7,7 +7,7 @@ export type ModelClassKey = abstract new (...args: never[]) => object;
  * Populated by @model decorator at class definition time.
  */
 export class ModelRegistry {
-  private static instance: ModelRegistry;
+  private static instance: ModelRegistry | undefined;
 
   private models = new Map<string, ModelConstructor>();
   private discriminators = new Map<string, Map<string, ModelConstructor>>();
@@ -16,9 +16,7 @@ export class ModelRegistry {
   private constructor() {}
 
   static getInstance(): ModelRegistry {
-    if (!ModelRegistry.instance) {
-      ModelRegistry.instance = new ModelRegistry();
-    }
+    ModelRegistry.instance ??= new ModelRegistry();
     return ModelRegistry.instance;
   }
 

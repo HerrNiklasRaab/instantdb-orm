@@ -24,12 +24,17 @@ let AsyncLocalStorageCtor:
   | null = null;
 
 try {
-  const nodeRequire = new Function("id", "return require(id)") as (id: string) => unknown;
-  AsyncLocalStorageCtor = (
-    nodeRequire("node:async_hooks") as {
-      AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
-    }
-  ).AsyncLocalStorage;
+  const globalWithRequire = globalThis as {
+    require?: (id: string) => unknown;
+  };
+  const requireFn = globalWithRequire.require;
+  if (typeof requireFn === "function") {
+    AsyncLocalStorageCtor = (
+      requireFn("node:async_hooks") as {
+        AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
+      }
+    ).AsyncLocalStorage;
+  }
 } catch {
   // Browser / React Native — no async_hooks. Fallback path below.
 }

@@ -189,9 +189,9 @@ export class RootStore implements TransactionStoreAccess {
   ): Promise<T[]> {
     const entityName = getEntityNameFromClass(EntityClass);
     const query = this.buildQueryWithRelationships({ [entityName]: {} });
-    const result = (await this.db.query(query));
+    const result = await this.db.query<QueryResult>(query);
 
-    const rawDataArray = (result[entityName] ?? []);
+    const rawDataArray = result[entityName] ?? [];
 
     return this.hydrator.hydrateMany(
       entityName,
@@ -206,7 +206,7 @@ export class RootStore implements TransactionStoreAccess {
     query: Record<string, unknown>,
     onData: (data: QueryResult) => T,
     callback?: (result: T) => void
-  ): Promise<{ result: T; close(): void }> {
+  ): Promise<{ result: T; close: () => void }> {
     this.subscriptions.get(subscriptionKey)?.close();
 
     return new Promise((resolve, reject) => {
@@ -339,7 +339,7 @@ export class RootStore implements TransactionStoreAccess {
 
     for (const name of entityNames) {
       const ModelClass = getModelClass(name);
-      this.subscribeModel(ModelClass, () => {
+      void this.subscribeModel(ModelClass, () => {
         callback?.();
       });
     }
@@ -355,7 +355,7 @@ export class RootStore implements TransactionStoreAccess {
 
   async query(queryObj: Record<string, unknown>): Promise<void> {
     const expandedQuery = this.buildQueryWithRelationships(queryObj);
-    const result = (await this.db.query(expandedQuery));
+    const result = await this.db.query<QueryResult>(expandedQuery);
     this.hydrateResult(result);
   }
 

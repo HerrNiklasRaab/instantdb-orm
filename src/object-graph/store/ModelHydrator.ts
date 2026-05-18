@@ -40,7 +40,8 @@ export class ModelHydrator {
     const meta = getEntityMeta(entityName);
 
     const model = identityMap.getOrCreate(rawData.id, () => {
-      const instance = Object.create(ModelClass.prototype) as ModelInstanceFor<K>;
+      const prototype = ModelClass.prototype as object;
+      const instance = Object.create(prototype) as ModelInstanceFor<K>;
       const record = instance as unknown as Record<string, unknown>;
 
       record.id = rawData.id;

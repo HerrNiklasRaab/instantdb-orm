@@ -90,7 +90,7 @@ export class EntityMeta {
   }
 
   private get attrs(): Record<string, AttrDef> {
-    return this.schema.entities[this.schemaName]?.attrs ?? {};
+    return this.schema.entities[this.schemaName].attrs;
   }
 
   private extractScalarFields(): void {
@@ -205,7 +205,7 @@ function validateTimestampFields(
 export function configureEntityMeta(schema: SchemaConfig): void {
   // Validate schema timestamp fields
   for (const entityName of Object.keys(schema.entities)) {
-    const attrs = schema.entities[entityName]?.attrs ?? {};
+    const attrs = schema.entities[entityName].attrs;
     validateTimestampFields(entityName, attrs);
   }
 
