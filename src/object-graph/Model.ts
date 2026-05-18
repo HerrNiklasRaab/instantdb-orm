@@ -112,8 +112,9 @@ export abstract class Model {
    */
   initTracking(isNew: boolean = true): void {
     this.makeObservable();
-    this._disposers = [];
-    this.setupObservers();
+    const disposers: (() => void)[] = [];
+    this._disposers = disposers;
+    this.setupObservers(disposers);
     this.setupDebugView();
     if (isNew) {
       TransactionContext.current?.registerNew(this);
@@ -140,7 +141,7 @@ export abstract class Model {
     return false;
   }
 
-  private setupObservers(): void {
+  private setupObservers(disposers: (() => void)[]): void {
     const meta = getEntityMeta(this.entityName);
     const record = this as unknown as Record<string, unknown>;
 
@@ -164,7 +165,7 @@ export abstract class Model {
                 }
               }
             });
-            this._disposers!.push(disposer);
+            disposers.push(disposer);
           } catch {
             // Array might not be observable, skip it
           }
@@ -198,7 +199,7 @@ export abstract class Model {
               }
               return change;
             });
-            this._disposers!.push(interceptDisposer);
+            disposers.push(interceptDisposer);
           } catch {
             // Array might not be observable, skip it
           }
@@ -216,7 +217,7 @@ export abstract class Model {
             return change;
           }
         );
-        this._disposers!.push(interceptDisposer);
+        disposers.push(interceptDisposer);
       } catch {
         // Field might not be observable, skip it
       }
@@ -241,7 +242,7 @@ export abstract class Model {
             }
           }
         );
-        this._disposers!.push(disposer);
+        disposers.push(disposer);
       } catch {
         // Field might not be observable, skip it
       }

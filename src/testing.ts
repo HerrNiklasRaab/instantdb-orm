@@ -16,7 +16,7 @@ import type { TransactionStoreAccess } from "./object-graph/persistence/ScopedTr
 const stubStore: TransactionStoreAccess = {
   db: {
     tx: {} as Record<string, Record<string, unknown>> as TransactionStoreAccess["db"]["tx"],
-    transact: async () => undefined,
+    transact: () => Promise.resolve(),
   },
   getIdentityMapByName: () => ({
     has: () => false,
