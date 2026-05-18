@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  assertDefined,
   setupTestDatabase,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
@@ -21,17 +22,19 @@ describe("New model routing (Plan A)", () => {
     let userB: User | undefined;
 
     await Promise.all([
-      storeA.transaction(async () => {
+      storeA.transaction(() => {
         userA = new User("from-A");
       }),
-      storeB.transaction(async () => {
+      storeB.transaction(() => {
         userB = new User("from-B");
       }),
     ]);
 
-    expect(storeA.getById(User, userA!.id)).toBe(userA);
-    expect(storeA.getById(User, userB!.id)).toBeUndefined();
-    expect(storeB.getById(User, userB!.id)).toBe(userB);
-    expect(storeB.getById(User, userA!.id)).toBeUndefined();
+    assertDefined(userA);
+    assertDefined(userB);
+    expect(storeA.getById(User, userA.id)).toBe(userA);
+    expect(storeA.getById(User, userB.id)).toBeUndefined();
+    expect(storeB.getById(User, userB.id)).toBe(userB);
+    expect(storeB.getById(User, userA.id)).toBeUndefined();
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  assertDefined,
   setupTestDatabase,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
@@ -41,8 +42,8 @@ describe("Entity persistence via transaction (Integration)", () => {
       const posts = await freshStore.queryModel(Post);
       const hydratedPost = posts.find((p) => p.id === post.id);
 
-      expect(hydratedPost).toBeDefined();
-      expect(hydratedPost!.author?.id).toBe(user.id);
+      assertDefined(hydratedPost);
+      expect(hydratedPost.author?.id).toBe(user.id);
     });
 
     it("persists scalar changes to database", async () => {
@@ -52,8 +53,8 @@ describe("Entity persistence via transaction (Integration)", () => {
       const users = await freshStore.queryModel(User);
       const hydratedUser = users.find((u) => u.id === user.id);
 
-      expect(hydratedUser).toBeDefined();
-      expect(hydratedUser!.name).toBe("New Name");
+      assertDefined(hydratedUser);
+      expect(hydratedUser.name).toBe("New Name");
     });
 
     it("converts Date to ISO string", async () => {
@@ -249,11 +250,11 @@ describe("Entity persistence via transaction (Integration)", () => {
       const users = await freshStore.queryModel(User);
       const hydratedUser = users.find((u) => u.id === user.id);
 
-      expect(hydratedUser).toBeDefined();
-      expect(hydratedUser!.createdAt).toBeInstanceOf(Date);
-      expect(hydratedUser!.updatedAt).toBeInstanceOf(Date);
-      expect(hydratedUser!.createdAt.toISOString()).toBe(savedCreatedAt.toISOString());
-      expect(hydratedUser!.updatedAt.toISOString()).toBe(savedUpdatedAt.toISOString());
+      assertDefined(hydratedUser);
+      expect(hydratedUser.createdAt).toBeInstanceOf(Date);
+      expect(hydratedUser.updatedAt).toBeInstanceOf(Date);
+      expect(hydratedUser.createdAt.toISOString()).toBe(savedCreatedAt.toISOString());
+      expect(hydratedUser.updatedAt.toISOString()).toBe(savedUpdatedAt.toISOString());
     });
   });
 });

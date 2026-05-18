@@ -1,5 +1,6 @@
 import { describe, it, beforeEach } from "vitest";
 import {
+  assertDefined,
   setupTestDatabase,
   waitFor,
   type TestInstantDBClient,
@@ -41,7 +42,11 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
 
     const deleteStore = new RootStore({ db });
     await deleteStore.queryModel(User);
-    await deleteStore.transaction(() => { deleteStore.getById(User, u.id)!.delete(); });
+    await deleteStore.transaction(() => {
+      const target = deleteStore.getById(User, u.id);
+      assertDefined(target);
+      target.delete();
+    });
 
     await waitFor(() => removalEvents.includes(u.id), 8000);
 
@@ -72,8 +77,10 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
     // Wait until first callback has fired.
     const mutateStore = new RootStore({ db });
     await mutateStore.queryModel(User);
-    await mutateStore.transaction(async () => {
-      mutateStore.getById(User, u.id)!.name = "transitioned";
+    await mutateStore.transaction(() => {
+      const target = mutateStore.getById(User, u.id);
+      assertDefined(target);
+      target.name = "transitioned";
     });
 
     await waitFor(

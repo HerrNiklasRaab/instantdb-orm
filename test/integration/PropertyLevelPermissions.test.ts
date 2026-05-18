@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
+  assertDefined,
   setupTestDatabase,
   initTestDatabaseAsUser,
   seedAuthUser,
@@ -50,9 +51,9 @@ describe("Property-level permissions (Integration)", () => {
       const user = users.find((u) => u.id === authUserId);
 
       // Owner should be able to see all fields including secretField
-      expect(user).toBeDefined();
-      expect(user!.name).toBe("Owner");
-      expect(user!.secretField).toBe("my-secret-value");
+      assertDefined(user);
+      expect(user.name).toBe("Owner");
+      expect(user.secretField).toBe("my-secret-value");
     });
 
     it("non-owner cannot see secretField (returns null)", async () => {
@@ -79,10 +80,10 @@ describe("Property-level permissions (Integration)", () => {
       const user = users.find((u) => u.id === ownerId);
 
       // Viewer should see the user but NOT the secretField
-      expect(user).toBeDefined();
-      expect(user!.name).toBe("Owner"); // Public field is visible
+      assertDefined(user);
+      expect(user.name).toBe("Owner"); // Public field is visible
       // Restricted field is not returned - should remain undefined per type definition
-      expect(user!.secretField).toBeUndefined();
+      expect(user.secretField).toBeUndefined();
     });
 
   });

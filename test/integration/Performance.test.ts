@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { reaction } from "mobx";
 import {
+  assertDefined,
   setupTestDatabase,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
@@ -22,15 +23,18 @@ const SCAN_METHODS = [
 ] as const;
 
 type ScanMethod = (typeof SCAN_METHODS)[number];
+type ArrayScanFn = (this: unknown[], ...args: unknown[]) => unknown;
+type ScanPrototype = Record<ScanMethod, ArrayScanFn>;
 
 function trapArrayScans(): { stop(): number } {
-  const originals = new Map<ScanMethod, (...args: unknown[]) => unknown>();
+  const proto = Array.prototype as unknown as ScanPrototype;
+  const originals = new Map<ScanMethod, ArrayScanFn>();
   let calls = 0;
   for (const name of SCAN_METHODS) {
-    const orig = (Array.prototype as any)[name];
+    const orig = proto[name];
     if (typeof orig !== "function") continue;
     originals.set(name, orig);
-    (Array.prototype as any)[name] = function (...args: unknown[]) {
+    proto[name] = function (this: unknown[], ...args: unknown[]): unknown {
       calls++;
       return orig.apply(this, args);
     };
@@ -38,7 +42,7 @@ function trapArrayScans(): { stop(): number } {
   return {
     stop(): number {
       for (const [name, orig] of originals) {
-        (Array.prototype as any)[name] = orig;
+        proto[name] = orig;
       }
       return calls;
     },
@@ -115,7 +119,8 @@ describe("performance", () => {
 
     const fresh = new RootStore({ db });
     await fresh.queryModel(User);
-    const user = fresh.getById(User, userId)!;
+    const user = fresh.getById(User, userId);
+    assertDefined(user);
     expect(user.posts.length).toBe(0);
 
     let fires = 0;
@@ -153,8 +158,10 @@ describe("performance", () => {
     const fresh = new RootStore({ db });
     await fresh.queryAll();
 
-    const targetPost = fresh.getById(Post, postIds[0])!;
-    const untouchedPost = fresh.getById(Post, postIds[1])!;
+    const targetPost = fresh.getById(Post, postIds[0]);
+    const untouchedPost = fresh.getById(Post, postIds[1]);
+    assertDefined(targetPost);
+    assertDefined(untouchedPost);
 
     let targetFires = 0;
     let untouchedFires = 0;
@@ -164,7 +171,8 @@ describe("performance", () => {
     const remote = new RootStore({ db });
     await remote.queryAll();
     await remote.transaction(() => {
-      const remotePost = remote.getById(Post, postIds[0])!;
+      const remotePost = remote.getById(Post, postIds[0]);
+      assertDefined(remotePost);
       remotePost.title = "Updated title";
     });
 
@@ -202,9 +210,12 @@ describe("performance", () => {
     const fresh = new RootStore({ db });
     await fresh.queryAll();
 
-    const userA = fresh.getById(User, userAId)!;
-    const userB = fresh.getById(User, userBId)!;
-    const untouchedPost = fresh.getById(Post, postIds[1])!;
+    const userA = fresh.getById(User, userAId);
+    const userB = fresh.getById(User, userBId);
+    const untouchedPost = fresh.getById(Post, postIds[1]);
+    assertDefined(userA);
+    assertDefined(userB);
+    assertDefined(untouchedPost);
 
     let aLengthFires = 0;
     let bLengthFires = 0;
@@ -216,8 +227,10 @@ describe("performance", () => {
     const remote = new RootStore({ db });
     await remote.queryAll();
     await remote.transaction(() => {
-      const remotePost = remote.getById(Post, postIds[0])!;
-      const remoteB = remote.getById(User, userBId)!;
+      const remotePost = remote.getById(Post, postIds[0]);
+      const remoteB = remote.getById(User, userBId);
+      assertDefined(remotePost);
+      assertDefined(remoteB);
       remotePost.author = remoteB;
     });
 

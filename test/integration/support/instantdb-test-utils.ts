@@ -72,5 +72,12 @@ export function setupTestDatabase(): TestInstantDBClient {
 
 // Unique ID generator for test isolation (deprecated — prefer `id()`).
 export function testId(prefix: string = "test"): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+export function assertDefined<T>(
+  value: T | null | undefined,
+  message: string = "expected value to be defined"
+): asserts value is NonNullable<T> {
+  if (value == null) throw new Error(message);
 }

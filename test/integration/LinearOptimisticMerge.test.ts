@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  assertDefined,
   setupTestDatabase,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
@@ -98,9 +99,11 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.title = "Fix login bug";
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
-        const remoteBob = remote.getById(User, bob.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        const remoteBob = remote.getById(User, bob.id);
+        assertDefined(remoteIssue);
+        assertDefined(remoteBob);
         remoteIssue.author = remoteBob;
       });
 
@@ -114,7 +117,8 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    const stored = verify.getById(Post, issue.id)!;
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
     expect(stored.author?.id).toBe(bob.id);
   });
@@ -128,8 +132,9 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.title = "Fix login bug";
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        assertDefined(remoteIssue);
         remoteIssue.title = "Resolved by Alice";
       });
 
@@ -141,7 +146,9 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    expect(verify.getById(Post, issue.id)!.title).toBe("Fix login bug");
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
+    expect(stored.title).toBe("Fix login bug");
   });
 
   // ---------------------------------------------------------------------------
@@ -160,9 +167,11 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.tags.push(frontendLabel);
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
-        const remoteP0 = remote.getById(Tag, p0Label.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        const remoteP0 = remote.getById(Tag, p0Label.id);
+        assertDefined(remoteIssue);
+        assertDefined(remoteP0);
         remoteIssue.tags.push(remoteP0);
       });
 
@@ -174,10 +183,9 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    const labelNames = verify
-      .getById(Post, issue.id)!
-      .tags.map((t) => t.name)
-      .sort();
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
+    const labelNames = stored.tags.map((t) => t.name).sort();
     expect(labelNames).toEqual(["P0", "bug", "frontend"]);
   });
 
@@ -196,9 +204,11 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.tags.push(p0Label);
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
-        const remoteP0 = remote.getById(Tag, p0Label.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        const remoteP0 = remote.getById(Tag, p0Label.id);
+        assertDefined(remoteIssue);
+        assertDefined(remoteP0);
         remoteIssue.tags.push(remoteP0);
       });
 
@@ -207,10 +217,9 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    const labelNames = verify
-      .getById(Post, issue.id)!
-      .tags.map((t) => t.name)
-      .sort();
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
+    const labelNames = stored.tags.map((t) => t.name).sort();
     expect(labelNames).toEqual(["P0", "bug"]);
   });
 
@@ -232,9 +241,11 @@ describe("Linear-style optimistic merge", () => {
       const idx = issue.tags.indexOf(frontendLabel);
       issue.tags.splice(idx, 1);
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
-        const remoteP0 = remote.getById(Tag, p0Label.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        const remoteP0 = remote.getById(Tag, p0Label.id);
+        assertDefined(remoteIssue);
+        assertDefined(remoteP0);
         remoteIssue.tags.push(remoteP0);
       });
 
@@ -245,10 +256,9 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    const labelNames = verify
-      .getById(Post, issue.id)!
-      .tags.map((t) => t.name)
-      .sort();
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
+    const labelNames = stored.tags.map((t) => t.name).sort();
     expect(labelNames).toEqual(["P0", "bug"]);
   });
 
@@ -268,20 +278,24 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.author = alice;
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
-        const remoteCharlie = remote.getById(User, charlie.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        const remoteCharlie = remote.getById(User, charlie.id);
+        assertDefined(remoteIssue);
+        assertDefined(remoteCharlie);
         remoteIssue.author = remoteCharlie;
       });
 
       await store.queryModel(Post);
 
-      expect(issue.author?.id).toBe(alice.id);
+      expect(issue.author.id).toBe(alice.id);
     });
 
     const verify = freshStore();
     await verify.queryAll();
-    expect(verify.getById(Post, issue.id)!.author?.id).toBe(alice.id);
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
+    expect(stored.author?.id).toBe(alice.id);
   });
 
   // ---------------------------------------------------------------------------
@@ -306,9 +320,11 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.author = null;
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
-        const remoteCharlie = remote.getById(User, charlie.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        const remoteCharlie = remote.getById(User, charlie.id);
+        assertDefined(remoteIssue);
+        assertDefined(remoteCharlie);
         remoteIssue.author = remoteCharlie;
       });
 
@@ -319,7 +335,9 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    expect(verify.getById(Post, issue.id)!.author).toBeNull();
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
+    expect(stored.author).toBeNull();
   });
 
   // ---------------------------------------------------------------------------
@@ -338,9 +356,11 @@ describe("Linear-style optimistic merge", () => {
     await tx.run(async () => {
       issue.title = "Fix login bug";
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
-        const remoteBob = remote.getById(User, bob.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        const remoteBob = remote.getById(User, bob.id);
+        assertDefined(remoteIssue);
+        assertDefined(remoteBob);
         remoteIssue.author = remoteBob;
       });
 
@@ -368,8 +388,9 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.title = "Fix login bug";
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        assertDefined(remoteIssue);
         remoteIssue.content = "Teammate added details";
       });
 
@@ -382,7 +403,8 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    const stored = verify.getById(Post, issue.id)!;
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
     expect(stored.content).toBe("Teammate added details");
   });
@@ -402,9 +424,11 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.title = "Fix login bug";
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
-        const remoteP0 = remote.getById(Tag, p0Label.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        const remoteP0 = remote.getById(Tag, p0Label.id);
+        assertDefined(remoteIssue);
+        assertDefined(remoteP0);
         remoteIssue.tags.push(remoteP0);
       });
 
@@ -417,7 +441,8 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    const stored = verify.getById(Post, issue.id)!;
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
     expect(stored.tags.map((t) => t.name).sort()).toEqual(["P0", "bug"]);
   });
@@ -440,8 +465,9 @@ describe("Linear-style optimistic merge", () => {
     await store.transaction(async () => {
       issue.title = "Fix login bug";
 
-      await applyRemote(async (remote) => {
-        const remoteIssue = remote.getById(Post, issue.id)!;
+      await applyRemote((remote) => {
+        const remoteIssue = remote.getById(Post, issue.id);
+        assertDefined(remoteIssue);
         remoteIssue.delete();
       });
 
@@ -492,7 +518,8 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    const stored = verify.getById(Post, issue.id)!;
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
     expect(stored.content).toBe("Repro: open the page, type credentials...");
   });
@@ -520,6 +547,8 @@ describe("Linear-style optimistic merge", () => {
 
     const verify = freshStore();
     await verify.queryAll();
-    expect(verify.getById(Post, issue.id)!.title).toBe("From tx2");
+    const stored = verify.getById(Post, issue.id);
+    assertDefined(stored);
+    expect(stored.title).toBe("From tx2");
   });
 });

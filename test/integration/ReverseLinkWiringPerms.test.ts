@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
+  assertDefined,
   setupTestDatabase,
   initTestDatabaseAsUser,
   seedAuthUser,
@@ -49,7 +50,8 @@ describe("Reverse-link wiring perms", () => {
     const actorDb = initTestDatabaseAsUser(authorEmail);
     const actorStore = new RootStore({ db: actorDb });
     const users = await actorStore.queryModel(User);
-    const other = users.find((u) => u.id === otherId)!;
+    const other = users.find((u) => u.id === otherId);
+    assertDefined(other);
 
     // Create a Post whose `author` is the OTHER user. The wirer mirrors
     // this onto `other.posts[]`. Without the fix, this claims `other` and

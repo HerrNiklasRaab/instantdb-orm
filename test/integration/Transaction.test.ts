@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  assertDefined,
   setupTestDatabase,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
@@ -37,7 +38,7 @@ describe("Transaction (Integration)", () => {
     it("auto-commits on success", async () => {
       const user = await persist(() => createUser("Original"));
 
-      await store.transaction(async () => {
+      await store.transaction(() => {
         user.name = "Updated";
       });
 
@@ -50,7 +51,7 @@ describe("Transaction (Integration)", () => {
       const user = await persist(() => createUser("Original"));
 
       await expect(
-        store.transaction(async () => {
+        store.transaction(() => {
           user.name = "Changed";
           throw new Error("Simulated error");
         })
@@ -63,7 +64,7 @@ describe("Transaction (Integration)", () => {
       const user1 = await persist(() => createUser("User 1"));
       const user2 = await persist(() => createUser("User 2"));
 
-      await store.transaction(async () => {
+      await store.transaction(() => {
         user1.name = "Updated User 1";
         user2.name = "Updated User 2";
       });
@@ -77,8 +78,8 @@ describe("Transaction (Integration)", () => {
     it("captures newly constructed models", async () => {
       const user = await persist(() => createUser("Author"));
 
-      let postId: string;
-      await store.transaction(async () => {
+      let postId: string | undefined;
+      await store.transaction(() => {
         const post = createPost("New Post");
         post.author = user;
         postId = post.id;
@@ -87,7 +88,8 @@ describe("Transaction (Integration)", () => {
       const storeB = createVerificationStore();
       await storeB.queryModel(Post);
       await storeB.queryModel(User);
-      const savedPost = storeB.getById(Post, postId!);
+      assertDefined(postId);
+      const savedPost = storeB.getById(Post, postId);
       expect(savedPost?.title).toBe("New Post");
       expect(savedPost?.author?.id).toBe(user.id);
     });
@@ -95,7 +97,7 @@ describe("Transaction (Integration)", () => {
     it("commits with no changes without error", async () => {
       await persist(() => createUser());
 
-      await store.transaction(async () => {
+      await store.transaction(() => {
         // no changes
       });
     });
@@ -156,16 +158,17 @@ describe("Transaction (Integration)", () => {
       const existingUser = await persist(() => createUser("Existing"));
 
       const tx = store.createTransaction();
-      let newUser: User;
+      let newUser: User | undefined;
       tx.run(() => {
         newUser = createUser("New User");
       });
 
-      expect(store.getById(User, newUser!.id)).toBe(newUser!);
+      assertDefined(newUser);
+      expect(store.getById(User, newUser.id)).toBe(newUser);
 
       tx.rollback();
 
-      expect(store.getById(User, newUser!.id)).toBeUndefined();
+      expect(store.getById(User, newUser.id)).toBeUndefined();
       expect(store.getById(User, existingUser.id)).toBe(existingUser);
     });
 
@@ -399,8 +402,8 @@ describe("Transaction (Integration)", () => {
       const txUser = store.createTransaction();
       const txPost = store.createTransaction();
 
-      let newUser: User;
-      let newPost: Post;
+      let newUser: User | undefined;
+      let newPost: Post | undefined;
 
       txUser.run(() => {
         newUser = createUser("New User");
@@ -413,15 +416,17 @@ describe("Transaction (Integration)", () => {
       // Rollback user transaction
       txUser.rollback();
 
-      expect(store.getById(User, newUser!.id)).toBeUndefined();
-      expect(store.getById(Post, newPost!.id)).toBe(newPost!);
+      assertDefined(newUser);
+      assertDefined(newPost);
+      expect(store.getById(User, newUser.id)).toBeUndefined();
+      expect(store.getById(Post, newPost.id)).toBe(newPost);
 
       // Post transaction can still commit
       await txPost.commit();
 
       const storeB = createVerificationStore();
       await storeB.queryModel(Post);
-      expect(storeB.getById(Post, newPost!.id)?.title).toBe("New Post");
+      expect(storeB.getById(Post, newPost.id)?.title).toBe("New Post");
     });
   });
 
@@ -435,9 +440,8 @@ describe("Transaction (Integration)", () => {
       });
 
       const originalTransact = store.db.transact.bind(store.db);
-      store.db.transact = async () => {
-        throw new Error("Simulated DB error");
-      };
+      store.db.transact = () =>
+        Promise.reject(new Error("Simulated DB error"));
 
       try {
         await expect(tx.commit()).rejects.toThrow("Simulated DB error");

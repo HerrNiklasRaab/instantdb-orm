@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
+  assertDefined,
   setupTestDatabase,
   id,
   waitFor,
@@ -118,8 +119,8 @@ describe("RootStore hydration (Integration)", () => {
       const users = await storeB.queryModel(User);
       const user = users.find((u) => u.id === userA.id);
 
-      expect(user).toBeDefined();
-      expect(user!.name).toBe("John");
+      assertDefined(user);
+      expect(user.name).toBe("John");
     });
 
     it("converts date fields to Date objects", async () => {
@@ -129,8 +130,9 @@ describe("RootStore hydration (Integration)", () => {
       const users = await storeB.queryModel(User);
       const user = users.find((u) => u.id === userA.id);
 
-      expect(user!.testDate).toBeInstanceOf(Date);
-      expect(user!.testDate).toEqual(testDate);
+      assertDefined(user);
+      expect(user.testDate).toBeInstanceOf(Date);
+      expect(user.testDate).toEqual(testDate);
     });
 
     it("uses identity map - same ID returns same instance", async () => {
@@ -147,7 +149,8 @@ describe("RootStore hydration (Integration)", () => {
       const user2 = users2.find((u) => u.id === userA.id);
 
       expect(user1).toBe(user2); // Same instance
-      expect(user1!.name).toBe("John Updated"); // Updated value
+      assertDefined(user1);
+      expect(user1.name).toBe("John Updated"); // Updated value
     });
   });
 
@@ -162,7 +165,8 @@ describe("RootStore hydration (Integration)", () => {
       const posts = await storeB.queryModel(Post);
       const post = posts.find((p) => p.id === postId);
 
-      expect(post!.author).toBeNull();
+      assertDefined(post);
+      expect(post.author).toBeNull();
     });
 
     it("resolves both directions via late hydration", async () => {
@@ -173,7 +177,8 @@ describe("RootStore hydration (Integration)", () => {
       // Hydrate post first (before user exists)
       const posts = await storeB.queryModel(Post);
       const post = posts.find((p) => p.id === postId);
-      expect(post!.author).toBeNull();
+      assertDefined(post);
+      expect(post.author).toBeNull();
 
       // Create user later
       await storeA.transaction(() => new User("John", userId));
@@ -181,17 +186,19 @@ describe("RootStore hydration (Integration)", () => {
       // Re-hydrate to pick up user
       await storeB.queryAll();
       const user = storeB.getById(User, userId);
+      assertDefined(user);
 
       // Forward: Post.author now resolved
-      expect(post!.author).toBe(user);
+      expect(post.author).toBe(user);
       // Reverse: User.posts contains the post
-      expect(user!.posts).toContain(post);
+      expect(user.posts).toContain(post);
     });
 
     it("late-hydrated child wires into the previously-hydrated parent", async () => {
       const user = await createUserInStoreA({ name: "John" });
       await storeB.queryModel(User);
-      const hydratedUser = storeB.getById(User, user.id)!;
+      const hydratedUser = storeB.getById(User, user.id);
+      assertDefined(hydratedUser);
       expect(hydratedUser.posts.length).toBe(0);
 
       await createPostInStoreA({ author: user });
@@ -209,13 +216,16 @@ describe("RootStore hydration (Integration)", () => {
       const hydratedPost1 = storeB.getById(Post, post1.id);
       const hydratedPost2 = storeB.getById(Post, post2.id);
 
+      assertDefined(hydratedUser);
+      assertDefined(hydratedPost1);
+      assertDefined(hydratedPost2);
       // Forward: both posts resolve to same user
-      expect(hydratedPost1!.author).toBe(hydratedUser);
-      expect(hydratedPost2!.author).toBe(hydratedUser);
+      expect(hydratedPost1.author).toBe(hydratedUser);
+      expect(hydratedPost2.author).toBe(hydratedUser);
       // Reverse: user has both posts
-      expect(hydratedUser!.posts).toContain(hydratedPost1);
-      expect(hydratedUser!.posts).toContain(hydratedPost2);
-      expect(hydratedUser!.posts.length).toBe(2);
+      expect(hydratedUser.posts).toContain(hydratedPost1);
+      expect(hydratedUser.posts).toContain(hydratedPost2);
+      expect(hydratedUser.posts.length).toBe(2);
     });
 
     it("does not duplicate on re-hydration", async () => {
@@ -229,8 +239,9 @@ describe("RootStore hydration (Integration)", () => {
       const hydratedUser = storeB.getById(User, user.id);
       const hydratedPost = storeB.getById(Post, post.id);
 
-      expect(hydratedUser!.posts.length).toBe(1);
-      expect(hydratedUser!.posts[0]).toBe(hydratedPost);
+      assertDefined(hydratedUser);
+      expect(hydratedUser.posts.length).toBe(1);
+      expect(hydratedUser.posts[0]).toBe(hydratedPost);
     });
 
   });
@@ -248,15 +259,17 @@ describe("RootStore hydration (Integration)", () => {
       // Hydrate Profile FIRST (before User)
       const profiles = await storeB.queryModel(UserProfile);
       const hydratedProfile = profiles.find((p) => p.id === profile.id);
-      expect(hydratedProfile!.user).toBeNull();
+      assertDefined(hydratedProfile);
+      expect(hydratedProfile.user).toBeNull();
 
       // Now hydrate User
       await storeB.queryModel(User);
       const hydratedUser = storeB.getById(User, user.id);
+      assertDefined(hydratedUser);
 
       // Both directions now resolved
-      expect(hydratedUser!.profile).toBe(hydratedProfile);
-      expect(hydratedProfile!.user).toBe(hydratedUser);
+      expect(hydratedUser.profile).toBe(hydratedProfile);
+      expect(hydratedProfile.user).toBe(hydratedUser);
     });
   });
 
@@ -316,19 +329,19 @@ describe("RootStore hydration (Integration)", () => {
       const hydratedProfile = storeB.getById(UserProfile, profile.id);
 
       // All 3 entity types hydrated
-      expect(hydratedPost1).toBeDefined();
-      expect(hydratedUser).toBeDefined();
-      expect(hydratedProfile).toBeDefined();
+      assertDefined(hydratedPost1);
+      assertDefined(hydratedUser);
+      assertDefined(hydratedProfile);
 
       // Forward chain: Post → User → Profile
-      expect(hydratedPost1!.author).toBe(hydratedUser);
-      expect(hydratedUser!.profile).toBe(hydratedProfile);
-      expect(hydratedProfile!.user).toBe(hydratedUser);
+      expect(hydratedPost1.author).toBe(hydratedUser);
+      expect(hydratedUser.profile).toBe(hydratedProfile);
+      expect(hydratedProfile.user).toBe(hydratedUser);
 
       // Identity map wiring: User.posts includes post2 (wired via ID lookup)
-      expect(hydratedUser!.posts).toContain(hydratedPost1);
-      expect(hydratedUser!.posts).toContain(hydratedPost2);
-      expect(hydratedUser!.posts.length).toBe(2);
+      expect(hydratedUser.posts).toContain(hydratedPost1);
+      expect(hydratedUser.posts).toContain(hydratedPost2);
+      expect(hydratedUser.posts.length).toBe(2);
     });
   });
 
