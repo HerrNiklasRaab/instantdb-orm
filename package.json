@@ -11,14 +11,10 @@
   },
   "dependencies": {
     "mobx": "^6.15.0",
-    "uuid": "^7.0.3"
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "@instantdb/admin": "^0.22.73",
-    "@types/uuid": "^10.0.0",
     "@upfor/shared": "*",
-    "dotenv": "^16.3.1",
-    "typescript": "~5.9.2",
-    "vitest": "^4.0.15"
+    "dotenv": "^16.3.1"
   }
 }
