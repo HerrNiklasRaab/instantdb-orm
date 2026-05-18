@@ -27,7 +27,7 @@ describe("Soft Delete (Integration)", () => {
       expect(storeB.getById(User, user.id)).toBeDefined();
 
       expect(user.deletedAt).toBeNull();
-      await store.transaction(() => user.delete());
+      await store.transaction(() => { user.delete(); });
       expect(user.deletedAt).toBeInstanceOf(Date);
 
       const result = await db.query({ users: { $: { where: { id: user.id } } } });
@@ -43,7 +43,7 @@ describe("Soft Delete (Integration)", () => {
     it("does not remove entities that are not deleted", async () => {
       const user1 = await store.transaction(() => new User("User 1"));
       const user2 = await store.transaction(() => new User("User 2"));
-      await store.transaction(() => user2.delete());
+      await store.transaction(() => { user2.delete(); });
 
       const storeB = new RootStore({ db });
       const users = await storeB.queryModel(User);
@@ -71,7 +71,7 @@ describe("Soft Delete (Integration)", () => {
       const hydratedPost = storeB.getById(Post, post.id);
       expect(hydratedPost?.author).toBeDefined();
 
-      await store.transaction(() => user.delete());
+      await store.transaction(() => { user.delete(); });
 
       await storeB.queryModel(User);
 
@@ -95,7 +95,7 @@ describe("Soft Delete (Integration)", () => {
       const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser?.posts.length).toBe(2);
 
-      await store.transaction(() => post1.delete());
+      await store.transaction(() => { post1.delete(); });
 
       await storeB.queryModel(Post);
 
@@ -120,7 +120,7 @@ describe("Soft Delete (Integration)", () => {
       const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser?.profile).toBeDefined();
 
-      await store.transaction(() => profile.delete());
+      await store.transaction(() => { profile.delete(); });
 
       await storeB.queryModel(UserProfile);
 

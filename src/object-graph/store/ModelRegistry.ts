@@ -1,5 +1,6 @@
-import type { Model } from "../Model";
 import type { ModelConstructor } from "./types";
+
+export type ModelClassKey = abstract new (...args: never[]) => object;
 
 /**
  * Singleton registry for Model classes.
@@ -8,9 +9,9 @@ import type { ModelConstructor } from "./types";
 export class ModelRegistry {
   private static instance: ModelRegistry;
 
-  private models = new Map<string, ModelConstructor<Model>>();
-  private discriminators = new Map<string, Map<string, ModelConstructor<Model>>>();
-  private baseClassToSubclasses = new Map<Function, Set<ModelConstructor<Model>>>();
+  private models = new Map<string, ModelConstructor>();
+  private discriminators = new Map<string, Map<string, ModelConstructor>>();
+  private baseClassToSubclasses = new Map<ModelClassKey, Set<ModelConstructor>>();
 
   private constructor() {}
 
@@ -25,7 +26,7 @@ export class ModelRegistry {
    * Register a model class for an entity name.
    * Called by @model decorator.
    */
-  register(entityName: string, ModelClass: ModelConstructor<Model>): void {
+  register(entityName: string, ModelClass: ModelConstructor): void {
     this.models.set(entityName, ModelClass);
   }
 
@@ -36,7 +37,7 @@ export class ModelRegistry {
   registerDiscriminator(
     entityName: string,
     discriminatorValue: string,
-    ModelClass: ModelConstructor<Model>
+    ModelClass: ModelConstructor
   ): void {
     let discriminatorMap = this.discriminators.get(entityName);
     if (!discriminatorMap) {
@@ -51,8 +52,8 @@ export class ModelRegistry {
    * Called by @model decorator when decorating subclasses.
    */
   registerSubclass(
-    BaseClass: Function,
-    SubClass: ModelConstructor<Model>
+    BaseClass: ModelClassKey,
+    SubClass: ModelConstructor
   ): void {
     let subclasses = this.baseClassToSubclasses.get(BaseClass);
     if (!subclasses) {
@@ -66,7 +67,7 @@ export class ModelRegistry {
    * Get all registered subclasses for a base class.
    * Used by RootStore.getAll for polymorphic queries.
    */
-  getSubclasses(BaseClass: Function): ModelConstructor<Model>[] {
+  getSubclasses(BaseClass: ModelClassKey): ModelConstructor[] {
     return Array.from(this.baseClassToSubclasses.get(BaseClass) ?? []);
   }
 
@@ -74,7 +75,7 @@ export class ModelRegistry {
    * Get the model class for an entity name.
    * For STI entities without a base class registered, returns the first subclass.
    */
-  getModelClass(entityName: string): ModelConstructor<Model> {
+  getModelClass(entityName: string): ModelConstructor {
     const ModelClass = this.models.get(entityName);
     if (ModelClass) {
       return ModelClass;
@@ -99,7 +100,7 @@ export class ModelRegistry {
   getModelClassForDiscriminator(
     entityName: string,
     discriminatorValue: string
-  ): ModelConstructor<Model> | undefined {
+  ): ModelConstructor | undefined {
     return this.discriminators.get(entityName)?.get(discriminatorValue);
   }
 
@@ -140,14 +141,14 @@ export class ModelRegistry {
 export const modelRegistry = ModelRegistry.getInstance();
 
 // Convenience functions that delegate to modelRegistry singleton
-export function getModelClass(entityName: string): ModelConstructor<Model> {
+export function getModelClass(entityName: string): ModelConstructor {
   return modelRegistry.getModelClass(entityName);
 }
 
 export function getModelClassForDiscriminator(
   entityName: string,
   discriminatorValue: string
-): ModelConstructor<Model> | undefined {
+): ModelConstructor | undefined {
   return modelRegistry.getModelClassForDiscriminator(entityName, discriminatorValue);
 }
 
@@ -163,6 +164,6 @@ export function isRegisteredModel(name: string): boolean {
   return modelRegistry.isRegistered(name);
 }
 
-export function getSubclasses(BaseClass: Function): ModelConstructor<Model>[] {
+export function getSubclasses(BaseClass: ModelClassKey): ModelConstructor[] {
   return modelRegistry.getSubclasses(BaseClass);
 }

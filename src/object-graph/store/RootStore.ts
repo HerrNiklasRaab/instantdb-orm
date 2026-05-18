@@ -13,8 +13,9 @@ import type {
   QueryResult,
 } from "./types";
 
-// Use Function & prototype pattern to allow private constructors (hydration-only models)
-type ModelClass<T extends Model = Model> = (abstract new (...args: any[]) => T) | (Function & { prototype: T });
+type ModelClass<T extends Model = Model> =
+  | (abstract new (...args: never[]) => T)
+  | { prototype: T; name: string };
 
 export class RootStore implements TransactionStoreAccess {
   private identityMaps = new Map<string, IdentityMap<Model>>();
@@ -134,9 +135,10 @@ export class RootStore implements TransactionStoreAccess {
   /** Get all entities of a class (supports polymorphic queries for base classes) */
   getAll<T extends Model>(EntityClass: ModelClass<T>): T[] {
     const result: T[] = [];
+    const ctor = EntityClass as unknown as new (...args: never[]) => T;
     for (const map of this.identityMapsFor(EntityClass)) {
       for (const entity of map.values()) {
-        if (entity instanceof (EntityClass as Function)) result.push(entity as T);
+        if (entity instanceof ctor) result.push(entity);
       }
     }
     return result;
@@ -147,9 +149,10 @@ export class RootStore implements TransactionStoreAccess {
     EntityClass: ModelClass<T>,
     id: string
   ): T | undefined {
+    const ctor = EntityClass as unknown as new (...args: never[]) => T;
     for (const map of this.identityMapsFor(EntityClass)) {
       const found = map.get(id);
-      if (found && found instanceof (EntityClass as Function)) return found as T;
+      if (found && found instanceof ctor) return found;
     }
     return undefined;
   }
@@ -163,15 +166,19 @@ export class RootStore implements TransactionStoreAccess {
   private identityMapsFor<T extends Model>(
     EntityClass: ModelClass<T>
   ): IdentityMap<T>[] {
-    const subclasses = getSubclasses(EntityClass);
-    const classes = subclasses.length > 0 ? subclasses : [EntityClass];
+    const entityClassAsKey = EntityClass as unknown as abstract new (...args: never[]) => object;
+    const subclasses = getSubclasses(entityClassAsKey);
+    const classes: ModelClass<T>[] = subclasses.length > 0
+      ? (subclasses)
+      : [EntityClass];
     const seen = new Set<IdentityMap<Model>>();
     const result: IdentityMap<T>[] = [];
     for (const cls of classes) {
       const map = this.getIdentityMap(cls);
-      if (seen.has(map)) continue;
-      seen.add(map);
-      result.push(map as IdentityMap<T>);
+      const mapAsBase = map as unknown as IdentityMap<Model>;
+      if (seen.has(mapAsBase)) continue;
+      seen.add(mapAsBase);
+      result.push(map);
     }
     return result;
   }
@@ -182,9 +189,9 @@ export class RootStore implements TransactionStoreAccess {
   ): Promise<T[]> {
     const entityName = getEntityNameFromClass(EntityClass);
     const query = this.buildQueryWithRelationships({ [entityName]: {} });
-    const result = (await this.db.query(query)) as QueryResult;
+    const result = (await this.db.query(query));
 
-    const rawDataArray = (result[entityName] ?? []) as RawEntityData[];
+    const rawDataArray = (result[entityName] ?? []);
 
     return this.hydrator.hydrateMany(
       entityName,
@@ -250,7 +257,7 @@ export class RootStore implements TransactionStoreAccess {
       entityName,
       query,
       (data) => {
-        const rawDataArray = (data[entityName] ?? []) as RawEntityData[];
+        const rawDataArray = (data[entityName] ?? []);
         return this.hydrator.hydrateMany(
           entityName,
           rawDataArray,
@@ -348,7 +355,7 @@ export class RootStore implements TransactionStoreAccess {
 
   async query(queryObj: Record<string, unknown>): Promise<void> {
     const expandedQuery = this.buildQueryWithRelationships(queryObj);
-    const result = (await this.db.query(expandedQuery)) as QueryResult;
+    const result = (await this.db.query(expandedQuery));
     this.hydrateResult(result);
   }
 
@@ -357,7 +364,7 @@ export class RootStore implements TransactionStoreAccess {
       if (isValidEntityName(entityName) && Array.isArray(rawDataArray)) {
         this.hydrator.hydrateMany(
           entityName,
-          rawDataArray as RawEntityData[],
+          rawDataArray,
           this.getIdentityMapByName.bind(this)
         );
       }

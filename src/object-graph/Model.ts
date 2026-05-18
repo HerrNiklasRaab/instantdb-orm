@@ -156,10 +156,10 @@ export abstract class Model {
           try {
             const disposer = observe(array, (change) => {
               if (change.type === "splice") {
-                for (const added of change.added as Model[]) {
+                for (const added of change.added) {
                   wireReverseLink(this, added, rel, true);
                 }
-                for (const removed of change.removed as Model[]) {
+                for (const removed of change.removed) {
                   wireReverseLink(this, removed, rel, false);
                 }
               }
@@ -182,7 +182,7 @@ export abstract class Model {
                 }
                 if (change.added.length > 0) {
                   const filteredAdded: Model[] = [];
-                  for (const item of change.added as Model[]) {
+                  for (const item of change.added) {
                     if (!members.has(item)) {
                       members.add(item);
                       filteredAdded.push(item);
@@ -224,11 +224,11 @@ export abstract class Model {
       try {
         const isToOneRel =
           field instanceof RelationshipFieldMeta && field.isToOne();
-        const rel = isToOneRel ? (field as RelationshipFieldMeta) : null;
+        const rel = isToOneRel ? (field) : null;
         const disposer = observe(
           this as object,
           propName as never,
-          (change: any) => {
+          (change: { type: string; oldValue?: unknown; newValue?: unknown }) => {
             if (change.type === "update" && rel) {
               const oldVal = change.oldValue as Model | null | undefined;
               const newVal = change.newValue as Model | null | undefined;
@@ -344,10 +344,10 @@ export abstract class Model {
   }
 
   get entityName(): EntityName {
-    const stored = (this.constructor as any)[ENTITY_NAME_KEY];
+    const stored = (this.constructor as { [ENTITY_NAME_KEY]?: string })[ENTITY_NAME_KEY];
     if (stored) {
-      return stored as EntityName;
+      return stored;
     }
-    return deriveEntityName(this.constructor.name) as EntityName;
+    return deriveEntityName(this.constructor.name);
   }
 }

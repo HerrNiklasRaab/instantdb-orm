@@ -5,13 +5,15 @@ type AsyncLocalStorageLike<T> = {
   run<R>(store: T, fn: () => R): R;
 };
 
+type AsyncHooksModule = {
+  AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
+};
+
 let asyncLocalStorage: AsyncLocalStorageLike<ScopedTransaction> | null = null;
 
 try {
-  // Use AsyncLocalStorage in Node.js for async-safe context
-  const { AsyncLocalStorage } = require("node:async_hooks") as {
-    AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
-  };
+  const nodeRequire = new Function("id", "return require(id)") as (id: string) => unknown;
+  const { AsyncLocalStorage } = nodeRequire("node:async_hooks") as AsyncHooksModule;
   asyncLocalStorage = new AsyncLocalStorage<ScopedTransaction>();
 } catch {
   // Browser/React Native — fall back to simple global

@@ -18,7 +18,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(invalidSchema)).toThrow(
+      expect(() => { configureEntityMeta(invalidSchema); }).toThrow(
         'Entity "users" is missing required field "createdAt"'
       );
     });
@@ -38,7 +38,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(invalidSchema)).toThrow(
+      expect(() => { configureEntityMeta(invalidSchema); }).toThrow(
         'Entity "posts" is missing required field "updatedAt"'
       );
     });
@@ -58,7 +58,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(invalidSchema)).toThrow(
+      expect(() => { configureEntityMeta(invalidSchema); }).toThrow(
         'Entity "comments" is missing required field "deletedAt"'
       );
     });
@@ -80,7 +80,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(schema)).toThrow(
+      expect(() => { configureEntityMeta(schema); }).toThrow(
         '"createdAt" must be required'
       );
     });
@@ -100,7 +100,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(schema)).toThrow(
+      expect(() => { configureEntityMeta(schema); }).toThrow(
         '"updatedAt" must be required'
       );
     });
@@ -120,7 +120,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(schema)).toThrow(
+      expect(() => { configureEntityMeta(schema); }).toThrow(
         '"deletedAt" must be optional'
       );
     });
@@ -140,7 +140,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(schema)).not.toThrow();
+      expect(() => { configureEntityMeta(schema); }).not.toThrow();
     });
   });
 
@@ -160,7 +160,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(schema)).toThrow(
+      expect(() => { configureEntityMeta(schema); }).toThrow(
         "must be optional for system entities"
       );
     });
@@ -180,7 +180,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(schema)).toThrow(
+      expect(() => { configureEntityMeta(schema); }).toThrow(
         "must be optional for system entities"
       );
     });
@@ -200,7 +200,7 @@ describe("Schema Timestamp Validation", () => {
         links: {},
       };
 
-      expect(() => configureEntityMeta(schema)).not.toThrow();
+      expect(() => { configureEntityMeta(schema); }).not.toThrow();
     });
   });
 });

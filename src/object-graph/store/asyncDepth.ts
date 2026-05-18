@@ -24,8 +24,9 @@ let AsyncLocalStorageCtor:
   | null = null;
 
 try {
+  const nodeRequire = new Function("id", "return require(id)") as (id: string) => unknown;
   AsyncLocalStorageCtor = (
-    require("node:async_hooks") as {
+    nodeRequire("node:async_hooks") as {
       AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
     }
   ).AsyncLocalStorage;

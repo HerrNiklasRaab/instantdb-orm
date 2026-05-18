@@ -282,9 +282,9 @@ describe("Transaction (Integration)", () => {
       const tx = store.createTransaction();
       await tx.commit();
 
-      expect(() => tx.run(() => { })).toThrow("Transaction has already been finalized");
+      expect(() => { tx.run(() => { }); }).toThrow("Transaction has already been finalized");
       await expect(tx.commit()).rejects.toThrow("Transaction has already been finalized");
-      expect(() => tx.rollback()).toThrow("Transaction has already been finalized");
+      expect(() => { tx.rollback(); }).toThrow("Transaction has already been finalized");
     });
   });
 

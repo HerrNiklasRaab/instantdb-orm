@@ -1,5 +1,9 @@
-// Map from ModelClass → Map<schemaFieldName, backingFieldName>
-const PRIVATE_FIELD_REGISTRY = new Map<Function, Map<string, string>>();
+type ClassKey = abstract new (...args: never[]) => object;
+
+const PRIVATE_FIELD_REGISTRY = new Map<ClassKey, Map<string, string>>();
+
+type DecoratorTarget = object | undefined;
+type DecoratorContext = string | symbol | { name: string | symbol };
 
 /**
  * Decorator to declare a private backing field for a schema attribute.
@@ -16,19 +20,23 @@ const PRIVATE_FIELD_REGISTRY = new Map<Function, Map<string, string>>();
  * }
  */
 export function field(options?: { attributeName?: string }) {
-  return function (target: any, context: string): void {
-    // Legacy TypeScript experimental decorator format: context is string (property name)
-    const backingFieldName = context;
-    const ModelClass = target?.constructor ?? target;
+  return function (target: DecoratorTarget, context: DecoratorContext): void {
+    const propertyName = typeof context === "object" && context !== null
+      ? String(context.name)
+      : String(context);
+    const targetAsHolder = target as { constructor?: unknown } | undefined;
+    const candidate = targetAsHolder?.constructor ?? target;
+    if (!candidate) return;
+    const ModelClass = candidate as ClassKey;
 
     const attributeName =
       options?.attributeName ??
-      (backingFieldName.startsWith("_") ? backingFieldName.slice(1) : backingFieldName);
+      (propertyName.startsWith("_") ? propertyName.slice(1) : propertyName);
 
     if (!PRIVATE_FIELD_REGISTRY.has(ModelClass)) {
       PRIVATE_FIELD_REGISTRY.set(ModelClass, new Map());
     }
-    PRIVATE_FIELD_REGISTRY.get(ModelClass)!.set(attributeName, backingFieldName);
+    PRIVATE_FIELD_REGISTRY.get(ModelClass)!.set(attributeName, propertyName);
   };
 }
 
@@ -36,17 +44,16 @@ export function field(options?: { attributeName?: string }) {
  * Get the backing field name for a schema field, if registered via @field decorator.
  */
 export function getBackingFieldName(
-  ModelClass: Function,
+  ModelClass: ClassKey,
   schemaField: string
 ): string | undefined {
-  // Check this class and its prototype chain
-  let current: Function | null = ModelClass;
-  while (current && current !== Object) {
+  let current: ClassKey | null = ModelClass;
+  while (current && current !== (Object as unknown as ClassKey)) {
     const fields = PRIVATE_FIELD_REGISTRY.get(current);
     if (fields?.has(schemaField)) {
       return fields.get(schemaField);
     }
-    current = Object.getPrototypeOf(current);
+    current = Object.getPrototypeOf(current) as ClassKey | null;
   }
   return undefined;
 }

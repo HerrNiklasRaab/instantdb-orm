@@ -252,7 +252,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Re-hydrate - should only have 1 chess match
       await storeB.query({ chessMatchs: {} });
       expect(hydratedUser!.chessMatchs.length).toBe(1);
-      expect(hydratedUser!.chessMatchs[0]!.id).toBe(chess2.id);
+      expect(hydratedUser!.chessMatchs[0].id).toBe(chess2.id);
     });
 
     it("removes deleted SkiMatch from reverse array (user.skiMatchs)", async () => {
@@ -279,7 +279,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Re-hydrate - should only have 1 ski match
       await storeB.query({ skiMatchs: {} });
       expect(hydratedUser!.skiMatchs.length).toBe(1);
-      expect(hydratedUser!.skiMatchs[0]!.id).toBe(ski2.id);
+      expect(hydratedUser!.skiMatchs[0].id).toBe(ski2.id);
     });
 
     it("MTI deletions don't affect other MTI type arrays", async () => {

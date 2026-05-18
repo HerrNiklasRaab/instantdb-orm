@@ -24,7 +24,7 @@ const SCAN_METHODS = [
 type ScanMethod = (typeof SCAN_METHODS)[number];
 
 function trapArrayScans(): { stop(): number } {
-  const originals = new Map<ScanMethod, Function>();
+  const originals = new Map<ScanMethod, (...args: unknown[]) => unknown>();
   let calls = 0;
   for (const name of SCAN_METHODS) {
     const orig = (Array.prototype as any)[name];
@@ -139,12 +139,10 @@ describe("performance", () => {
   it("a remote single-field update fires only the changed row's reactions", async () => {
     const N = 20;
 
-    let userId = "";
     const postIds: string[] = [];
     const seed = new RootStore({ db });
     await seed.transaction(() => {
       const u = new User("Owner");
-      userId = u.id;
       for (let i = 0; i < N; i++) {
         const p = new Post(`Post ${i}`);
         p.author = u;

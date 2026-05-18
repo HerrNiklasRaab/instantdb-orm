@@ -1,21 +1,22 @@
 import { modelRegistry } from "../store/ModelRegistry";
+import type { ModelConstructor } from "../store/types";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 
-// Re-export for backwards compatibility
 export { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 
-// Local type to avoid circular dependency with Model.ts
-// Using Function & prototype allows classes with private constructors
-type ModelClassType = Function & { prototype: { id: string } };
+type ModelClassType = (abstract new (...args: never[]) => { id: string })
+  | { prototype: { id: string }; name: string };
+
+type EntityNameHolder = { [ENTITY_NAME_KEY]?: string };
 
 /** Get entity name from a class (set by @model decorator) */
 export function getEntityNameFromClass(
   ModelClass: ModelClassType
 ): string {
-  const stored = (ModelClass as any)[ENTITY_NAME_KEY];
+  const stored = (ModelClass as EntityNameHolder)[ENTITY_NAME_KEY];
   if (!stored) {
     throw new Error(
-      `Model class ${ModelClass.name} has no entity name. Did you add @model decorator?`
+      `Model class ${(ModelClass as { name?: string }).name} has no entity name. Did you add @model decorator?`
     );
   }
   return stored;
@@ -27,11 +28,11 @@ export function getEntityNameFromClass(
  * Uses name comparison to avoid circular import with Model.ts.
  */
 function findRootModelClass(target: ModelClassType): ModelClassType {
-  let current: Function = target;
-  while (current && current.name !== "Model") {
-    const parent = Object.getPrototypeOf(current);
-    if (parent?.name === "Model") {
-      return current as ModelClassType;
+  let current: ModelClassType | null = target;
+  while (current && (current as { name?: string }).name !== "Model") {
+    const parent = Object.getPrototypeOf(current) as ModelClassType | null;
+    if (parent && (parent as { name?: string }).name === "Model") {
+      return current;
     }
     current = parent;
   }
@@ -43,16 +44,15 @@ function findRootModelClass(target: ModelClassType): ModelClassType {
  * The modelType must be defined as a getter: `get modelType() { return "value"; }`
  */
 function getDiscriminatorValue(target: ModelClassType): string | undefined {
-  const descriptor = Object.getOwnPropertyDescriptor(target.prototype, "modelType");
+  const proto = (target as unknown as { prototype: object }).prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(proto, "modelType");
   if (!descriptor) return undefined;
 
-  // Handle getter: get type() { return "value"; }
   if (typeof descriptor.get === "function") {
-    return descriptor.get.call(null);
+    return descriptor.get.call(null) as string | undefined;
   }
 
-  // Handle value property (unlikely but fallback)
-  return descriptor.value;
+  return descriptor.value as string | undefined;
 }
 
 /**
@@ -65,31 +65,28 @@ function applyModelDecorator<T extends ModelClassType>(
   const rootClass = findRootModelClass(target);
   const isSubclass = rootClass !== target;
 
-  // Use explicit name if provided, otherwise derive from root class
-  const entityName = explicitEntityName ?? deriveEntityName(rootClass.name);
-  (target as any)[ENTITY_NAME_KEY] = entityName;
+  const entityName = explicitEntityName ?? deriveEntityName((rootClass as { name: string }).name);
+  (target as EntityNameHolder)[ENTITY_NAME_KEY] = entityName;
+
+  const asModelCtor = target as unknown as ModelConstructor;
 
   if (isSubclass) {
     const discriminatorValue = getDiscriminatorValue(target);
     if (discriminatorValue) {
-      // STI: has type getter → register discriminator mapping
-      modelRegistry.registerDiscriminator(entityName, discriminatorValue, target as any);
+      modelRegistry.registerDiscriminator(entityName, discriminatorValue, asModelCtor);
     } else {
-      // MTI: no type getter → register with own entity name
-      const ownEntityName = explicitEntityName ?? deriveEntityName(target.name);
-      (target as any)[ENTITY_NAME_KEY] = ownEntityName;
-      modelRegistry.register(ownEntityName, target as any);
+      const ownEntityName = explicitEntityName ?? deriveEntityName((target as { name: string }).name);
+      (target as EntityNameHolder)[ENTITY_NAME_KEY] = ownEntityName;
+      modelRegistry.register(ownEntityName, asModelCtor);
     }
   } else {
-    // Root class or non-STI class - register in main registry
-    modelRegistry.register(entityName, target as any);
+    modelRegistry.register(entityName, asModelCtor);
   }
 
-  // Register parent→child relationships for polymorphic getAll
-  let parent = Object.getPrototypeOf(target);
-  while (parent && parent.name !== "Model") {
-    modelRegistry.registerSubclass(parent, target as any);
-    parent = Object.getPrototypeOf(parent);
+  let parent = Object.getPrototypeOf(target) as ModelClassType | null;
+  while (parent && (parent as { name?: string }).name !== "Model") {
+    modelRegistry.registerSubclass(parent as abstract new (...args: never[]) => object, asModelCtor);
+    parent = Object.getPrototypeOf(parent) as ModelClassType | null;
   }
 
   return target;

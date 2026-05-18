@@ -28,7 +28,7 @@ export abstract class FieldMeta {
   abstract readonly fieldName: string;
 
   getFieldNameOnModel(entity: object): string {
-    const ModelClass = entity.constructor;
+    const ModelClass = entity.constructor as abstract new (...args: never[]) => object;
     const backingField = getBackingFieldName(ModelClass, this.fieldName);
     return backingField ?? this.fieldName;
   }
@@ -237,7 +237,7 @@ export { ENTITY_META };
  * Uses @field decorator registry to find private backing fields.
  */
 export function getPropertyName(entity: object, schemaField: string): string {
-  const ModelClass = entity.constructor;
+  const ModelClass = entity.constructor as abstract new (...args: never[]) => object;
   const backingField = getBackingFieldName(ModelClass, schemaField);
   return backingField ?? schemaField;
 }

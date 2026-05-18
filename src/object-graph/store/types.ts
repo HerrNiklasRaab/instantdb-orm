@@ -28,6 +28,6 @@ export interface RootStoreConfig {
 
 export type ModelConstructor<T extends Model = Model> = new (id: string) => T;
 
-// Generic type helpers
-export type ModelInstanceFor<_K extends string> = Model;
-export type ModelClassFor<_K extends string> = ModelConstructor<Model>;
+type WithKey<K extends string, T> = K extends string ? T : T;
+export type ModelInstanceFor<K extends string> = WithKey<K, Model>;
+export type ModelClassFor<K extends string> = WithKey<K, ModelConstructor>;

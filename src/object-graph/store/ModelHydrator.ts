@@ -40,31 +40,22 @@ export class ModelHydrator {
     const meta = getEntityMeta(entityName);
 
     const model = identityMap.getOrCreate(rawData.id, () => {
-      // Create instance without calling constructor (bypasses validation/business logic)
       const instance = Object.create(ModelClass.prototype) as ModelInstanceFor<K>;
+      const record = instance as unknown as Record<string, unknown>;
 
-      // Initialize ALL fields (field initializers don't run with Object.create)
-      // MobX requires properties to exist on the object before makeObservable() is called
+      record.id = rawData.id;
 
-      // Set id directly - it's not in meta.scalarFields (InstantDB manages it implicitly)
-      (instance as any).id = rawData.id;
-
-      // Initialize scalar fields with undefined (will be overwritten by updateModelFields)
-      // Using undefined (not null) so permission-restricted fields stay undefined if not in rawData
       for (const field of meta.scalarFields) {
-        // Skip modelType (STI discriminator is a getter, not a settable field)
         if (field.fieldName === "modelType") continue;
         const propName = field.getFieldNameOnModel(instance);
-        (instance as any)[propName] = undefined;
+        record[propName] = undefined;
       }
 
-      // Initialize relationship fields
       for (const rel of meta.relationshipFields) {
         const propName = rel.getFieldNameOnModel(instance);
-        (instance as any)[propName] = rel.isToMany() ? [] : null;
+        record[propName] = rel.isToMany() ? [] : null;
       }
 
-      // Set up observables now that all fields exist
       instance.initTracking(false);
 
       return instance;
@@ -103,7 +94,7 @@ export class ModelHydrator {
     getIdentityMap: GetIdentityMap
   ): void {
     withHydration(() =>
-      this.updateModelFields(model, model.entityName as EntityName, rawData, getIdentityMap)
+      { this.updateModelFields(model, model.entityName, rawData, getIdentityMap); }
     );
   }
 

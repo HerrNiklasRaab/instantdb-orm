@@ -214,7 +214,7 @@ describe("Single Table Inheritance (Integration)", () => {
       // Re-hydrate - should only have 1 invitation
       await storeB.query({ invitations: {} });
       expect(hydratedUser!.invitations.length).toBe(1);
-      expect(hydratedUser!.invitations[0]!.id).toBe(chess2.id);
+      expect(hydratedUser!.invitations[0].id).toBe(chess2.id);
     });
 
     it("handles mixed STI types in reverse array cleanup", async () => {

@@ -20,7 +20,7 @@ beforeAll(() => {
 // Auto-wrap every `it` body in a tx context — Model enforces tx-only
 // mutations, but these in-memory tests never hit a RootStore.
 const it = (name: string, fn: () => void): void =>
-  vitIt(name, () => withTestTransaction(fn));
+  { vitIt(name, () => { withTestTransaction(fn); }); };
 
 describe("Reverse link wiring (in-memory)", () => {
   // ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ describe("Reverse link wiring (in-memory)", () => {
     // some model's `wireConstructorRelationships` sweep) distinguishes the
     // two cases by call-stack location.
     // -------------------------------------------------------------------------
-    vitIt("F4: external push of mid-construction child wires child's back-ref", () => withTestTransaction(() => {
+    vitIt("F4: external push of mid-construction child wires child's back-ref", () => { withTestTransaction(() => {
       const container = new Container("box", []);
 
       // Mid-construction stand-in: prototype is there but no initializers ran.
@@ -363,6 +363,6 @@ describe("Reverse link wiring (in-memory)", () => {
       // The wirer runs outside any constructor sweep, so the narrower guard
       // lets it write `midItem.container = container` instead of skipping.
       expect(midItem.container).toBe(container);
-    }));
+    }); });
   });
 });

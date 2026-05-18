@@ -93,5 +93,5 @@ export function wireReverseLink(
   const targetMeta = getEntityMeta(rel.targetEntity);
   const reverseRel = targetMeta.findReverseRelationship(rel.linkName, rel.fieldName);
   if (!reverseRel) return;
-  wiring.wrap(() => applyReverseChange(target, holder, reverseRel, add));
+  wiring.wrap(() => { applyReverseChange(target, holder, reverseRel, add); });
 }

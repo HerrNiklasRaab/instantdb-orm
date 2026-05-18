@@ -6,7 +6,6 @@ import {
 } from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import { User } from "../support/entities/User";
-import { UserProfile } from "../support/entities/Profile";
 
 describe("subscribeQueryIsolated (curr, prev)", () => {
   let db: TestInstantDBClient;
@@ -42,7 +41,7 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
 
     const deleteStore = new RootStore({ db });
     await deleteStore.queryModel(User);
-    await deleteStore.transaction(() => deleteStore.getById(User, u.id)!.delete());
+    await deleteStore.transaction(() => { deleteStore.getById(User, u.id)!.delete(); });
 
     await waitFor(() => removalEvents.includes(u.id), 8000);
 
