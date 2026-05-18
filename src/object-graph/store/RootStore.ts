@@ -1,5 +1,5 @@
 import { IdentityMap } from "../IdentityMap";
-import { setDebugViewEnabled, type Model } from "../Model";
+import { setDebugViewEnabled, Model } from "../Model";
 import { getEntityNames, isValidEntityName, getEntityMeta } from "./EntityMeta";
 import { getModelClass, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
@@ -13,9 +13,7 @@ import type {
   QueryResult,
 } from "./types";
 
-type ModelClass<T extends Model = Model> =
-  | (abstract new (...args: never[]) => T)
-  | { prototype: T; name: string };
+type ModelClass<T extends Model = Model> = abstract new (...args: never[]) => T;
 
 export class RootStore implements TransactionStoreAccess {
   private identityMaps = new Map<string, IdentityMap<Model>>();
@@ -91,7 +89,6 @@ export class RootStore implements TransactionStoreAccess {
   }
 
   cleanupRelationships(deletedEntityType: string, deletedModel: Model): void {
-    // Find all entity types that have relationships pointing to the deleted entity type
     for (const entityName of getEntityNames()) {
       const meta = getEntityMeta(entityName);
       const identityMap = this.getIdentityMapByName(entityName);
@@ -99,24 +96,17 @@ export class RootStore implements TransactionStoreAccess {
       for (const rel of meta.relationshipFields) {
         if (rel.targetEntity !== deletedEntityType) continue;
 
-        // Check all instances of this entity type
         for (const model of identityMap.values()) {
-          const modelRecord = model as unknown as Record<string, unknown>;
-          const fieldValue = modelRecord[rel.fieldName];
+          const fieldValue = rel.read(model);
 
           if (rel.isToOne()) {
-            // Forward reference (one-to-one): set to null if it points to deleted model
             if (fieldValue === deletedModel) {
-              modelRecord[rel.fieldName] = null;
+              rel.write(model, null);
             }
-          } else {
-            // Reverse reference (one-to-many): remove from array
-            const arr = fieldValue as Model[] | undefined;
-            if (Array.isArray(arr)) {
-              const index = arr.indexOf(deletedModel);
-              if (index !== -1) {
-                arr.splice(index, 1);
-              }
+          } else if (Array.isArray(fieldValue)) {
+            const index = fieldValue.indexOf(deletedModel);
+            if (index !== -1) {
+              fieldValue.splice(index, 1);
             }
           }
         }
@@ -124,35 +114,23 @@ export class RootStore implements TransactionStoreAccess {
     }
   }
 
-  /** Get identity map for an entity class */
-  getIdentityMap<T extends Model>(
-    EntityClass: ModelClass<T>
-  ): IdentityMap<T> {
-    const entityName = getEntityNameFromClass(EntityClass);
-    return this.getIdentityMapByName(entityName) as unknown as IdentityMap<T>;
-  }
-
-  /** Get all entities of a class (supports polymorphic queries for base classes) */
   getAll<T extends Model>(EntityClass: ModelClass<T>): T[] {
     const result: T[] = [];
-    const ctor = EntityClass as unknown as new (...args: never[]) => T;
     for (const map of this.identityMapsFor(EntityClass)) {
       for (const entity of map.values()) {
-        if (entity instanceof ctor) result.push(entity);
+        if (entity instanceof EntityClass) result.push(entity);
       }
     }
     return result;
   }
 
-  /** Get entity by ID (supports polymorphic lookup for base classes) */
   getById<T extends Model>(
     EntityClass: ModelClass<T>,
     id: string
   ): T | undefined {
-    const ctor = EntityClass as unknown as new (...args: never[]) => T;
     for (const map of this.identityMapsFor(EntityClass)) {
       const found = map.get(id);
-      if (found && found instanceof ctor) return found;
+      if (found instanceof EntityClass) return found;
     }
     return undefined;
   }
@@ -163,21 +141,18 @@ export class RootStore implements TransactionStoreAccess {
    * (STI subclasses share a single map; MTI ones don't). For a concrete class,
    * returns its own map.
    */
-  private identityMapsFor<T extends Model>(
-    EntityClass: ModelClass<T>
-  ): IdentityMap<T>[] {
-    const entityClassAsKey = EntityClass as unknown as abstract new (...args: never[]) => object;
-    const subclasses = getSubclasses(entityClassAsKey);
-    const classes: ModelClass<T>[] = subclasses.length > 0
-      ? (subclasses)
-      : [EntityClass];
+  private identityMapsFor(
+    EntityClass: ModelClass
+  ): IdentityMap<Model>[] {
+    const subclasses = getSubclasses(EntityClass);
+    const classes: ModelClass[] = subclasses.length > 0 ? subclasses : [EntityClass];
     const seen = new Set<IdentityMap<Model>>();
-    const result: IdentityMap<T>[] = [];
+    const result: IdentityMap<Model>[] = [];
     for (const cls of classes) {
-      const map = this.getIdentityMap(cls);
-      const mapAsBase = map as unknown as IdentityMap<Model>;
-      if (seen.has(mapAsBase)) continue;
-      seen.add(mapAsBase);
+      const entityName = getEntityNameFromClass(cls);
+      const map = this.getIdentityMapByName(entityName);
+      if (seen.has(map)) continue;
+      seen.add(map);
       result.push(map);
     }
     return result;
@@ -193,11 +168,12 @@ export class RootStore implements TransactionStoreAccess {
 
     const rawDataArray = result[entityName] ?? [];
 
-    return this.hydrator.hydrateMany(
+    const hydrated = this.hydrator.hydrateMany(
       entityName,
       rawDataArray,
       this.getIdentityMapByName.bind(this)
-    ) as T[];
+    );
+    return hydrated.filter((m): m is T => m instanceof EntityClass);
   }
 
   /** Generic subscription helper for DRY subscription logic */
@@ -256,13 +232,14 @@ export class RootStore implements TransactionStoreAccess {
     const { result: entities, close } = await this.createSubscription(
       entityName,
       query,
-      (data) => {
-        const rawDataArray = (data[entityName] ?? []);
-        return this.hydrator.hydrateMany(
+      (data): T[] => {
+        const rawDataArray = data[entityName] ?? [];
+        const hydrated = this.hydrator.hydrateMany(
           entityName,
           rawDataArray,
           this.getIdentityMapByName.bind(this)
-        ) as T[];
+        );
+        return hydrated.filter((m): m is T => m instanceof EntityClass);
       },
       callback
     );
@@ -298,9 +275,9 @@ export class RootStore implements TransactionStoreAccess {
 
       // Get entity metadata
       const meta = getEntityMeta(key);
-      const subquery =
+      const subquery: Record<string, unknown> =
         typeof value === "object" && value !== null
-          ? { ...(value as Record<string, unknown>) }
+          ? { ...value }
           : {};
 
       // Add all relationship subqueries for this entity

@@ -143,108 +143,112 @@ export abstract class Model {
 
   private setupObservers(disposers: (() => void)[]): void {
     const meta = getEntityMeta(this.entityName);
-    const record = this as unknown as Record<string, unknown>;
 
+    const propToFieldName = new Map<string, string>();
+    const toOneRelByProp = new Map<string, RelationshipFieldMeta>();
     for (const field of meta.fields) {
       if (field.fieldName === "id") continue;
       const propName = field.getFieldNameOnModel(this);
+      propToFieldName.set(propName, field.fieldName);
+      if (field instanceof RelationshipFieldMeta && field.isToOne()) {
+        toOneRelByProp.set(propName, field);
+      }
+    }
 
-      if (field instanceof RelationshipFieldMeta && field.isToMany()) {
-        const rel = field;
-        const relFieldName = rel.fieldName;
-        const array = record[propName] as Model[] | undefined;
-        if (array && Array.isArray(array)) {
-          try {
-            const disposer = observe(array, (change) => {
-              if (change.type === "splice") {
-                for (const added of change.added) {
-                  wireReverseLink(this, added, rel, true);
-                }
-                for (const removed of change.removed) {
-                  wireReverseLink(this, removed, rel, false);
-                }
-              }
-            });
-            disposers.push(disposer);
-          } catch {
-            // Array might not be observable, skip it
-          }
-          try {
-            const members = new Set<Model>();
-            for (const m of array) members.add(m);
-            const interceptDisposer = intercept(array, (change) => {
-              this.claimForCurrentTransaction(relFieldName);
-              if (change.type === "splice") {
-                if (change.removedCount > 0) {
-                  for (let i = 0; i < change.removedCount; i++) {
-                    const removedItem = array[change.index + i] as Model | undefined;
-                    if (removedItem) members.delete(removedItem);
-                  }
-                }
-                if (change.added.length > 0) {
-                  const filteredAdded: Model[] = [];
-                  for (const item of change.added) {
-                    if (!members.has(item)) {
-                      members.add(item);
-                      filteredAdded.push(item);
-                    }
-                  }
-                  if (filteredAdded.length === 0 && change.removedCount === 0) {
-                    return null;
-                  }
-                  change.added = filteredAdded;
-                } else if (change.removedCount === 0) {
-                  return null;
-                }
-              }
-              return change;
-            });
-            disposers.push(interceptDisposer);
-          } catch {
-            // Array might not be observable, skip it
+    try {
+      const interceptDisposer = intercept(this as object, (change) => {
+        if (typeof change.name === "string") {
+          const fieldName = propToFieldName.get(change.name);
+          if (fieldName !== undefined) {
+            this.claimForCurrentTransaction(fieldName);
           }
         }
-        continue;
+        return change;
+      });
+      disposers.push(interceptDisposer);
+    } catch {
+      // Object might not be observable, skip
+    }
+
+    try {
+      const observeDisposer = observe(this as object, (change) => {
+        if (change.type !== "update") return;
+        if (typeof change.name !== "string") return;
+        const rel = toOneRelByProp.get(change.name);
+        if (!rel) return;
+        const oldVal: unknown = change.oldValue;
+        const newVal: unknown = change.newValue;
+        if (oldVal instanceof Model && oldVal !== newVal) {
+          wireReverseLink(this, oldVal, rel, false);
+        }
+        if (newVal instanceof Model && oldVal !== newVal) {
+          wireReverseLink(this, newVal, rel, true);
+        }
+      });
+      disposers.push(observeDisposer);
+    } catch {
+      // Object might not be observable, skip
+    }
+
+    for (const field of meta.fields) {
+      if (field.fieldName === "id") continue;
+      if (!(field instanceof RelationshipFieldMeta) || !field.isToMany()) continue;
+      const rel = field;
+      const relFieldName = rel.fieldName;
+      const rawArray: unknown = rel.read(this);
+      if (!Array.isArray(rawArray)) continue;
+      const arrayObservable = rawArray;
+      const members = new Set<Model>();
+      for (const item of arrayObservable) {
+        if (item instanceof Model) members.add(item);
       }
 
-      const fieldName = field.fieldName;
       try {
-        const interceptDisposer = intercept(
-          this as object,
-          propName as never,
-          (change) => {
-            this.claimForCurrentTransaction(fieldName);
-            return change;
-          }
-        );
-        disposers.push(interceptDisposer);
-      } catch {
-        // Field might not be observable, skip it
-      }
-
-      try {
-        const isToOneRel =
-          field instanceof RelationshipFieldMeta && field.isToOne();
-        const rel = isToOneRel ? (field) : null;
-        const disposer = observe(
-          this as object,
-          propName as never,
-          (change: { type: string; oldValue?: unknown; newValue?: unknown }) => {
-            if (change.type === "update" && rel) {
-              const oldVal = change.oldValue as Model | null | undefined;
-              const newVal = change.newValue as Model | null | undefined;
-              if (oldVal && oldVal !== newVal) {
-                wireReverseLink(this, oldVal, rel, false);
-              }
-              if (newVal && oldVal !== newVal) {
-                wireReverseLink(this, newVal, rel, true);
-              }
+        const disposer = observe(arrayObservable, (change) => {
+          if (change.type === "splice") {
+            for (const added of change.added) {
+              if (added instanceof Model) wireReverseLink(this, added, rel, true);
+            }
+            for (const removed of change.removed) {
+              if (removed instanceof Model) wireReverseLink(this, removed, rel, false);
             }
           }
-        );
+        });
         disposers.push(disposer);
       } catch {
-        // Field might not be observable, skip it
+        // Array might not be observable, skip it
+      }
+      try {
+        const interceptDisposer = intercept(arrayObservable, (change) => {
+          this.claimForCurrentTransaction(relFieldName);
+          if (change.type === "splice") {
+            if (change.removedCount > 0) {
+              for (let i = 0; i < change.removedCount; i++) {
+                const removedItem: unknown = arrayObservable[change.index + i];
+                if (removedItem instanceof Model) members.delete(removedItem);
+              }
+            }
+            if (change.added.length > 0) {
+              const filteredAdded: Model[] = [];
+              for (const item of change.added) {
+                if (item instanceof Model && !members.has(item)) {
+                  members.add(item);
+                  filteredAdded.push(item);
+                }
+              }
+              if (filteredAdded.length === 0 && change.removedCount === 0) {
+                return null;
+              }
+              change.added = filteredAdded;
+            } else if (change.removedCount === 0) {
+              return null;
+            }
+          }
+          return change;
+        });
+        disposers.push(interceptDisposer);
+      } catch {
+        // Array might not be observable, skip it
       }
     }
   }
@@ -280,15 +284,13 @@ export abstract class Model {
   private wireConstructorRelationships(): void {
     withConstructorSweep(() => {
       const meta = getEntityMeta(this.entityName);
-      const record = this as unknown as Record<string, unknown>;
       for (const rel of meta.relationshipFields) {
-        const propName = rel.getFieldNameOnModel(this);
-        const value = record[propName];
+        const value = rel.read(this);
         if (rel.isToOne()) {
-          if (value) wireReverseLink(this, value as Model, rel, true);
+          if (value instanceof Model) wireReverseLink(this, value, rel, true);
         } else if (Array.isArray(value)) {
-          for (const child of value as Model[]) {
-            wireReverseLink(this, child, rel, true);
+          for (const child of value) {
+            if (child instanceof Model) wireReverseLink(this, child, rel, true);
           }
         }
       }
@@ -298,18 +300,15 @@ export abstract class Model {
   private setupDebugView(): void {
     if (!debugViewEnabled) return;
     const meta = getEntityMeta(this.entityName);
-    const record = this as unknown as Record<string, unknown>;
 
     this._debugViewDisposer = reaction(
       () => {
         const values: unknown[] = [];
         for (const field of meta.scalarFields) {
-          const propName = field.getFieldNameOnModel(this);
-          values.push(record[propName]);
+          values.push(field.read(this));
         }
         for (const rel of meta.relationshipFields) {
-          const propName = rel.getFieldNameOnModel(this);
-          values.push(record[propName]);
+          values.push(rel.read(this));
         }
         return values;
       },
@@ -322,31 +321,23 @@ export abstract class Model {
 
   private buildDebugViewSnapshot(): Record<string, unknown> {
     const meta = getEntityMeta(this.entityName);
-    const record = this as unknown as Record<string, unknown>;
     const snapshot: Record<string, unknown> = { id: this.id };
 
     for (const field of meta.scalarFields) {
-      const propName = field.getFieldNameOnModel(this);
-      const value = record[propName];
-
-      if (value instanceof Date) {
-        snapshot[field.fieldName] = value.toISOString();
-      } else {
-        snapshot[field.fieldName] = value;
-      }
+      const value = field.read(this);
+      snapshot[field.fieldName] = value instanceof Date ? value.toISOString() : value;
     }
 
     for (const rel of meta.relationshipFields) {
-      const propName = rel.getFieldNameOnModel(this);
-      snapshot[rel.fieldName] = record[propName];
+      snapshot[rel.fieldName] = rel.read(this);
     }
 
     return snapshot;
   }
 
   get entityName(): EntityName {
-    const stored = (this.constructor as { [ENTITY_NAME_KEY]?: string })[ENTITY_NAME_KEY];
-    if (stored) {
+    const stored: unknown = Reflect.get(this.constructor, ENTITY_NAME_KEY);
+    if (typeof stored === "string") {
       return stored;
     }
     return deriveEntityName(this.constructor.name);

@@ -1,6 +1,4 @@
-type ClassKey = abstract new (...args: never[]) => object;
-
-const PRIVATE_FIELD_REGISTRY = new Map<ClassKey, Map<string, string>>();
+const PRIVATE_FIELD_REGISTRY = new Map<object, Map<string, string>>();
 
 type DecoratorTarget = object | undefined;
 type DecoratorContext = string | symbol | { name: string | symbol };
@@ -24,10 +22,14 @@ export function field(options?: { attributeName?: string }) {
     const propertyName = typeof context === "object"
       ? String(context.name)
       : String(context);
-    const targetAsHolder = target as { constructor?: unknown } | undefined;
-    const candidate = targetAsHolder?.constructor ?? target;
-    if (!candidate) return;
-    const ModelClass = candidate as ClassKey;
+
+    let candidate: unknown = target;
+    if (target) {
+      const fromCtor: unknown = Reflect.get(target, "constructor");
+      if (fromCtor !== undefined) candidate = fromCtor;
+    }
+    if (typeof candidate !== "function") return;
+    const ModelClass: object = candidate;
 
     const attributeName =
       options?.attributeName ??
@@ -46,16 +48,20 @@ export function field(options?: { attributeName?: string }) {
  * Get the backing field name for a schema field, if registered via @field decorator.
  */
 export function getBackingFieldName(
-  ModelClass: ClassKey,
+  ModelClass: object,
   schemaField: string
 ): string | undefined {
-  let current: ClassKey | null = ModelClass;
-  while (current && current !== (Object as unknown as ClassKey)) {
+  let current: object | null = ModelClass;
+  while (current && current !== Object) {
     const fields = PRIVATE_FIELD_REGISTRY.get(current);
     if (fields?.has(schemaField)) {
       return fields.get(schemaField);
     }
-    current = Object.getPrototypeOf(current) as ClassKey | null;
+    const proto: unknown = Object.getPrototypeOf(current);
+    current =
+      proto !== null && (typeof proto === "object" || typeof proto === "function")
+        ? proto
+        : null;
   }
   return undefined;
 }

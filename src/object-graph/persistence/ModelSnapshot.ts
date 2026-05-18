@@ -1,4 +1,4 @@
-import type { Model } from "../Model";
+import { Model } from "../Model";
 import { getEntityMeta } from "../store/EntityMeta";
 import type { RawEntityData } from "../store/types";
 
@@ -11,35 +11,35 @@ export class ModelSnapshot {
   readonly scalars = new Map<string, unknown>();
   readonly relationships = new Map<string, string | string[] | null>();
 
-  constructor(model: Model) {
+  constructor(model: Model | null = null) {
+    if (model === null) return;
     const entityName = model.entityName;
     const meta = getEntityMeta(entityName);
-    const record = model as unknown as Record<string, unknown>;
 
     for (const field of meta.scalarFields) {
-      const propName = field.getFieldNameOnModel(model);
-      this.scalars.set(field.fieldName, record[propName]);
+      this.scalars.set(field.fieldName, field.read(model));
     }
 
     for (const rel of meta.relationshipFields) {
-      const propName = rel.getFieldNameOnModel(model);
-      const value = record[propName];
+      const value = rel.read(model);
 
       if (rel.isToOne()) {
-        const modelRef = value as Model | null;
-        this.relationships.set(rel.fieldName, modelRef?.id ?? null);
+        const id = value instanceof Model ? value.id : null;
+        this.relationships.set(rel.fieldName, id);
       } else {
-        const models = (value as Model[] | undefined) ?? [];
-        this.relationships.set(rel.fieldName, models.map((m) => m.id));
+        const ids: string[] = [];
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item instanceof Model) ids.push(item.id);
+          }
+        }
+        this.relationships.set(rel.fieldName, ids);
       }
     }
   }
 
   static emptyOriginal(): ModelSnapshot {
-    return Object.create(ModelSnapshot.prototype, {
-      scalars: { value: new Map(), enumerable: true },
-      relationships: { value: new Map(), enumerable: true },
-    }) as ModelSnapshot;
+    return new ModelSnapshot(null);
   }
 
   toRawEntityData(id: string): RawEntityData {

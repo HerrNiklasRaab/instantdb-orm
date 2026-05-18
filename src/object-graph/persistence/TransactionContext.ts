@@ -5,16 +5,29 @@ type AsyncLocalStorageLike<T> = {
   run<R>(store: T, fn: () => R): R;
 };
 
-type AsyncHooksModule = {
-  AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
-};
+function isRequire(value: unknown): value is (id: string) => unknown {
+  return typeof value === "function";
+}
+
+function isAsyncLocalStorageLike(
+  value: unknown
+): value is AsyncLocalStorageLike<ScopedTransaction> {
+  if (value === null || typeof value !== "object") return false;
+  const getStore: unknown = Reflect.get(value, "getStore");
+  const run: unknown = Reflect.get(value, "run");
+  return typeof getStore === "function" && typeof run === "function";
+}
 
 function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction> | null {
-  const nodeRequire = (globalThis as { require?: (id: string) => unknown }).require;
-  if (typeof nodeRequire !== "function") return null;
+  const requireRef: unknown = Reflect.get(globalThis, "require");
+  if (!isRequire(requireRef)) return null;
   try {
-    const mod = nodeRequire("node:async_hooks") as AsyncHooksModule;
-    return new mod.AsyncLocalStorage<ScopedTransaction>();
+    const mod: unknown = requireRef("node:async_hooks");
+    if (mod === null || typeof mod !== "object") return null;
+    const ctor: unknown = Reflect.get(mod, "AsyncLocalStorage");
+    if (typeof ctor !== "function") return null;
+    const instance: unknown = Reflect.construct(ctor, []);
+    return isAsyncLocalStorageLike(instance) ? instance : null;
   } catch {
     return null;
   }

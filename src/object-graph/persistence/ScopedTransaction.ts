@@ -1,5 +1,5 @@
 import { runInAction } from "mobx";
-import type { Model } from "../Model";
+import { Model } from "../Model";
 import type { TxChunk } from "./types";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
@@ -193,7 +193,6 @@ export class ScopedTransaction {
   private buildChunkFromTouched(model: Model, claim: ClaimRecord): TxChunk | null {
     const entityName = model.entityName;
     const meta = getEntityMeta(entityName);
-    const record = model as unknown as Record<string, unknown>;
 
     const updateData: Record<string, unknown> = {};
     const links = new Map<string, string[]>();
@@ -202,20 +201,19 @@ export class ScopedTransaction {
     for (const fieldName of claim.touched) {
       const scalarField = meta.scalarFields.find(f => f.fieldName === fieldName);
       if (scalarField && scalarField.fieldName !== "id") {
-        const propName = scalarField.getFieldNameOnModel(model);
-        const value = record[propName];
+        const value = scalarField.read(model);
         updateData[fieldName] = value instanceof Date ? value.toISOString() : value;
         continue;
       }
 
       const relField = meta.relationshipFields.find(r => r.fieldName === fieldName);
       if (!relField) continue;
-      const propName = relField.getFieldNameOnModel(model);
-      const value = record[propName];
+      const value = relField.read(model);
 
       if (relField.isToOne()) {
-        const currentId = (value as Model | null)?.id ?? null;
-        const originalId = (claim.data.relationships.get(fieldName) as string | null) ?? null;
+        const currentId = value instanceof Model ? value.id : null;
+        const original = claim.data.relationships.get(fieldName);
+        const originalId = typeof original === "string" ? original : null;
         if (currentId !== originalId) {
           if (originalId) {
             this.pushInto(unlinks, relField.linkName, originalId);
@@ -225,8 +223,14 @@ export class ScopedTransaction {
           }
         }
       } else {
-        const currentIds = (value as Model[] | undefined)?.map(m => m.id) ?? [];
-        const originalIds = (claim.data.relationships.get(fieldName) as string[] | undefined) ?? [];
+        const currentIds: string[] = [];
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item instanceof Model) currentIds.push(item.id);
+          }
+        }
+        const original = claim.data.relationships.get(fieldName);
+        const originalIds = Array.isArray(original) ? original : [];
         const origSet = new Set(originalIds);
         const currSet = new Set(currentIds);
         for (const id of currSet) {

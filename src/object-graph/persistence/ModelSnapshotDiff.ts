@@ -61,12 +61,8 @@ export class ModelSnapshotDiff {
   }
 
   private computeToOneDiff(rel: { fieldName: string; linkName: string }): void {
-    const currentId = this.current.relationships.get(rel.fieldName) as
-      | string
-      | null;
-    const originalId = this.original.relationships.get(rel.fieldName) as
-      | string
-      | null;
+    const currentId = toScalarId(this.current.relationships.get(rel.fieldName));
+    const originalId = toScalarId(this.original.relationships.get(rel.fieldName));
 
     if (originalId !== currentId) {
       if (originalId) {
@@ -125,4 +121,8 @@ function scalarsEqual(a: unknown, b: unknown): boolean {
 
 function toIdArray(value: string | string[] | null | undefined): string[] {
   return Array.isArray(value) ? value : [];
+}
+
+function toScalarId(value: string | string[] | null | undefined): string | null {
+  return typeof value === "string" ? value : null;
 }

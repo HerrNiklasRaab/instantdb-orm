@@ -1,4 +1,4 @@
-import type { Model } from "../Model";
+import { Model } from "../Model";
 import { getEntityMeta, RelationshipFieldMeta } from "./EntityMeta";
 import { makeAsyncDepth } from "./asyncDepth";
 
@@ -56,11 +56,8 @@ function applyReverseChange(
   // proceeds.
   if (owner._disposers == null && sweep.isActive()) return;
 
-  const propName = reverseRel.getFieldNameOnModel(owner);
-  const record = owner as unknown as Record<string, unknown>;
-
   if (reverseRel.isToMany()) {
-    const arr = record[propName] as Model[] | undefined;
+    const arr = reverseRel.read(owner);
     if (!Array.isArray(arr)) return;
     if (add) {
       arr.push(value);
@@ -70,12 +67,13 @@ function applyReverseChange(
       arr.splice(idx, 1);
     }
   } else {
+    const current = reverseRel.read(owner);
     if (add) {
-      if (record[propName] === value) return;
-      record[propName] = value;
+      if (current === value) return;
+      reverseRel.write(owner, value);
     } else {
-      if (record[propName] !== value) return;
-      record[propName] = null;
+      if (current !== value) return;
+      reverseRel.write(owner, null);
     }
   }
 }

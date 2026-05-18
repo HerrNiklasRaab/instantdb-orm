@@ -26,7 +26,7 @@ export interface RootStoreConfig {
   debugView?: boolean;
 }
 
-export type ModelConstructor<T extends Model = Model> = new (id: string) => T;
+export type ModelConstructor<T extends Model = Model> = abstract new (...args: never[]) => T;
 
 type WithKey<K extends string, T> = K extends string ? T : T;
 export type ModelInstanceFor<K extends string> = WithKey<K, Model>;

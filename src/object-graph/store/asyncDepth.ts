@@ -19,25 +19,30 @@ type AsyncLocalStorageLike<T> = {
   run<R>(store: T, fn: () => R): R;
 };
 
-let AsyncLocalStorageCtor:
-  | (new <T>() => AsyncLocalStorageLike<T>)
-  | null = null;
+type AsyncLocalStorageCtorType = new <T>() => AsyncLocalStorageLike<T>;
 
-try {
-  const globalWithRequire = globalThis as {
-    require?: (id: string) => unknown;
-  };
-  const requireFn = globalWithRequire.require;
-  if (typeof requireFn === "function") {
-    AsyncLocalStorageCtor = (
-      requireFn("node:async_hooks") as {
-        AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
-      }
-    ).AsyncLocalStorage;
-  }
-} catch {
-  // Browser / React Native — no async_hooks. Fallback path below.
+function isRequire(value: unknown): value is (id: string) => unknown {
+  return typeof value === "function";
 }
+
+function isAsyncLocalStorageCtor(value: unknown): value is AsyncLocalStorageCtorType {
+  return typeof value === "function";
+}
+
+function loadAsyncLocalStorageCtor(): AsyncLocalStorageCtorType | null {
+  const requireRef: unknown = Reflect.get(globalThis, "require");
+  if (!isRequire(requireRef)) return null;
+  try {
+    const mod: unknown = requireRef("node:async_hooks");
+    if (mod === null || typeof mod !== "object") return null;
+    const ctor: unknown = Reflect.get(mod, "AsyncLocalStorage");
+    return isAsyncLocalStorageCtor(ctor) ? ctor : null;
+  } catch {
+    return null;
+  }
+}
+
+const AsyncLocalStorageCtor: AsyncLocalStorageCtorType | null = loadAsyncLocalStorageCtor();
 
 export interface AsyncDepth {
   isActive(): boolean;

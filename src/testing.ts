@@ -13,9 +13,11 @@ import type { TransactionStoreAccess } from "./object-graph/persistence/ScopedTr
  * Use only in low-level unit tests that don't have a RootStore. Integration
  * tests should drive mutations through `store.transaction(...)`.
  */
+const emptyTx: TransactionStoreAccess["db"]["tx"] = {};
+
 const stubStore: TransactionStoreAccess = {
   db: {
-    tx: {} as Record<string, Record<string, unknown>> as TransactionStoreAccess["db"]["tx"],
+    tx: emptyTx,
     transact: () => Promise.resolve(),
   },
   getIdentityMapByName: () => ({

@@ -28,9 +28,16 @@ export abstract class FieldMeta {
   abstract readonly fieldName: string;
 
   getFieldNameOnModel(entity: object): string {
-    const ModelClass = entity.constructor as abstract new (...args: never[]) => object;
-    const backingField = getBackingFieldName(ModelClass, this.fieldName);
+    const backingField = getBackingFieldName(entity.constructor, this.fieldName);
     return backingField ?? this.fieldName;
+  }
+
+  read(entity: object): unknown {
+    return Reflect.get(entity, this.getFieldNameOnModel(entity));
+  }
+
+  write(entity: object, value: unknown): void {
+    Reflect.set(entity, this.getFieldNameOnModel(entity), value);
   }
 }
 
@@ -60,7 +67,12 @@ export class RelationshipFieldMeta extends FieldMeta {
 
     this.fieldName = side.label;
     this.targetEntity = otherSide.on;
-    this.cardinality = side.has as "one" | "many";
+    if (side.has !== "one" && side.has !== "many") {
+      throw new Error(
+        `Invalid cardinality "${side.has}" for link "${linkName}". Expected "one" or "many".`
+      );
+    }
+    this.cardinality = side.has;
   }
 
   isToOne(): boolean {
@@ -237,7 +249,6 @@ export { ENTITY_META };
  * Uses @field decorator registry to find private backing fields.
  */
 export function getPropertyName(entity: object, schemaField: string): string {
-  const ModelClass = entity.constructor as abstract new (...args: never[]) => object;
-  const backingField = getBackingFieldName(ModelClass, schemaField);
+  const backingField = getBackingFieldName(entity.constructor, schemaField);
   return backingField ?? schemaField;
 }
