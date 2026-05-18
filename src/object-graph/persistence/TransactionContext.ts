@@ -9,27 +9,31 @@ type AsyncHooksModule = {
   AsyncLocalStorage: new <T>() => AsyncLocalStorageLike<T>;
 };
 
-let asyncLocalStorage: AsyncLocalStorageLike<ScopedTransaction> | null = null;
-
-try {
-  const nodeRequire = new Function("id", "return require(id)") as (id: string) => unknown;
-  const { AsyncLocalStorage } = nodeRequire("node:async_hooks") as AsyncHooksModule;
-  asyncLocalStorage = new AsyncLocalStorage<ScopedTransaction>();
-} catch {
-  // Browser/React Native — fall back to simple global
+function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction> | null {
+  const nodeRequire = (globalThis as { require?: (id: string) => unknown }).require;
+  if (typeof nodeRequire !== "function") return null;
+  try {
+    const mod = nodeRequire("node:async_hooks") as AsyncHooksModule;
+    return new mod.AsyncLocalStorage<ScopedTransaction>();
+  } catch {
+    return null;
+  }
 }
+
+const asyncLocalStorage: AsyncLocalStorageLike<ScopedTransaction> | null =
+  tryLoadAsyncHooks();
 
 let globalCurrent: ScopedTransaction | null = null;
 
-export class TransactionContext {
-  static get current(): ScopedTransaction | null {
+export const TransactionContext = {
+  get current(): ScopedTransaction | null {
     if (asyncLocalStorage) {
       return asyncLocalStorage.getStore() ?? null;
     }
     return globalCurrent;
-  }
+  },
 
-  static run<T>(tx: ScopedTransaction, fn: () => T): T {
+  run<T>(tx: ScopedTransaction, fn: () => T): T {
     if (asyncLocalStorage) {
       return asyncLocalStorage.run(tx, fn);
     }
@@ -40,5 +44,5 @@ export class TransactionContext {
     } finally {
       globalCurrent = previous;
     }
-  }
-}
+  },
+};

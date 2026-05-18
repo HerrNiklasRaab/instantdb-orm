@@ -21,7 +21,7 @@ type DecoratorContext = string | symbol | { name: string | symbol };
  */
 export function field(options?: { attributeName?: string }) {
   return function (target: DecoratorTarget, context: DecoratorContext): void {
-    const propertyName = typeof context === "object" && context !== null
+    const propertyName = typeof context === "object"
       ? String(context.name)
       : String(context);
     const targetAsHolder = target as { constructor?: unknown } | undefined;
@@ -33,10 +33,12 @@ export function field(options?: { attributeName?: string }) {
       options?.attributeName ??
       (propertyName.startsWith("_") ? propertyName.slice(1) : propertyName);
 
-    if (!PRIVATE_FIELD_REGISTRY.has(ModelClass)) {
-      PRIVATE_FIELD_REGISTRY.set(ModelClass, new Map());
+    let fields = PRIVATE_FIELD_REGISTRY.get(ModelClass);
+    if (!fields) {
+      fields = new Map();
+      PRIVATE_FIELD_REGISTRY.set(ModelClass, fields);
     }
-    PRIVATE_FIELD_REGISTRY.get(ModelClass)!.set(attributeName, propertyName);
+    fields.set(attributeName, propertyName);
   };
 }
 

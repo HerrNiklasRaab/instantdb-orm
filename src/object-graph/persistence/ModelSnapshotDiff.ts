@@ -86,10 +86,8 @@ export class ModelSnapshotDiff {
     fieldName: string;
     linkName: string;
   }): void {
-    const currentIds =
-      (this.current.relationships.get(rel.fieldName) as string[]) ?? [];
-    const originalIds =
-      (this.original.relationships.get(rel.fieldName) as string[]) ?? [];
+    const currentIds = toIdArray(this.current.relationships.get(rel.fieldName));
+    const originalIds = toIdArray(this.original.relationships.get(rel.fieldName));
     const origSet = new Set(originalIds);
     const currSet = new Set(currentIds);
 
@@ -123,4 +121,8 @@ function scalarsEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
   return false;
+}
+
+function toIdArray(value: string | string[] | null | undefined): string[] {
+  return Array.isArray(value) ? value : [];
 }
