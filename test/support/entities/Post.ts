@@ -22,7 +22,7 @@ export class Post extends Model {
       content: observable,
       author: observable.ref,
       tags: observable.shallow,
-    } as any);
+    });
   }
 
   constructor(title: string, author?: User, id?: string) {

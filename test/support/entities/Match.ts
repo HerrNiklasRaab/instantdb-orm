@@ -13,10 +13,6 @@ export abstract class Match extends Model {
     super.makeObservable();
     mobxMakeObservable(this, {
       inviter: observable.ref,
-    } as any);
-  }
-
-  constructor(id?: string) {
-    super(id);
+    });
   }
 }

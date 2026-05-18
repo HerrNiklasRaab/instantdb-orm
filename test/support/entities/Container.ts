@@ -18,7 +18,7 @@ export class Container extends Model {
     mobxMakeObservable(this, {
       name: observable,
       items: observable.shallow,
-    } as any);
+    });
   }
 
   constructor(name: string, itemNames: string[] = [], id?: string) {

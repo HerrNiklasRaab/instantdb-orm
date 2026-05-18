@@ -30,10 +30,10 @@ export class ChessInvitation extends Invitation {
 
   protected override makeObservable(): void {
     super.makeObservable();
-    mobxMakeObservable(this, {
+    mobxMakeObservable<ChessInvitation, "_timeControl" | "_rated">(this, {
       _timeControl: observable,
       _rated: observable,
-    } as any);
+    });
   }
 
   constructor(timeControl: string, rated: boolean, id?: string) {

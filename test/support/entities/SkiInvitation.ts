@@ -30,10 +30,10 @@ export class SkiInvitation extends Invitation {
 
   protected override makeObservable(): void {
     super.makeObservable();
-    mobxMakeObservable(this, {
+    mobxMakeObservable<SkiInvitation, "_resort" | "_skillLevel">(this, {
       _resort: observable,
       _skillLevel: observable,
-    } as any);
+    });
   }
 
   constructor(resort: string, skillLevel: string, id?: string) {

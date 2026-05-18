@@ -12,7 +12,7 @@ export class Item extends Model {
     mobxMakeObservable(this, {
       name: observable,
       container: observable.ref,
-    } as any);
+    });
   }
 
   constructor(name: string, container: Container | null = null, id?: string) {

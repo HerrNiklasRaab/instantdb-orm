@@ -13,7 +13,7 @@ export class Tag extends Model {
     mobxMakeObservable(this, {
       name: observable,
       posts: observable.shallow,
-    } as any);
+    });
   }
 
   constructor(name: string, id?: string) {

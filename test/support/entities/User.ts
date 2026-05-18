@@ -47,7 +47,7 @@ export class User extends Model {
 
   protected override makeObservable(): void {
     super.makeObservable();
-    mobxMakeObservable(this, {
+    mobxMakeObservable<User, "_name" | "_posts">(this, {
       _name: observable,
       testDate: observable,
       secretField: observable,
@@ -58,7 +58,7 @@ export class User extends Model {
       invitations: observable.shallow,
       chessMatchs: observable.shallow,
       skiMatchs: observable.shallow,
-    } as any);
+    });
   }
 
   constructor(name: string, id?: string) {

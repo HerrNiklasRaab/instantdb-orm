@@ -27,10 +27,10 @@ export class ChessMatch extends Match {
 
   protected override makeObservable(): void {
     super.makeObservable();
-    mobxMakeObservable(this, {
+    mobxMakeObservable<ChessMatch, "_timeControl" | "_rated">(this, {
       _timeControl: observable,
       _rated: observable,
-    } as any);
+    });
   }
 
   constructor(timeControl: string, rated: boolean, id?: string) {

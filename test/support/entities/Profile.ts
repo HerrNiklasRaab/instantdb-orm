@@ -21,11 +21,11 @@ export class UserProfile extends Model {
 
   protected override makeObservable(): void {
     super.makeObservable();
-    mobxMakeObservable(this, {
+    mobxMakeObservable<UserProfile, "_user">(this, {
       bio: observable,
       avatarUrl: observable,
       _user: observable.ref,
-    } as any);
+    });
   }
 
   constructor(id?: string) {
