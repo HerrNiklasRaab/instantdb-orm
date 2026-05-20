@@ -5,20 +5,21 @@ import {
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 
 describe("Transaction (Integration)", () => {
   let db: TestInstantDBClient;
-  let store: RootStore;
+  let store: RootStore<AppSchema>;
 
   beforeEach(() => {
     db = setupTestDatabase();
-    store = new RootStore({ db });
+    store = new RootStore<AppSchema>({ db });
   });
 
-  function createVerificationStore(): RootStore {
-    return new RootStore({ db });
+  function createVerificationStore(): RootStore<AppSchema> {
+    return new RootStore<AppSchema>({ db });
   }
 
   function createUser(name = "Test User"): User {

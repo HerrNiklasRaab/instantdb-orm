@@ -16,7 +16,6 @@ export {
   type EntityMeta,
   type EntityName,
   type RelationshipFieldMeta,
-  type SchemaConfig,
 } from "./EntityMeta";
 export { ModelHydrator, type GetIdentityMap } from "./ModelHydrator";
 export type {

@@ -4,9 +4,8 @@ import schema from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { withTestTransaction } from "../../src/testing";
 
-// Configure entity metadata before tests (no database needed)
 beforeAll(() => {
-  configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
+  configureEntityMeta(schema);
 });
 
 describe("Change Tracking (Unit)", () => {

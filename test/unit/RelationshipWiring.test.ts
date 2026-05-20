@@ -14,13 +14,21 @@ import { Item } from "../support/entities/Item";
 import { withTestTransaction } from "../../src/testing";
 
 beforeAll(() => {
-  configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
+  configureEntityMeta(schema);
 });
 
 // Auto-wrap every `it` body in a tx context — Model enforces tx-only
 // mutations, but these in-memory tests never hit a RootStore.
 const it = (name: string, fn: () => void): void =>
   { vitIt(name, () => { withTestTransaction(fn); }); };
+
+function createMidConstructionItem(): Item {
+  const instance: unknown = Object.create(Item.prototype);
+  if (!(instance instanceof Item)) {
+    throw new Error("Object.create(Item.prototype) did not yield an Item");
+  }
+  return instance;
+}
 
 describe("Reverse link wiring (in-memory)", () => {
   // ---------------------------------------------------------------------------
@@ -157,6 +165,19 @@ describe("Reverse link wiring (in-memory)", () => {
       expect(inviter.invitations).toHaveLength(2);
       expect(inviter.invitations).toContain(chess);
       expect(inviter.invitations).toContain(ski);
+    });
+
+    it("B6b: a relationship declared only on an STI subclass wires its reverse on the parent", () => {
+      // `opponent` is declared on ChessInvitation only — not on the
+      // abstract Invitation base, not on SkiInvitation. The reverse-link
+      // wirer must still populate `User.opponentInvitation` when chess
+      // sets its opponent.
+      const opponent = new User("Opponent");
+      const chess = new ChessInvitation("5+0", true);
+
+      chess.opponent = opponent;
+
+      expect(opponent.opponentInvitation).toBe(chess);
     });
 
     it("B7: MTI subclasses wire into separate per-table arrays", () => {
@@ -354,8 +375,7 @@ describe("Reverse link wiring (in-memory)", () => {
     vitIt("F4: external push of mid-construction child wires child's back-ref", () => { withTestTransaction(() => {
       const container = new Container("box", []);
 
-      // Mid-construction stand-in: prototype is there but no initializers ran.
-      const midItem = Object.create(Item.prototype) as Item;
+      const midItem = createMidConstructionItem();
 
       container.items.push(midItem);
 

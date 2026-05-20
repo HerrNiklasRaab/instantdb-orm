@@ -1,4 +1,5 @@
 import { runInAction } from "mobx";
+import type { AnySchema } from "@upfor/shared";
 import type { IdentityMap } from "../IdentityMap";
 import { Model } from "../Model";
 import {
@@ -17,8 +18,8 @@ export type GetIdentityMap = <K extends EntityName>(
   entityName: K
 ) => IdentityMap<ModelInstanceFor<K>>;
 
-export class ModelHydrator {
-  constructor(private store: RootStore) { }
+export class ModelHydrator<Schema extends AnySchema> {
+  constructor(private store: RootStore<Schema>) { }
 
   hydrate<K extends EntityName>(
     entityName: K,

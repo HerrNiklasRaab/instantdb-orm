@@ -10,7 +10,6 @@ export {
   isValidEntityName,
   getEntityNames,
   configureEntityMeta,
-  type SchemaConfig,
   type EntityName,
   type ModelInstanceFor,
   type ModelClassFor,
@@ -24,10 +23,6 @@ export {
   ScopedTransaction,
   TransactionContext,
   type InstantDBClient,
-  type TxChunk,
-  type TxProxy,
-  type TransactionResult,
-  type SubscriptionCallback,
   type Unsubscribe,
-  type QueryOptions,
 } from "./persistence";
+export type { AnySchema, SchemaChunk, SchemaTxProxy } from "@upfor/shared";

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
   setupTestDatabase,
@@ -35,8 +36,8 @@ describe("Property-level permissions (Integration)", () => {
       const authUserId = await seedAuthUser(email);
 
       // 2. Create test user with SAME ID as $users (so auth.id == data.id)
-      await adminDb.transact([
-        adminDb.tx.users[authUserId].update({
+      await adminDb.__adminDb.transact([
+        adminDb.__adminDb.tx.users[authUserId].update({
           name: "Owner",
           secretField: "my-secret-value",
           createdAt: new Date().toISOString(),
@@ -46,7 +47,7 @@ describe("Property-level permissions (Integration)", () => {
 
       // 3. Query as owner using RootStore with user-scoped client
       const ownerDb = initTestDatabaseAsUser(email);
-      const ownerStore = new RootStore({ db: ownerDb });
+      const ownerStore = new RootStore<AppSchema>({ db: ownerDb });
       const users = await ownerStore.queryModel(User);
       const user = users.find((u) => u.id === authUserId);
 
@@ -64,8 +65,8 @@ describe("Property-level permissions (Integration)", () => {
       const ownerId = await seedAuthUser(ownerEmail);
       await seedAuthUser(viewerEmail);
 
-      await adminDb.transact([
-        adminDb.tx.users[ownerId].update({
+      await adminDb.__adminDb.transact([
+        adminDb.__adminDb.tx.users[ownerId].update({
           name: "Owner",
           secretField: "secret-only-owner-sees",
           createdAt: new Date().toISOString(),
@@ -75,7 +76,7 @@ describe("Property-level permissions (Integration)", () => {
 
       // Query as viewer (not the owner)
       const viewerDb = initTestDatabaseAsUser(viewerEmail);
-      const viewerStore = new RootStore({ db: viewerDb });
+      const viewerStore = new RootStore<AppSchema>({ db: viewerDb });
       const users = await viewerStore.queryModel(User);
       const user = users.find((u) => u.id === ownerId);
 

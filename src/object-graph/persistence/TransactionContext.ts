@@ -1,3 +1,4 @@
+import type { AnySchema } from "@upfor/shared";
 import type { ScopedTransaction } from "./ScopedTransaction";
 
 type AsyncLocalStorageLike<T> = {
@@ -11,14 +12,14 @@ function isRequire(value: unknown): value is (id: string) => unknown {
 
 function isAsyncLocalStorageLike(
   value: unknown
-): value is AsyncLocalStorageLike<ScopedTransaction> {
+): value is AsyncLocalStorageLike<ScopedTransaction<AnySchema>> {
   if (value === null || typeof value !== "object") return false;
   const getStore: unknown = Reflect.get(value, "getStore");
   const run: unknown = Reflect.get(value, "run");
   return typeof getStore === "function" && typeof run === "function";
 }
 
-function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction> | null {
+function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction<AnySchema>> | null {
   const requireRef: unknown = Reflect.get(globalThis, "require");
   if (!isRequire(requireRef)) return null;
   try {
@@ -33,20 +34,20 @@ function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction> | null {
   }
 }
 
-const asyncLocalStorage: AsyncLocalStorageLike<ScopedTransaction> | null =
+const asyncLocalStorage: AsyncLocalStorageLike<ScopedTransaction<AnySchema>> | null =
   tryLoadAsyncHooks();
 
-let globalCurrent: ScopedTransaction | null = null;
+let globalCurrent: ScopedTransaction<AnySchema> | null = null;
 
 export const TransactionContext = {
-  get current(): ScopedTransaction | null {
+  get current(): ScopedTransaction<AnySchema> | null {
     if (asyncLocalStorage) {
       return asyncLocalStorage.getStore() ?? null;
     }
     return globalCurrent;
   },
 
-  run<T>(tx: ScopedTransaction, fn: () => T): T {
+  run<T>(tx: ScopedTransaction<AnySchema>, fn: () => T): T {
     if (asyncLocalStorage) {
       return asyncLocalStorage.run(tx, fn);
     }

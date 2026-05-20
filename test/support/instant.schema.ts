@@ -8,6 +8,8 @@ const _schema = i.schema({
       name: i.string(),
       secretField: i.string().optional(), // For testing property-level permissions
       testDate: i.date().indexed().optional(), // For testing Date serialization/hydration
+      status: i.string<"active" | "inactive" | "pending">().indexed().optional(),
+      role: i.string<"admin" | "member" | "guest">().indexed().optional(),
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
       deletedAt: i.date().indexed().optional(),
@@ -120,6 +122,21 @@ const _schema = i.schema({
         on: "users",
         has: "many",
         label: "invitations",
+      },
+    },
+    // Subclass-only link: declared on `ChessInvitation` only. Used to
+    // verify the hydrator tolerates schema relationships not present on
+    // every concrete STI subclass.
+    invitationsOpponent: {
+      forward: {
+        on: "invitations",
+        has: "one",
+        label: "opponent",
+      },
+      reverse: {
+        on: "users",
+        has: "one",
+        label: "opponentInvitation",
       },
     },
     // MTI links: each concrete table has its own relationship

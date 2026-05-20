@@ -1,3 +1,5 @@
+import type { AnySchema } from "@upfor/shared";
+import type { InstaQLParams } from "@instantdb/core";
 import { IdentityMap } from "../IdentityMap";
 import { setDebugViewEnabled, Model } from "../Model";
 import { getEntityNames, isValidEntityName, getEntityMeta } from "./EntityMeta";
@@ -7,24 +9,38 @@ import { getEntityNameFromClass } from "../decorators";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
 import { TransactionContext } from "../persistence/TransactionContext";
 import type {
+  ModelConstructor,
   RawEntityData,
   RootStoreConfig,
   InstantDBClient,
   QueryResult,
 } from "./types";
 
-type ModelClass<T extends Model = Model> = abstract new (...args: never[]) => T;
+type ModelClass<T extends Model = Model> = ModelConstructor<T>;
 
-export class RootStore implements TransactionStoreAccess {
+function isInstanceOf<T extends Model>(
+  value: Model,
+  EntityClass: ModelClass<T>
+): value is T {
+  return Object.prototype.isPrototypeOf.call(EntityClass.prototype, value);
+}
+
+function isQueryResult(value: unknown): value is QueryResult {
+  return value !== null && typeof value === "object";
+}
+
+export class RootStore<Schema extends AnySchema>
+  implements TransactionStoreAccess<Schema>
+{
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private subscriptions = new Map<string, { close(): void }>();
-  private hydrator: ModelHydrator;
-  readonly db: InstantDBClient;
+  private hydrator: ModelHydrator<Schema>;
+  readonly db: InstantDBClient<Schema>;
 
-  constructor(config: RootStoreConfig) {
+  constructor(config: RootStoreConfig<Schema>) {
     this.db = config.db;
     setDebugViewEnabled(config.debugView ?? false);
-    this.hydrator = new ModelHydrator(this);
+    this.hydrator = new ModelHydrator<Schema>(this);
     this.initializeIdentityMaps();
   }
 
@@ -38,8 +54,8 @@ export class RootStore implements TransactionStoreAccess {
    * Create a long-lived transaction for manual commit/rollback.
    * Use tx.run(() => { ... }) to make mutations within its scope.
    */
-  createTransaction(): ScopedTransaction {
-    return new ScopedTransaction(this);
+  createTransaction(): ScopedTransaction<Schema> {
+    return new ScopedTransaction<Schema>(this);
   }
 
   /**
@@ -118,7 +134,7 @@ export class RootStore implements TransactionStoreAccess {
     const result: T[] = [];
     for (const map of this.identityMapsFor(EntityClass)) {
       for (const entity of map.values()) {
-        if (entity instanceof EntityClass) result.push(entity);
+        if (isInstanceOf(entity, EntityClass)) result.push(entity);
       }
     }
     return result;
@@ -130,7 +146,7 @@ export class RootStore implements TransactionStoreAccess {
   ): T | undefined {
     for (const map of this.identityMapsFor(EntityClass)) {
       const found = map.get(id);
-      if (found instanceof EntityClass) return found;
+      if (found && isInstanceOf(found, EntityClass)) return found;
     }
     return undefined;
   }
@@ -163,23 +179,28 @@ export class RootStore implements TransactionStoreAccess {
     EntityClass: ModelClass<T>
   ): Promise<T[]> {
     const entityName = getEntityNameFromClass(EntityClass);
-    const query = this.buildQueryWithRelationships({ [entityName]: {} });
-    const result = await this.db.query<QueryResult>(query);
+    const queryInput: InstaQLParams<Schema> = {};
+    Reflect.set(queryInput, entityName, {});
+    const query = this.buildQueryWithRelationships(queryInput);
+    const raw = await this.db.query(query);
+    if (!isQueryResult(raw)) {
+      throw new TypeError(`InstantDB.query: expected an object result, got ${typeof raw}`);
+    }
 
-    const rawDataArray = result[entityName] ?? [];
+    const rawDataArray = raw[entityName] ?? [];
 
     const hydrated = this.hydrator.hydrateMany(
       entityName,
       rawDataArray,
       this.getIdentityMapByName.bind(this)
     );
-    return hydrated.filter((m): m is T => m instanceof EntityClass);
+    return hydrated.filter((m): m is T => isInstanceOf(m, EntityClass));
   }
 
   /** Generic subscription helper for DRY subscription logic */
   private createSubscription<T>(
     subscriptionKey: string,
-    query: Record<string, unknown>,
+    query: InstaQLParams<Schema>,
     onData: (data: QueryResult) => T,
     callback?: (result: T) => void
   ): Promise<{ result: T; close: () => void }> {
@@ -188,7 +209,7 @@ export class RootStore implements TransactionStoreAccess {
     return new Promise((resolve, reject) => {
       let isFirstCallback = true;
 
-      const unsubscribe = this.db.subscribeQuery<QueryResult>(
+      const unsubscribe = this.db.subscribeQuery(
         query,
         ({ error, data }) => {
           if (error) {
@@ -198,7 +219,7 @@ export class RootStore implements TransactionStoreAccess {
             }
             return;
           }
-          if (data) {
+          if (isQueryResult(data)) {
             const result = onData(data);
 
             if (isFirstCallback) {
@@ -227,7 +248,9 @@ export class RootStore implements TransactionStoreAccess {
     callback: (entities: T[]) => void
   ): Promise<{ entities: T[]; close(): void }> {
     const entityName = getEntityNameFromClass(EntityClass);
-    const query = this.buildQueryWithRelationships({ [entityName]: {} });
+    const queryInput: InstaQLParams<Schema> = {};
+    Reflect.set(queryInput, entityName, {});
+    const query = this.buildQueryWithRelationships(queryInput);
 
     const { result: entities, close } = await this.createSubscription(
       entityName,
@@ -239,7 +262,7 @@ export class RootStore implements TransactionStoreAccess {
           rawDataArray,
           this.getIdentityMapByName.bind(this)
         );
-        return hydrated.filter((m): m is T => m instanceof EntityClass);
+        return hydrated.filter((m): m is T => isInstanceOf(m, EntityClass));
       },
       callback
     );
@@ -248,52 +271,49 @@ export class RootStore implements TransactionStoreAccess {
   }
 
   private buildQueryWithRelationships(
-    queryObj: Record<string, unknown>,
+    queryObj: InstaQLParams<Schema>,
     visited: Set<string> = new Set()
-  ): Record<string, unknown> {
-    const expanded: Record<string, unknown> = {};
+  ): InstaQLParams<Schema> {
+    const expanded: InstaQLParams<Schema> = {};
 
-    for (const [key, value] of Object.entries(queryObj)) {
-      // Skip $ (query options like where, limit, etc.)
-      if (key === "$") {
-        expanded[key] = value;
+    for (const key of Object.keys(queryObj)) {
+      const value: unknown = Reflect.get(queryObj, key);
+
+      if (key === "$" || !isValidEntityName(key)) {
+        Reflect.set(expanded, key, value);
         continue;
       }
 
-      // Check if this key is a valid entity name
-      if (!isValidEntityName(key)) {
-        expanded[key] = value;
-        continue;
-      }
-
-      // Prevent infinite recursion for circular relationships
       if (visited.has(key)) {
-        expanded[key] = { $: { fields: ["id"] } };
+        Reflect.set(expanded, key, { $: { fields: ["id"] } });
         continue;
       }
       visited.add(key);
 
-      // Get entity metadata
       const meta = getEntityMeta(key);
-      const subquery: Record<string, unknown> =
-        typeof value === "object" && value !== null
-          ? { ...value }
-          : {};
+      const subquery: object =
+        typeof value === "object" && value !== null ? { ...value } : {};
 
-      // Add all relationship subqueries for this entity
       for (const rel of meta.relationshipFields) {
-        if (!(rel.fieldName in subquery)) {
-          subquery[rel.fieldName] = { $: { fields: ["id"] } };
-        } else {
-          // Recursively expand existing relationship subquery
-          subquery[rel.fieldName] = this.buildQueryWithRelationships(
-            { [rel.targetEntity]: subquery[rel.fieldName] },
-            new Set(visited)
-          )[rel.targetEntity];
+        if (!Reflect.has(subquery, rel.fieldName)) {
+          Reflect.set(subquery, rel.fieldName, { $: { fields: ["id"] } });
+          continue;
         }
+        const existing: unknown = Reflect.get(subquery, rel.fieldName);
+        const nestedInput: InstaQLParams<Schema> = {};
+        Reflect.set(nestedInput, rel.targetEntity, existing);
+        const nestedExpanded = this.buildQueryWithRelationships(
+          nestedInput,
+          new Set(visited)
+        );
+        Reflect.set(
+          subquery,
+          rel.fieldName,
+          Reflect.get(nestedExpanded, rel.targetEntity)
+        );
       }
 
-      expanded[key] = subquery;
+      Reflect.set(expanded, key, subquery);
     }
 
     return expanded;
@@ -330,10 +350,13 @@ export class RootStore implements TransactionStoreAccess {
     };
   }
 
-  async query(queryObj: Record<string, unknown>): Promise<void> {
+  async query(queryObj: InstaQLParams<Schema>): Promise<void> {
     const expandedQuery = this.buildQueryWithRelationships(queryObj);
-    const result = await this.db.query<QueryResult>(expandedQuery);
-    this.hydrateResult(result);
+    const raw = await this.db.query(expandedQuery);
+    if (!isQueryResult(raw)) {
+      throw new TypeError(`InstantDB.query: expected an object result, got ${typeof raw}`);
+    }
+    this.hydrateResult(raw);
   }
 
   hydrateResult(result: QueryResult): void {
@@ -353,7 +376,7 @@ export class RootStore implements TransactionStoreAccess {
    * Automatically hydrates results on each update.
    */
   async subscribeQuery(
-    queryObj: Record<string, unknown>,
+    queryObj: InstaQLParams<Schema>,
     callback?: () => void
   ): Promise<{ close(): void }> {
     const expandedQuery = this.buildQueryWithRelationships(queryObj);
@@ -381,19 +404,19 @@ export class RootStore implements TransactionStoreAccess {
    * finishes (or rejects). The outer store is not mutated.
    */
   async subscribeQueryIsolated(
-    queryObj: Record<string, unknown>,
-    handler: (store: RootStore, prev: RootStore | null) => Promise<void> | void
+    queryObj: InstaQLParams<Schema>,
+    handler: (store: RootStore<Schema>, prev: RootStore<Schema> | null) => Promise<void> | void
   ): Promise<{ close(): void }> {
     const expandedQuery = this.buildQueryWithRelationships(queryObj);
-    const config: RootStoreConfig = { db: this.db };
+    const config: RootStoreConfig<Schema> = { db: this.db };
 
-    let prevStore: RootStore | null = null;
+    let prevStore: RootStore<Schema> | null = null;
     let queue: Promise<void> = Promise.resolve();
     let closed = false;
     let firstResolved = false;
 
     return new Promise<{ close(): void }>((resolve, reject) => {
-      const unsubscribe = this.db.subscribeQuery<QueryResult>(
+      const unsubscribe = this.db.subscribeQuery(
         expandedQuery,
         ({ error, data }) => {
           if (closed) return;
@@ -405,7 +428,7 @@ export class RootStore implements TransactionStoreAccess {
             }
             return;
           }
-          if (!data) return;
+          if (!isQueryResult(data)) return;
 
           queue = queue.then(async () => {
             if (closed) {
@@ -413,7 +436,7 @@ export class RootStore implements TransactionStoreAccess {
               prevStore = null;
               return;
             }
-            const callbackStore = new RootStore(config);
+            const callbackStore = new RootStore<Schema>(config);
             try {
               callbackStore.hydrateResult(data);
               await handler(callbackStore, prevStore);

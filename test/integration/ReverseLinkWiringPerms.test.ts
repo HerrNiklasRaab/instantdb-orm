@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
   setupTestDatabase,
@@ -27,7 +28,7 @@ import { Post } from "../support/entities/Post";
 describe("Reverse-link wiring perms", () => {
   it("does not emit an update chunk against the wired-side row when only the forward side was mutated", async () => {
     const adminDb = setupTestDatabase();
-    const adminStore = new RootStore({ db: adminDb });
+    const adminStore = new RootStore<AppSchema>({ db: adminDb });
 
     // Two distinct $users users. Author email is the actor; otherUser is
     // the target of the reverse-wiring.
@@ -48,7 +49,7 @@ describe("Reverse-link wiring perms", () => {
     // Hydrate the actor's view of `other` so the link target resolves
     // through their non-admin client.
     const actorDb = initTestDatabaseAsUser(authorEmail);
-    const actorStore = new RootStore({ db: actorDb });
+    const actorStore = new RootStore<AppSchema>({ db: actorDb });
     const users = await actorStore.queryModel(User);
     const other = users.find((u) => u.id === otherId);
     assertDefined(other);

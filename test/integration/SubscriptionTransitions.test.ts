@@ -6,6 +6,7 @@ import {
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 
 describe("subscribeQueryIsolated (curr, prev)", () => {
@@ -16,10 +17,10 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
   });
 
   it("lets the handler detect deletion by diffing identity maps", async () => {
-    const seedStore = new RootStore({ db });
+    const seedStore = new RootStore<AppSchema>({ db });
     const u = await seedStore.transaction(() => new User("doomed"));
 
-    const store = new RootStore({ db });
+    const store = new RootStore<AppSchema>({ db });
     const removalEvents: string[] = [];
 
     const sub = await store.subscribeQueryIsolated(
@@ -40,7 +41,7 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
       return true;
     }, 1000).catch(() => { });
 
-    const deleteStore = new RootStore({ db });
+    const deleteStore = new RootStore<AppSchema>({ db });
     await deleteStore.queryModel(User);
     await deleteStore.transaction(() => {
       const target = deleteStore.getById(User, u.id);
@@ -55,10 +56,10 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
 
   it("lets the handler detect a status x → y transition", async () => {
     // Seed an entity in state x.
-    const seedStore = new RootStore({ db });
+    const seedStore = new RootStore<AppSchema>({ db });
     const u = await seedStore.transaction(() => new User("transitioning"));
 
-    const store = new RootStore({ db });
+    const store = new RootStore<AppSchema>({ db });
     const transitions: { id: string; before: string; after: string }[] = [];
 
     const sub = await store.subscribeQueryIsolated(
@@ -75,7 +76,7 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
     );
 
     // Wait until first callback has fired.
-    const mutateStore = new RootStore({ db });
+    const mutateStore = new RootStore<AppSchema>({ db });
     await mutateStore.queryModel(User);
     await mutateStore.transaction(() => {
       const target = mutateStore.getById(User, u.id);

@@ -7,7 +7,7 @@ import { User } from "../support/entities/User";
 import { withTestTransaction } from "../../src/testing";
 
 beforeAll(() => {
-  configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
+  configureEntityMeta(schema);
 });
 
 describe("ModelSnapshotDiff", () => {
@@ -19,11 +19,11 @@ describe("ModelSnapshotDiff", () => {
       const t = "2026-05-03T12:00:00.000Z";
 
       const u1 = new User("u");
-      (u1 as unknown as { _updatedAt: Date })._updatedAt = new Date(t);
+      Reflect.set(u1, "_updatedAt", new Date(t));
       const before = new ModelSnapshot(u1);
 
       const u2 = new User("u");
-      (u2 as unknown as { _updatedAt: Date })._updatedAt = new Date(t);
+      Reflect.set(u2, "_updatedAt", new Date(t));
       const after = new ModelSnapshot(u2);
 
       const diff = new ModelSnapshotDiff(before, after, "users", false);
@@ -35,11 +35,11 @@ describe("ModelSnapshotDiff", () => {
   it("flags a Date scalar as changed when the time differs", () => {
     withTestTransaction(() => {
       const u1 = new User("u");
-      (u1 as unknown as { _updatedAt: Date })._updatedAt = new Date("2026-05-03T12:00:00.000Z");
+      Reflect.set(u1, "_updatedAt", new Date("2026-05-03T12:00:00.000Z"));
       const before = new ModelSnapshot(u1);
 
       const u2 = new User("u");
-      (u2 as unknown as { _updatedAt: Date })._updatedAt = new Date("2026-05-03T12:00:01.000Z");
+      Reflect.set(u2, "_updatedAt", new Date("2026-05-03T12:00:01.000Z"));
       const after = new ModelSnapshot(u2);
 
       const diff = new ModelSnapshotDiff(before, after, "users", false);

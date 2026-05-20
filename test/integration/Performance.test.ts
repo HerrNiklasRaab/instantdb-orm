@@ -6,6 +6,7 @@ import {
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 
@@ -26,13 +27,21 @@ type ScanMethod = (typeof SCAN_METHODS)[number];
 type ArrayScanFn = (this: unknown[], ...args: unknown[]) => unknown;
 type ScanPrototype = Record<ScanMethod, ArrayScanFn>;
 
+function isScanPrototype(proto: object): proto is ScanPrototype {
+  return SCAN_METHODS.every(
+    (name) => typeof Reflect.get(proto, name) === "function"
+  );
+}
+
 function trapArrayScans(): { stop(): number } {
-  const proto = Array.prototype as unknown as ScanPrototype;
+  const proto: object = Array.prototype;
+  if (!isScanPrototype(proto)) {
+    throw new Error("Array.prototype is missing expected scan methods");
+  }
   const originals = new Map<ScanMethod, ArrayScanFn>();
   let calls = 0;
   for (const name of SCAN_METHODS) {
     const orig = proto[name];
-    if (typeof orig !== "function") continue;
     originals.set(name, orig);
     proto[name] = function (this: unknown[], ...args: unknown[]): unknown {
       calls++;
@@ -49,6 +58,28 @@ function trapArrayScans(): { stop(): number } {
   };
 }
 
+interface RootStoreInternals {
+  hydrator: { hydrateMany: (entity: string, rows: unknown[], getMap: unknown) => unknown };
+  getIdentityMapByName: (entity: string) => unknown;
+}
+
+function isRootStoreInternals(value: object): value is object & RootStoreInternals {
+  const hydrator: unknown = Reflect.get(value, "hydrator");
+  const getMap: unknown = Reflect.get(value, "getIdentityMapByName");
+  if (typeof hydrator !== "object" || hydrator === null) return false;
+  return (
+    typeof Reflect.get(hydrator, "hydrateMany") === "function" &&
+    typeof getMap === "function"
+  );
+}
+
+function openInternals(store: RootStore<AppSchema>): RootStoreInternals {
+  if (!isRootStoreInternals(store)) {
+    throw new Error("RootStore is missing expected internal members");
+  }
+  return store;
+}
+
 describe("performance", () => {
   let db: TestInstantDBClient;
 
@@ -61,11 +92,8 @@ describe("performance", () => {
   it("hydrating a user with many posts does not scan arrays per row", () => {
     const N = 20;
 
-    const store = new RootStore({ db });
-    const internals = store as unknown as {
-      hydrator: { hydrateMany: (entity: string, rows: unknown[], getMap: unknown) => unknown };
-      getIdentityMapByName: (entity: string) => unknown;
-    };
+    const store = new RootStore<AppSchema>({ db });
+    const internals = openInternals(store);
     const getMap = internals.getIdentityMapByName.bind(internals);
 
     const now = new Date().toISOString();
@@ -107,7 +135,7 @@ describe("performance", () => {
     const N = 20;
 
     let userId = "";
-    const seed = new RootStore({ db });
+    const seed = new RootStore<AppSchema>({ db });
     await seed.transaction(() => {
       const u = new User("Owner");
       userId = u.id;
@@ -117,7 +145,7 @@ describe("performance", () => {
       }
     });
 
-    const fresh = new RootStore({ db });
+    const fresh = new RootStore<AppSchema>({ db });
     await fresh.queryModel(User);
     const user = fresh.getById(User, userId);
     assertDefined(user);
@@ -145,7 +173,7 @@ describe("performance", () => {
     const N = 20;
 
     const postIds: string[] = [];
-    const seed = new RootStore({ db });
+    const seed = new RootStore<AppSchema>({ db });
     await seed.transaction(() => {
       const u = new User("Owner");
       for (let i = 0; i < N; i++) {
@@ -155,7 +183,7 @@ describe("performance", () => {
       }
     });
 
-    const fresh = new RootStore({ db });
+    const fresh = new RootStore<AppSchema>({ db });
     await fresh.queryAll();
 
     const targetPost = fresh.getById(Post, postIds[0]);
@@ -168,7 +196,7 @@ describe("performance", () => {
     const d1 = reaction(() => targetPost.title, () => { targetFires++; });
     const d2 = reaction(() => untouchedPost.title, () => { untouchedFires++; });
 
-    const remote = new RootStore({ db });
+    const remote = new RootStore<AppSchema>({ db });
     await remote.queryAll();
     await remote.transaction(() => {
       const remotePost = remote.getById(Post, postIds[0]);
@@ -194,7 +222,7 @@ describe("performance", () => {
     let userAId = "";
     let userBId = "";
     const postIds: string[] = [];
-    const seed = new RootStore({ db });
+    const seed = new RootStore<AppSchema>({ db });
     await seed.transaction(() => {
       const a = new User("Alice");
       const b = new User("Bob");
@@ -207,7 +235,7 @@ describe("performance", () => {
       }
     });
 
-    const fresh = new RootStore({ db });
+    const fresh = new RootStore<AppSchema>({ db });
     await fresh.queryAll();
 
     const userA = fresh.getById(User, userAId);
@@ -224,7 +252,7 @@ describe("performance", () => {
     const d2 = reaction(() => userB.posts.length, () => { bLengthFires++; });
     const d3 = reaction(() => untouchedPost.title, () => { untouchedTitleFires++; });
 
-    const remote = new RootStore({ db });
+    const remote = new RootStore<AppSchema>({ db });
     await remote.queryAll();
     await remote.transaction(() => {
       const remotePost = remote.getById(Post, postIds[0]);

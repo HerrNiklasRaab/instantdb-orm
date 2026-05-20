@@ -1,3 +1,4 @@
+import type { AnySchema } from "@upfor/shared";
 import type { Model } from "../Model";
 import type { InstantDBClient } from "../persistence/types";
 
@@ -12,8 +13,8 @@ export type QueryResult = {
 
 export type { InstantDBClient };
 
-export interface RootStoreConfig {
-  db: InstantDBClient;
+export interface RootStoreConfig<Schema extends AnySchema> {
+  db: InstantDBClient<Schema>;
   /**
    * Maintain a plain-JS `debugView` snapshot on every Model instance,
    * auto-updated via a MobX reaction. Workaround for debuggers that don't
@@ -26,7 +27,7 @@ export interface RootStoreConfig {
   debugView?: boolean;
 }
 
-export type ModelConstructor<T extends Model = Model> = abstract new (...args: never[]) => T;
+export type ModelConstructor<T extends Model = Model> = { prototype: T; readonly name: string };
 
 type WithKey<K extends string, T> = K extends string ? T : T;
 export type ModelInstanceFor<K extends string> = WithKey<K, Model>;

@@ -2,6 +2,7 @@ import {
   ScopedTransaction,
   TransactionContext,
 } from "./object-graph";
+import type { AnySchema } from "@upfor/shared";
 import type { TransactionStoreAccess } from "./object-graph/persistence/ScopedTransaction";
 
 /**
@@ -13,9 +14,9 @@ import type { TransactionStoreAccess } from "./object-graph/persistence/ScopedTr
  * Use only in low-level unit tests that don't have a RootStore. Integration
  * tests should drive mutations through `store.transaction(...)`.
  */
-const emptyTx: TransactionStoreAccess["db"]["tx"] = {};
+const emptyTx: TransactionStoreAccess<AnySchema>["db"]["tx"] = {};
 
-const stubStore: TransactionStoreAccess = {
+const stubStore: TransactionStoreAccess<AnySchema> = {
   db: {
     tx: emptyTx,
     transact: () => Promise.resolve(),
@@ -25,11 +26,11 @@ const stubStore: TransactionStoreAccess = {
     set: () => undefined,
     delete: () => false,
   }),
-  getLinkLabel: (_entityName, linkName) => linkName,
+  getLinkLabel: (_entityName: string, linkName: string) => linkName,
   rehydrateModel: () => undefined,
 };
 
 export function withTestTransaction<T>(fn: () => T): T {
-  const tx = new ScopedTransaction(stubStore);
+  const tx = new ScopedTransaction<AnySchema>(stubStore);
   return TransactionContext.run(tx, fn);
 }

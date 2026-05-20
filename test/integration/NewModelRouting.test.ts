@@ -5,6 +5,7 @@ import {
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 
 describe("New model routing (Plan A)", () => {
@@ -15,8 +16,8 @@ describe("New model routing (Plan A)", () => {
   });
 
   it("isolates new models between concurrent transactions on different stores", async () => {
-    const storeA = new RootStore({ db });
-    const storeB = new RootStore({ db });
+    const storeA = new RootStore<AppSchema>({ db });
+    const storeB = new RootStore<AppSchema>({ db });
 
     let userA: User | undefined;
     let userB: User | undefined;

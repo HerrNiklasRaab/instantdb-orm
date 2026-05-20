@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
   setupTestDatabase,
@@ -12,13 +13,13 @@ import { SkiMatch } from "../support/entities/SkiMatch";
 
 describe("Multi-Table Inheritance (Integration)", () => {
   let db: TestInstantDBClient;
-  let storeA: RootStore;
-  let storeB: RootStore;
+  let storeA: RootStore<AppSchema>;
+  let storeB: RootStore<AppSchema>;
 
   beforeEach(() => {
     db = setupTestDatabase();
-    storeA = new RootStore({ db });
-    storeB = new RootStore({ db });
+    storeA = new RootStore<AppSchema>({ db });
+    storeB = new RootStore<AppSchema>({ db });
   });
 
   // Helper functions

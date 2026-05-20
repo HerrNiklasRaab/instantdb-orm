@@ -1,28 +1,25 @@
+import type {
+  AttrsDefs,
+  CardinalityKind,
+  DataAttrDef,
+  EntitiesDef,
+  EntityDef,
+  InstantSchemaDef,
+  LinkAttrDef,
+  LinksDef,
+  RoomsDef,
+} from "@instantdb/core";
 import { getBackingFieldName } from "../decorators/field";
 
-// Generic entity name type - will be narrowed by configuration
 export type EntityName = string;
 
-// Schema types for configuration
-interface AttrDef {
-  valueType: string;
-  required?: boolean;
-}
+type SchemaLinkDef = LinksDef<EntitiesDef>[string];
 
-interface EntityDef {
-  attrs: Record<string, AttrDef>;
-  links: Record<string, unknown>;
-}
-
-interface LinkDef {
-  forward: { on: string; has: string; label: string };
-  reverse: { on: string; has: string; label: string };
-}
-
-export interface SchemaConfig {
-  entities: Record<string, EntityDef>;
-  links: Record<string, LinkDef>;
-}
+type SchemaConfig = InstantSchemaDef<
+  Record<string, EntityDef<AttrsDefs, Record<string, LinkAttrDef<CardinalityKind, string>>, void>>,
+  LinksDef<EntitiesDef>,
+  RoomsDef
+>;
 
 export abstract class FieldMeta {
   abstract readonly fieldName: string;
@@ -54,11 +51,11 @@ export class ScalarFieldMeta extends FieldMeta {
 export class RelationshipFieldMeta extends FieldMeta {
   readonly fieldName: string;
   readonly targetEntity: EntityName;
-  readonly cardinality: "one" | "many";
+  readonly cardinality: CardinalityKind;
 
   constructor(
     readonly linkName: string,
-    link: LinkDef,
+    link: SchemaLinkDef,
     readonly isForward: boolean
   ) {
     super();
@@ -67,11 +64,6 @@ export class RelationshipFieldMeta extends FieldMeta {
 
     this.fieldName = side.label;
     this.targetEntity = otherSide.on;
-    if (side.has !== "one" && side.has !== "many") {
-      throw new Error(
-        `Invalid cardinality "${side.has}" for link "${linkName}". Expected "one" or "many".`
-      );
-    }
     this.cardinality = side.has;
   }
 
@@ -101,7 +93,7 @@ export class EntityMeta {
     return [...this.scalarFields, ...this.relationshipFields];
   }
 
-  private get attrs(): Record<string, AttrDef> {
+  private get attrs(): AttrsDefs {
     return this.schema.entities[this.schemaName].attrs;
   }
 
@@ -167,7 +159,7 @@ const TIMESTAMP_FIELDS = ["createdAt", "updatedAt", "deletedAt"] as const;
  */
 function validateTimestampFields(
   entityName: string,
-  attrs: Record<string, AttrDef>
+  attrs: AttrsDefs
 ): void {
   const isSystemEntity = entityName.startsWith("$");
   const fields = Object.keys(attrs);
@@ -209,16 +201,9 @@ function validateTimestampFields(
   }
 }
 
-/**
- * Configure the entity metadata system with a schema.
- * Must be called before using getEntityMeta or other metadata functions.
- * Validates that all entities have required timestamp fields with correct optionality.
- */
 export function configureEntityMeta(schema: SchemaConfig): void {
-  // Validate schema timestamp fields
   for (const entityName of Object.keys(schema.entities)) {
-    const attrs = schema.entities[entityName].attrs;
-    validateTimestampFields(entityName, attrs);
+    validateTimestampFields(entityName, schema.entities[entityName].attrs);
   }
 
   ENTITY_META = buildEntityMeta(schema);

@@ -117,7 +117,7 @@ function applyModelDecorator<T extends ModelConstructor>(
 }
 
 function isModelConstructor(value: object): value is ModelConstructor {
-  return typeof value === "function";
+  return typeof value === "function" && "prototype" in value;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
   setupTestDatabase,
@@ -12,13 +13,13 @@ import { SkiInvitation } from "../support/entities/SkiInvitation";
 
 describe("Single Table Inheritance (Integration)", () => {
   let db: TestInstantDBClient;
-  let storeA: RootStore; // "Device A" - creates data
-  let storeB: RootStore; // "Device B" - hydrates data
+  let storeA: RootStore<AppSchema>; // "Device A" - creates data
+  let storeB: RootStore<AppSchema>; // "Device B" - hydrates data
 
   beforeEach(() => {
     db = setupTestDatabase();
-    storeA = new RootStore({ db });
-    storeB = new RootStore({ db });
+    storeA = new RootStore<AppSchema>({ db });
+    storeB = new RootStore<AppSchema>({ db });
   });
 
   // Helper to create user through Store A
@@ -327,6 +328,43 @@ describe("Single Table Inheritance (Integration)", () => {
       expect(skiInvitations.length).toBeGreaterThanOrEqual(1);
       expect(chessInvitations.every((r) => r instanceof ChessInvitation)).toBe(true);
       expect(skiInvitations.every((r) => r instanceof SkiInvitation)).toBe(true);
+    });
+  });
+
+  // The schema declares an `invitations.opponent` link to users. Only
+  // ChessInvitation declares the field; SkiInvitation does not. These
+  // tests pin down how the hydrator treats per-subclass relationships.
+  describe("per-subclass relationship fields", () => {
+    it("storeA writes a subclass-declared relationship and storeB hydrates it", async () => {
+      const opponent = await createUserInStoreA({ name: "Opponent" });
+      const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
+      await storeA.transaction(() => {
+        chess.opponent = opponent;
+      });
+
+      await storeB.query({ invitations: { opponent: {} } });
+
+      const hydratedChess = storeB.getById(ChessInvitation, chess.id);
+      const hydratedOpponent = storeB.getById(User, opponent.id);
+
+      assertDefined(hydratedChess);
+      assertDefined(hydratedOpponent);
+      expect(hydratedChess.opponent).toBe(hydratedOpponent);
+    });
+
+    it("assigns the schema relationship onto every concrete subclass, even ones that don't declare it", async () => {
+      const ski = await createSkiInvitationInStoreA({ resort: "Vail" });
+
+      await storeB.query({ invitations: { opponent: {} } });
+
+      const hydratedSki = storeB.getById(SkiInvitation, ski.id);
+      assertDefined(hydratedSki);
+      // The hydrator walks schema relationships per-table, so SkiInvitation
+      // receives `opponent = null` even though only ChessInvitation declares
+      // the field. Pinned to current behavior; if the hydrator is later
+      // taught to skip fields not declared on the resolved subclass, this
+      // assertion flips to `toBeUndefined`.
+      expect(Reflect.get(hydratedSki, "opponent")).toBeNull();
     });
   });
 });

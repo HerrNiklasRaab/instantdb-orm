@@ -5,9 +5,8 @@ import {
   seedAuthUser as sharedSeedAuthUser,
   type TestInstantDBClient as SharedTestInstantDBClient,
 } from "@upfor/shared/test";
-import type { InstantDBClient } from "../../../src/object-graph/persistence/types";
 import { configureEntityMeta } from "../../../src/object-graph";
-import schema from "../../support/instant.schema";
+import schema, { type AppSchema } from "../../support/instant.schema";
 
 // Side-effect imports: @model decorator auto-registers these entities
 import "../../support/entities/User";
@@ -33,40 +32,27 @@ export {
   cleanupTestEntities,
 } from "@upfor/shared/test";
 
-/**
- * Locally typed alias of the shared client. Both packages cast their wrapped
- * admin client to their own `InstantDBClient` so test code keeps the typed
- * surface it expects (query relations, tx tables, etc.).
- */
-export type TestInstantDBClient = SharedTestInstantDBClient & InstantDBClient;
+export type TestInstantDBClient = SharedTestInstantDBClient<AppSchema>;
 
 export function getAdminDb() {
-  return sharedGetAdminDb(schema as Parameters<typeof sharedGetAdminDb>[0]);
+  return sharedGetAdminDb<AppSchema>(schema);
 }
 
 export function initTestDatabase(): TestInstantDBClient {
-  return sharedInitTestDatabase(
-    schema as Parameters<typeof sharedInitTestDatabase>[0]
-  ) as TestInstantDBClient;
+  return sharedInitTestDatabase<AppSchema>(schema);
 }
 
 export function initTestDatabaseAsUser(email: string): TestInstantDBClient {
-  return sharedInitTestDatabaseAsUser(
-    schema as Parameters<typeof sharedInitTestDatabaseAsUser>[0],
-    email
-  ) as TestInstantDBClient;
+  return sharedInitTestDatabaseAsUser<AppSchema>(schema, email);
 }
 
 export function seedAuthUser(email: string): Promise<string> {
-  return sharedSeedAuthUser(
-    schema as Parameters<typeof sharedSeedAuthUser>[0],
-    email
-  );
+  return sharedSeedAuthUser<AppSchema>(schema, email);
 }
 
 /** Configure entity metadata then return a fresh admin-context client. */
 export function setupTestDatabase(): TestInstantDBClient {
-  configureEntityMeta(schema as Parameters<typeof configureEntityMeta>[0]);
+  configureEntityMeta(schema);
   return initTestDatabase();
 }
 

@@ -1,22 +1,19 @@
 import { describe, it, expect } from "vitest";
+import { i } from "@instantdb/core";
 import { configureEntityMeta } from "../../src/object-graph/store/EntityMeta";
 
 describe("Schema Timestamp Validation", () => {
   describe("field existence", () => {
     it("should throw error when entity is missing createdAt", () => {
-      const invalidSchema = {
+      const invalidSchema = i.schema({
         entities: {
-          users: {
-            attrs: {
-              name: { valueType: "string", required: true },
-              updatedAt: { valueType: "date", required: true },
-              deletedAt: { valueType: "date", required: false },
-            },
-            links: {},
-          },
+          users: i.entity({
+            name: i.string(),
+            updatedAt: i.date(),
+            deletedAt: i.date().optional(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(invalidSchema); }).toThrow(
         'Entity "users" is missing required field "createdAt"'
@@ -24,19 +21,15 @@ describe("Schema Timestamp Validation", () => {
     });
 
     it("should throw error when entity is missing updatedAt", () => {
-      const invalidSchema = {
+      const invalidSchema = i.schema({
         entities: {
-          posts: {
-            attrs: {
-              title: { valueType: "string", required: true },
-              createdAt: { valueType: "date", required: true },
-              deletedAt: { valueType: "date", required: false },
-            },
-            links: {},
-          },
+          posts: i.entity({
+            title: i.string(),
+            createdAt: i.date(),
+            deletedAt: i.date().optional(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(invalidSchema); }).toThrow(
         'Entity "posts" is missing required field "updatedAt"'
@@ -44,19 +37,15 @@ describe("Schema Timestamp Validation", () => {
     });
 
     it("should throw error when entity is missing deletedAt", () => {
-      const invalidSchema = {
+      const invalidSchema = i.schema({
         entities: {
-          comments: {
-            attrs: {
-              content: { valueType: "string", required: true },
-              createdAt: { valueType: "date", required: true },
-              updatedAt: { valueType: "date", required: true },
-            },
-            links: {},
-          },
+          comments: i.entity({
+            content: i.string(),
+            createdAt: i.date(),
+            updatedAt: i.date(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(invalidSchema); }).toThrow(
         'Entity "comments" is missing required field "deletedAt"'
@@ -66,19 +55,15 @@ describe("Schema Timestamp Validation", () => {
 
   describe("optionality validation", () => {
     it("should throw if createdAt is optional", () => {
-      const schema = {
+      const schema = i.schema({
         entities: {
-          users: {
-            attrs: {
-              createdAt: { valueType: "date", required: false }, // optional - invalid
-              updatedAt: { valueType: "date", required: true },
-              deletedAt: { valueType: "date", required: false },
-            },
-            links: {},
-          },
+          users: i.entity({
+            createdAt: i.date().optional(),
+            updatedAt: i.date(),
+            deletedAt: i.date().optional(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(schema); }).toThrow(
         '"createdAt" must be required'
@@ -86,19 +71,15 @@ describe("Schema Timestamp Validation", () => {
     });
 
     it("should throw if updatedAt is optional", () => {
-      const schema = {
+      const schema = i.schema({
         entities: {
-          users: {
-            attrs: {
-              createdAt: { valueType: "date", required: true },
-              updatedAt: { valueType: "date", required: false }, // optional - invalid
-              deletedAt: { valueType: "date", required: false },
-            },
-            links: {},
-          },
+          users: i.entity({
+            createdAt: i.date(),
+            updatedAt: i.date().optional(),
+            deletedAt: i.date().optional(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(schema); }).toThrow(
         '"updatedAt" must be required'
@@ -106,19 +87,15 @@ describe("Schema Timestamp Validation", () => {
     });
 
     it("should throw if deletedAt is required (not optional)", () => {
-      const schema = {
+      const schema = i.schema({
         entities: {
-          users: {
-            attrs: {
-              createdAt: { valueType: "date", required: true },
-              updatedAt: { valueType: "date", required: true },
-              deletedAt: { valueType: "date", required: true }, // required - invalid
-            },
-            links: {},
-          },
+          users: i.entity({
+            createdAt: i.date(),
+            updatedAt: i.date(),
+            deletedAt: i.date(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(schema); }).toThrow(
         '"deletedAt" must be optional'
@@ -126,19 +103,15 @@ describe("Schema Timestamp Validation", () => {
     });
 
     it("should not throw when all timestamp fields have correct optionality", () => {
-      const schema = {
+      const schema = i.schema({
         entities: {
-          users: {
-            attrs: {
-              createdAt: { valueType: "date", required: true },
-              updatedAt: { valueType: "date", required: true },
-              deletedAt: { valueType: "date", required: false },
-            },
-            links: {},
-          },
+          users: i.entity({
+            createdAt: i.date(),
+            updatedAt: i.date(),
+            deletedAt: i.date().optional(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(schema); }).not.toThrow();
     });
@@ -146,19 +119,15 @@ describe("Schema Timestamp Validation", () => {
 
   describe("system entities (starting with $)", () => {
     it("should throw if $system entity has required createdAt", () => {
-      const schema = {
+      const schema = i.schema({
         entities: {
-          $system: {
-            attrs: {
-              createdAt: { valueType: "date", required: true }, // should be optional
-              updatedAt: { valueType: "date", required: false },
-              deletedAt: { valueType: "date", required: false },
-            },
-            links: {},
-          },
+          $system: i.entity({
+            createdAt: i.date(),
+            updatedAt: i.date().optional(),
+            deletedAt: i.date().optional(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(schema); }).toThrow(
         "must be optional for system entities"
@@ -166,19 +135,15 @@ describe("Schema Timestamp Validation", () => {
     });
 
     it("should throw if $system entity has required updatedAt", () => {
-      const schema = {
+      const schema = i.schema({
         entities: {
-          $system: {
-            attrs: {
-              createdAt: { valueType: "date", required: false },
-              updatedAt: { valueType: "date", required: true }, // should be optional
-              deletedAt: { valueType: "date", required: false },
-            },
-            links: {},
-          },
+          $system: i.entity({
+            createdAt: i.date().optional(),
+            updatedAt: i.date(),
+            deletedAt: i.date().optional(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(schema); }).toThrow(
         "must be optional for system entities"
@@ -186,19 +151,15 @@ describe("Schema Timestamp Validation", () => {
     });
 
     it("should not throw when $system entity has all optional timestamps", () => {
-      const schema = {
+      const schema = i.schema({
         entities: {
-          $system: {
-            attrs: {
-              createdAt: { valueType: "date", required: false },
-              updatedAt: { valueType: "date", required: false },
-              deletedAt: { valueType: "date", required: false },
-            },
-            links: {},
-          },
+          $system: i.entity({
+            createdAt: i.date().optional(),
+            updatedAt: i.date().optional(),
+            deletedAt: i.date().optional(),
+          }),
         },
-        links: {},
-      };
+      });
 
       expect(() => { configureEntityMeta(schema); }).not.toThrow();
     });

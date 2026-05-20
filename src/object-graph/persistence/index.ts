@@ -4,10 +4,5 @@ export { ScopedTransaction, type TransactionStoreAccess } from "./ScopedTransact
 export { TransactionContext } from "./TransactionContext";
 export type {
   InstantDBClient,
-  TxChunk,
-  TxProxy,
-  TransactionResult,
-  SubscriptionCallback,
   Unsubscribe,
-  QueryOptions,
 } from "./types";

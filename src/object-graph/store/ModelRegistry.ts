@@ -1,6 +1,6 @@
 import type { ModelConstructor } from "./types";
 
-export type ModelClassKey = abstract new (...args: never[]) => object;
+export type ModelClassKey = { prototype: object };
 
 /**
  * Singleton registry for Model classes.

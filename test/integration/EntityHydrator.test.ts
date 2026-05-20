@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
   setupTestDatabase,
@@ -16,13 +17,13 @@ import "../support/entities/SkiMatch";
 
 describe("RootStore hydration (Integration)", () => {
   let db: TestInstantDBClient;
-  let storeA: RootStore; // "Device A" - creates data
-  let storeB: RootStore; // "Device B" - hydrates data
+  let storeA: RootStore<AppSchema>; // "Device A" - creates data
+  let storeB: RootStore<AppSchema>; // "Device B" - hydrates data
 
   beforeEach(() => {
     db = setupTestDatabase();
-    storeA = new RootStore({ db });
-    storeB = new RootStore({ db });
+    storeA = new RootStore<AppSchema>({ db });
+    storeB = new RootStore<AppSchema>({ db });
   });
 
   // Helper to create user through Store A (simulates another device creating data)
@@ -102,7 +103,7 @@ describe("RootStore hydration (Integration)", () => {
     fakeUserId: string
   ) {
     await db.transact([
-      db.tx.posts[entityId]
+      db.__adminDb.tx.posts[entityId]
         .update({
           title: "Test Post",
           createdAt: new Date().toISOString(),
@@ -362,7 +363,7 @@ describe("RootStore hydration (Integration)", () => {
 
       // Mark user as deleted directly in DB (simulates another device)
       await db.transact([
-        db.tx.users[user.id].update({ deletedAt: new Date().toISOString() }),
+        db.__adminDb.tx.users[user.id].update({ deletedAt: new Date().toISOString() }),
       ]);
 
       // Wait for reactive sync to process

@@ -5,6 +5,7 @@ import {
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 import { Tag } from "../support/entities/Tag";
@@ -58,17 +59,32 @@ import { Tag } from "../support/entities/Tag";
  * hydrator stomps your edits) because the field-level decisions above
  * aren't implemented yet. Flip `describe.skip` → `describe` when ready.
  */
+function firstPostWithTitleAndDeletedAt(
+  result: unknown
+): { title: string; deletedAt: string } | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  const posts: unknown = Reflect.get(result, "posts");
+  if (!Array.isArray(posts)) return undefined;
+  const rows: unknown[] = posts;
+  const first: unknown = rows[0];
+  if (typeof first !== "object" || first === null) return undefined;
+  const title: unknown = Reflect.get(first, "title");
+  const deletedAt: unknown = Reflect.get(first, "deletedAt");
+  if (typeof title !== "string" || typeof deletedAt !== "string") return undefined;
+  return { title, deletedAt };
+}
+
 describe("Linear-style optimistic merge", () => {
   let db: TestInstantDBClient;
-  let store: RootStore;
+  let store: RootStore<AppSchema>;
 
   beforeEach(() => {
     db = setupTestDatabase();
-    store = new RootStore({ db });
+    store = new RootStore<AppSchema>({ db });
   });
 
-  function freshStore(): RootStore {
-    return new RootStore({ db });
+  function freshStore(): RootStore<AppSchema> {
+    return new RootStore<AppSchema>({ db });
   }
 
   /**
@@ -76,8 +92,8 @@ describe("Linear-style optimistic merge", () => {
    * RootStore against the same DB. After this returns, the DB has the
    * remote change; the user's `store` won't see it until it next hydrates.
    */
-  async function applyRemote(fn: (remote: RootStore) => void | Promise<void>): Promise<void> {
-    const remote = new RootStore({ db });
+  async function applyRemote(fn: (remote: RootStore<AppSchema>) => void | Promise<void>): Promise<void> {
+    const remote = new RootStore<AppSchema>({ db });
     await remote.queryAll();
     await remote.transaction(async () => {
       await fn(remote);
@@ -488,7 +504,7 @@ describe("Linear-style optimistic merge", () => {
 
     // But the row IS in the DB with the user's title edit on top of the tombstone.
     const raw = await db.query({ posts: { $: { where: { id: issue.id } } } });
-    const row = (raw as { posts?: Array<{ title: string; deletedAt: string }> }).posts?.[0];
+    const row = firstPostWithTitleAndDeletedAt(raw);
     expect(row?.title).toBe("Fix login bug");
     expect(row?.deletedAt).toBeTruthy();
   });
