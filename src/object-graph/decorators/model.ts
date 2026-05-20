@@ -1,16 +1,14 @@
 import { modelRegistry } from "../store/ModelRegistry";
-import type { ModelConstructor } from "../store/types";
+import type { Constructor, ModelConstructor } from "../store/types";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 
 export { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
 
-type ModelClassType = (abstract new (...args: never[]) => { id: string })
-  | { prototype: { id: string }; name: string };
+const MODEL_BASE_CLASS_NAME = "Model";
 
-function getClassName(cls: object): string {
-  const name: unknown = Reflect.get(cls, "name");
-  return typeof name === "string" ? name : "";
-}
+type ModelClassType =
+  | (abstract new (...args: never[]) => { id: string })
+  | { prototype: { id: string }; name: string };
 
 function readStoredEntityName(cls: object): string | undefined {
   const stored: unknown = Reflect.get(cls, ENTITY_NAME_KEY);
@@ -21,21 +19,17 @@ function writeStoredEntityName(cls: object, entityName: string): void {
   Reflect.set(cls, ENTITY_NAME_KEY, entityName);
 }
 
-function readPrototype(cls: object): object | null {
+function readParentClass(cls: object): Constructor<object> | null {
   const proto: unknown = Object.getPrototypeOf(cls);
-  if (proto === null) return null;
-  if (typeof proto !== "object" && typeof proto !== "function") return null;
-  return proto;
+  return typeof proto === "function" ? proto : null;
 }
 
 /** Get entity name from a class (set by @model decorator) */
-export function getEntityNameFromClass(
-  ModelClass: ModelClassType
-): string {
+export function getEntityNameFromClass(ModelClass: ModelClassType): string {
   const stored = readStoredEntityName(ModelClass);
   if (!stored) {
     throw new Error(
-      `Model class ${getClassName(ModelClass)} has no entity name. Did you add @model decorator?`
+      `Model class ${ModelClass.name} has no entity name. Did you add @model decorator?`
     );
   }
   return stored;
@@ -46,13 +40,12 @@ export function getEntityNameFromClass(
  * For STI, this determines the shared table name.
  * Uses name comparison to avoid circular import with Model.ts.
  */
-function findRootModelClass(target: ModelClassType): object {
-  let current: object | null = target;
-  while (current && getClassName(current) !== "Model") {
-    const parent = readPrototype(current);
-    if (parent && getClassName(parent) === "Model") {
-      return current;
-    }
+function findRootModelClass(target: ModelClassType): Constructor<object> {
+  let current: Constructor<object> = target;
+  while (current.name !== MODEL_BASE_CLASS_NAME) {
+    const parent = readParentClass(current);
+    if (!parent) return target;
+    if (parent.name === MODEL_BASE_CLASS_NAME) return current;
     current = parent;
   }
   return target;
@@ -63,11 +56,7 @@ function findRootModelClass(target: ModelClassType): object {
  * The modelType must be defined as a getter: `get modelType() { return "value"; }`
  */
 function getDiscriminatorValue(target: ModelClassType): string | undefined {
-  const proto: unknown = Reflect.get(target, "prototype");
-  if (proto === null || (typeof proto !== "object" && typeof proto !== "function")) {
-    return undefined;
-  }
-  const descriptor = Object.getOwnPropertyDescriptor(proto, "modelType");
+  const descriptor = Object.getOwnPropertyDescriptor(target.prototype, "modelType");
   if (!descriptor) return undefined;
 
   if (typeof descriptor.get === "function") {
@@ -87,9 +76,9 @@ function applyModelDecorator<T extends ModelConstructor>(
   explicitEntityName?: string
 ): T {
   const rootClass = findRootModelClass(target);
-  const isSubclass = rootClass !== (target as object);
+  const isSubclass = rootClass !== target;
 
-  const entityName = explicitEntityName ?? deriveEntityName(getClassName(rootClass));
+  const entityName = explicitEntityName ?? deriveEntityName(rootClass.name);
   writeStoredEntityName(target, entityName);
 
   if (isSubclass) {
@@ -97,7 +86,7 @@ function applyModelDecorator<T extends ModelConstructor>(
     if (discriminatorValue) {
       modelRegistry.registerDiscriminator(entityName, discriminatorValue, target);
     } else {
-      const ownEntityName = explicitEntityName ?? deriveEntityName(getClassName(target));
+      const ownEntityName = explicitEntityName ?? deriveEntityName(target.name);
       writeStoredEntityName(target, ownEntityName);
       modelRegistry.register(ownEntityName, target);
     }
@@ -105,18 +94,18 @@ function applyModelDecorator<T extends ModelConstructor>(
     modelRegistry.register(entityName, target);
   }
 
-  let parent = readPrototype(target);
-  while (parent && getClassName(parent) !== "Model") {
+  let parent = readParentClass(target);
+  while (parent && parent.name !== MODEL_BASE_CLASS_NAME) {
     if (isModelConstructor(parent)) {
       modelRegistry.registerSubclass(parent, target);
     }
-    parent = readPrototype(parent);
+    parent = readParentClass(parent);
   }
 
   return target;
 }
 
-function isModelConstructor(value: object): value is ModelConstructor {
+function isModelConstructor(value: Constructor<object>): value is ModelConstructor {
   return typeof value === "function" && "prototype" in value;
 }
 

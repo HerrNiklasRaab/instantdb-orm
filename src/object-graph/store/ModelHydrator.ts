@@ -1,5 +1,5 @@
 import { runInAction } from "mobx";
-import type { AnySchema } from "@upfor/shared";
+import type { AnySchema } from "../../instantdb";
 import type { IdentityMap } from "../IdentityMap";
 import { Model } from "../Model";
 import {
@@ -42,11 +42,7 @@ export class ModelHydrator<Schema extends AnySchema> {
     const links = getEntityLinks(entityName);
 
     const model = identityMap.getOrCreate(rawData.id, () => {
-      const prototype: unknown = Reflect.get(ModelClass, "prototype");
-      if (prototype === null || (typeof prototype !== "object" && typeof prototype !== "function")) {
-        throw new Error(`Cannot hydrate ${entityName}: ModelClass has no prototype.`);
-      }
-      const blank: unknown = Object.create(prototype);
+      const blank: unknown = Object.create(ModelClass.prototype);
       if (!(blank instanceof Model)) {
         throw new Error(
           `Hydration produced a non-Model instance for entity '${entityName}'.`

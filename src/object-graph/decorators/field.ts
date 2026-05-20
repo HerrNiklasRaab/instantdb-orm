@@ -29,7 +29,7 @@ export function field(options?: { attributeName?: string }) {
       if (fromCtor !== undefined) candidate = fromCtor;
     }
     if (typeof candidate !== "function") return;
-    const ModelClass: object = candidate;
+    const ModelClass = candidate;
 
     const attributeName =
       options?.attributeName ??

@@ -1,15 +1,20 @@
 import { runInAction } from "mobx";
-import type { LinkParams, UpdateParams } from "@instantdb/core";
-import type { AnySchema, SchemaChunk, SchemaTxProxy } from "@upfor/shared";
+import type { LinkParams, TransactionChunk, TxChunk, UpdateParams } from "@instantdb/core";
+import type { AnySchema } from "../../instantdb";
 import { Model } from "../Model";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
 import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
 
+type SchemaChunk<Schema extends AnySchema> = TransactionChunk<
+  Schema,
+  keyof Schema["entities"] & string
+>;
+
 export interface TransactionStoreAccess<Schema extends AnySchema> {
   readonly db: {
-    tx: SchemaTxProxy<Schema>;
+    tx: TxChunk<Schema>;
     transact(chunks: SchemaChunk<Schema>[]): Promise<unknown>;
   };
   getIdentityMapByName(entityName: string): {

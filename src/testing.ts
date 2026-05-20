@@ -2,7 +2,7 @@ import {
   ScopedTransaction,
   TransactionContext,
 } from "./object-graph";
-import type { AnySchema } from "@upfor/shared";
+import type { AnySchema } from "./instantdb";
 import type { TransactionStoreAccess } from "./object-graph/persistence/ScopedTransaction";
 
 /**

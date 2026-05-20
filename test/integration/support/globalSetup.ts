@@ -1,6 +1,6 @@
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { prepareTestApp } from "@upfor/shared/test";
+import { prepareTestApp } from "@upfor/sync/test";
 import schema from "../../support/instant.schema";
 import perms from "../../support/instant.perms";
 

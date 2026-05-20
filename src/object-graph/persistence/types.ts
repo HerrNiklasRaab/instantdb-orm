@@ -1,4 +1,2 @@
-export {
-  type InstantDBClient,
-  type Unsubscribe,
-} from "@upfor/shared";
+export { InstantDBClient } from "../../instantdb";
+export type { Unsubscribe } from "../../instantdb";

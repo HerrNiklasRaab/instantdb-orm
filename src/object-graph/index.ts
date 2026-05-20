@@ -9,12 +9,15 @@ export {
   getModelClass,
   isValidEntityName,
   getEntityNames,
+  getEntityAttrs,
+  getEntityLinks,
+  readField,
+  writeField,
   configureEntityMeta,
   type EntityName,
   type ModelInstanceFor,
   type ModelClassFor,
   type RawEntityData,
-  type QueryResult,
   type RootStoreConfig,
   type ModelConstructor,
   type GetIdentityMap,
@@ -22,7 +25,7 @@ export {
 export {
   ScopedTransaction,
   TransactionContext,
-  type InstantDBClient,
+  InstantDBClient,
   type Unsubscribe,
 } from "./persistence";
-export type { AnySchema, SchemaChunk, SchemaTxProxy } from "@upfor/shared";
+export type { AnySchema, QuerySubscriptionState } from "../instantdb";

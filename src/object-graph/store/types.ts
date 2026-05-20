@@ -1,17 +1,13 @@
-import type { AnySchema } from "@upfor/shared";
+import type { AnySchema } from "../../instantdb";
 import type { Model } from "../Model";
-import type { InstantDBClient } from "../persistence/types";
+import { InstantDBClient } from "../persistence/types";
 
 export interface RawEntityData {
   id: string;
   [key: string]: unknown;
 }
 
-export type QueryResult = {
-  [entityName: string]: RawEntityData[] | undefined;
-};
-
-export type { InstantDBClient };
+export { InstantDBClient };
 
 export interface RootStoreConfig<Schema extends AnySchema> {
   db: InstantDBClient<Schema>;
@@ -27,7 +23,9 @@ export interface RootStoreConfig<Schema extends AnySchema> {
   debugView?: boolean;
 }
 
-export type ModelConstructor<T extends Model = Model> = { prototype: T; readonly name: string };
+export type Constructor<T = unknown> = { prototype: T; readonly name: string };
+
+export type ModelConstructor<T extends Model = Model> = Constructor<T>;
 
 type WithKey<K extends string, T> = K extends string ? T : T;
 export type ModelInstanceFor<K extends string> = WithKey<K, Model>;

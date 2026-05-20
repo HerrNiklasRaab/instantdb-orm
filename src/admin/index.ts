@@ -1,0 +1,1 @@
+export { InstantDBAdminAdapter } from "./InstantDBAdminAdapter";

@@ -4,7 +4,7 @@ import {
   initTestDatabaseAsUser as sharedInitTestDatabaseAsUser,
   seedAuthUser as sharedSeedAuthUser,
   type TestInstantDBClient as SharedTestInstantDBClient,
-} from "@upfor/shared/test";
+} from "@upfor/sync/test";
 import { configureEntityMeta } from "../../../src/object-graph";
 import schema, { type AppSchema } from "../../support/instant.schema";
 
@@ -29,8 +29,7 @@ export {
   wait,
   waitFor,
   waitForSubscription,
-  cleanupTestEntities,
-} from "@upfor/shared/test";
+} from "@upfor/sync/test";
 
 export type TestInstantDBClient = SharedTestInstantDBClient<AppSchema>;
 

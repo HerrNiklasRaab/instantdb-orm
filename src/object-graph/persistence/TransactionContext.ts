@@ -1,4 +1,4 @@
-import type { AnySchema } from "@upfor/shared";
+import type { AnySchema } from "../../instantdb";
 import type { ScopedTransaction } from "./ScopedTransaction";
 
 type AsyncLocalStorageLike<T> = {

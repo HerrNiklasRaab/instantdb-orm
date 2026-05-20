@@ -151,7 +151,10 @@ describe("Single Table Inheritance (Integration)", () => {
 
   describe("soft delete", () => {
     // Helper to mark entity as deleted directly in database
-    async function markAsDeletedInDb(entityType: string, entityId: string) {
+    async function markAsDeletedInDb(
+      entityType: keyof AppSchema["entities"] & string,
+      entityId: string,
+    ) {
       await db.transact([
         db.tx[entityType][entityId].update({
           deletedAt: new Date().toISOString(),

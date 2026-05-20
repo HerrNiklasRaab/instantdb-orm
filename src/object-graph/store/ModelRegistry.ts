@@ -1,6 +1,6 @@
-import type { ModelConstructor } from "./types";
+import type { Constructor, ModelConstructor } from "./types";
 
-export type ModelClassKey = { prototype: object };
+export type ModelClassKey = Constructor<object>;
 
 /**
  * Singleton registry for Model classes.
