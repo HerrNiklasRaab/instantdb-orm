@@ -1,5 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
-import { type EntityName, getEntityMeta, RelationshipFieldMeta } from "./store/EntityMeta";
+import {
+  type EntityName,
+  getEntityAttrs,
+  getEntityLinks,
+  getFieldNameOnModel,
+  readField,
+} from "./store/EntityMeta";
 import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
 import {
   makeObservable as mobxMakeObservable,
@@ -142,16 +148,22 @@ export abstract class Model {
   }
 
   private setupObservers(disposers: (() => void)[]): void {
-    const meta = getEntityMeta(this.entityName);
+    const attrs = getEntityAttrs(this.entityName);
+    const links = getEntityLinks(this.entityName);
 
     const propToFieldName = new Map<string, string>();
-    const toOneRelByProp = new Map<string, RelationshipFieldMeta>();
-    for (const field of meta.fields) {
-      if (field.fieldName === "id") continue;
-      const propName = field.getFieldNameOnModel(this);
-      propToFieldName.set(propName, field.fieldName);
-      if (field instanceof RelationshipFieldMeta && field.isToOne()) {
-        toOneRelByProp.set(propName, field);
+    const toOneRelByProp = new Map<string, string>();
+    for (const fieldName of Object.keys(attrs)) {
+      if (fieldName === "id") continue;
+      const propName = getFieldNameOnModel(this, fieldName);
+      propToFieldName.set(propName, fieldName);
+    }
+    for (const [fieldName, linkAttr] of Object.entries(links)) {
+      if (fieldName === "id") continue;
+      const propName = getFieldNameOnModel(this, fieldName);
+      propToFieldName.set(propName, fieldName);
+      if (linkAttr.cardinality === "one") {
+        toOneRelByProp.set(propName, fieldName);
       }
     }
 
@@ -174,15 +186,15 @@ export abstract class Model {
       const observeDisposer = observe(this as object, (change) => {
         if (change.type !== "update") return;
         if (typeof change.name !== "string") return;
-        const rel = toOneRelByProp.get(change.name);
-        if (!rel) return;
+        const relFieldName = toOneRelByProp.get(change.name);
+        if (relFieldName === undefined) return;
         const oldVal: unknown = change.oldValue;
         const newVal: unknown = change.newValue;
         if (oldVal instanceof Model && oldVal !== newVal) {
-          wireReverseLink(this, oldVal, rel, false);
+          wireReverseLink(this, oldVal, relFieldName, false);
         }
         if (newVal instanceof Model && oldVal !== newVal) {
-          wireReverseLink(this, newVal, rel, true);
+          wireReverseLink(this, newVal, relFieldName, true);
         }
       });
       disposers.push(observeDisposer);
@@ -190,12 +202,11 @@ export abstract class Model {
       // Object might not be observable, skip
     }
 
-    for (const field of meta.fields) {
-      if (field.fieldName === "id") continue;
-      if (!(field instanceof RelationshipFieldMeta) || !field.isToMany()) continue;
-      const rel = field;
-      const relFieldName = rel.fieldName;
-      const rawArray: unknown = rel.read(this);
+    for (const [fieldName, linkAttr] of Object.entries(links)) {
+      if (fieldName === "id") continue;
+      if (linkAttr.cardinality !== "many") continue;
+      const relFieldName = fieldName;
+      const rawArray: unknown = readField(this, fieldName);
       if (!Array.isArray(rawArray)) continue;
       const arrayObservable = rawArray;
       const members = new Set<Model>();
@@ -207,10 +218,10 @@ export abstract class Model {
         const disposer = observe(arrayObservable, (change) => {
           if (change.type === "splice") {
             for (const added of change.added) {
-              if (added instanceof Model) wireReverseLink(this, added, rel, true);
+              if (added instanceof Model) wireReverseLink(this, added, relFieldName, true);
             }
             for (const removed of change.removed) {
-              if (removed instanceof Model) wireReverseLink(this, removed, rel, false);
+              if (removed instanceof Model) wireReverseLink(this, removed, relFieldName, false);
             }
           }
         });
@@ -283,14 +294,14 @@ export abstract class Model {
    */
   private wireConstructorRelationships(): void {
     withConstructorSweep(() => {
-      const meta = getEntityMeta(this.entityName);
-      for (const rel of meta.relationshipFields) {
-        const value = rel.read(this);
-        if (rel.isToOne()) {
-          if (value instanceof Model) wireReverseLink(this, value, rel, true);
+      const links = getEntityLinks(this.entityName);
+      for (const [fieldName, linkAttr] of Object.entries(links)) {
+        const value = readField(this, fieldName);
+        if (linkAttr.cardinality === "one") {
+          if (value instanceof Model) wireReverseLink(this, value, fieldName, true);
         } else if (Array.isArray(value)) {
           for (const child of value) {
-            if (child instanceof Model) wireReverseLink(this, child, rel, true);
+            if (child instanceof Model) wireReverseLink(this, child, fieldName, true);
           }
         }
       }
@@ -299,16 +310,17 @@ export abstract class Model {
 
   private setupDebugView(): void {
     if (!debugViewEnabled) return;
-    const meta = getEntityMeta(this.entityName);
+    const attrs = getEntityAttrs(this.entityName);
+    const links = getEntityLinks(this.entityName);
 
     this._debugViewDisposer = reaction(
       () => {
         const values: unknown[] = [];
-        for (const field of meta.scalarFields) {
-          values.push(field.read(this));
+        for (const fieldName of Object.keys(attrs)) {
+          values.push(readField(this, fieldName));
         }
-        for (const rel of meta.relationshipFields) {
-          values.push(rel.read(this));
+        for (const fieldName of Object.keys(links)) {
+          values.push(readField(this, fieldName));
         }
         return values;
       },
@@ -320,16 +332,17 @@ export abstract class Model {
   }
 
   private buildDebugViewSnapshot(): Record<string, unknown> {
-    const meta = getEntityMeta(this.entityName);
+    const attrs = getEntityAttrs(this.entityName);
+    const links = getEntityLinks(this.entityName);
     const snapshot: Record<string, unknown> = { id: this.id };
 
-    for (const field of meta.scalarFields) {
-      const value = field.read(this);
-      snapshot[field.fieldName] = value instanceof Date ? value.toISOString() : value;
+    for (const fieldName of Object.keys(attrs)) {
+      const value = readField(this, fieldName);
+      snapshot[fieldName] = value instanceof Date ? value.toISOString() : value;
     }
 
-    for (const rel of meta.relationshipFields) {
-      snapshot[rel.fieldName] = rel.read(this);
+    for (const fieldName of Object.keys(links)) {
+      snapshot[fieldName] = readField(this, fieldName);
     }
 
     return snapshot;

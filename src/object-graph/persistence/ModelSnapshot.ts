@@ -1,5 +1,5 @@
 import { Model } from "../Model";
-import { getEntityMeta } from "../store/EntityMeta";
+import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
 import type { RawEntityData } from "../store/types";
 
 /**
@@ -14,18 +14,17 @@ export class ModelSnapshot {
   constructor(model: Model | null = null) {
     if (model === null) return;
     const entityName = model.entityName;
-    const meta = getEntityMeta(entityName);
 
-    for (const field of meta.scalarFields) {
-      this.scalars.set(field.fieldName, field.read(model));
+    for (const fieldName of Object.keys(getEntityAttrs(entityName))) {
+      this.scalars.set(fieldName, readField(model, fieldName));
     }
 
-    for (const rel of meta.relationshipFields) {
-      const value = rel.read(model);
+    for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(entityName))) {
+      const value = readField(model, fieldName);
 
-      if (rel.isToOne()) {
+      if (linkAttr.cardinality === "one") {
         const id = value instanceof Model ? value.id : null;
-        this.relationships.set(rel.fieldName, id);
+        this.relationships.set(fieldName, id);
       } else {
         const ids: string[] = [];
         if (Array.isArray(value)) {
@@ -33,7 +32,7 @@ export class ModelSnapshot {
             if (item instanceof Model) ids.push(item.id);
           }
         }
-        this.relationships.set(rel.fieldName, ids);
+        this.relationships.set(fieldName, ids);
       }
     }
   }

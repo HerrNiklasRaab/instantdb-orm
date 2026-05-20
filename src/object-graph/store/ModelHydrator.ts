@@ -9,7 +9,7 @@ import {
 } from "./ModelRegistry";
 import type { EntityName } from "./EntityMeta";
 import type { ModelInstanceFor } from "./types";
-import { getEntityMeta } from "./EntityMeta";
+import { findReverseSide, getEntityAttrs, getEntityLinks, readField, writeField } from "./EntityMeta";
 import type { RawEntityData } from "./types";
 import { RootStore } from "./RootStore";
 import { withHydration } from "./hydrationContext";
@@ -38,7 +38,8 @@ export class ModelHydrator<Schema extends AnySchema> {
   ): ModelInstanceFor<K> | null {
     const ModelClass = this.resolveModelClass(entityName, rawData);
     const identityMap = getIdentityMap(entityName);
-    const meta = getEntityMeta(entityName);
+    const attrs = getEntityAttrs(entityName);
+    const links = getEntityLinks(entityName);
 
     const model = identityMap.getOrCreate(rawData.id, () => {
       const prototype: unknown = Reflect.get(ModelClass, "prototype");
@@ -55,13 +56,13 @@ export class ModelHydrator<Schema extends AnySchema> {
 
       Reflect.set(instance, "id", rawData.id);
 
-      for (const field of meta.scalarFields) {
-        if (field.fieldName === "modelType") continue;
-        field.write(instance, undefined);
+      for (const fieldName of Object.keys(attrs)) {
+        if (fieldName === "modelType") continue;
+        writeField(instance, fieldName, undefined);
       }
 
-      for (const rel of meta.relationshipFields) {
-        rel.write(instance, rel.isToMany() ? [] : null);
+      for (const [fieldName, linkAttr] of Object.entries(links)) {
+        writeField(instance, fieldName, linkAttr.cardinality === "many" ? [] : null);
       }
 
       instance.initTracking(false);
@@ -112,21 +113,17 @@ export class ModelHydrator<Schema extends AnySchema> {
     rawData: RawEntityData,
     getIdentityMap: GetIdentityMap
   ): void {
-    const meta = getEntityMeta(entityName);
-
     runInAction(() => {
-      for (const field of meta.scalarFields) {
-        if (field.fieldName === "modelType") continue;
-        // Skip fields the user has locally mutated in any active tx —
-        // a remote update must not stomp an in-progress edit.
-        if (model.isFieldTouched(field.fieldName)) continue;
-        const value = rawData[field.fieldName];
+      for (const [fieldName, attr] of Object.entries(getEntityAttrs(entityName))) {
+        if (fieldName === "modelType") continue;
+        if (model.isFieldTouched(fieldName)) continue;
+        const value = rawData[fieldName];
         if (value !== undefined) {
           const next =
-            field.isDate && value != null && (typeof value === "string" || typeof value === "number")
+            attr.valueType === "date" && value != null && (typeof value === "string" || typeof value === "number")
               ? new Date(value)
               : value;
-          field.write(model, next);
+          writeField(model, fieldName, next);
         }
       }
 
@@ -145,42 +142,38 @@ export class ModelHydrator<Schema extends AnySchema> {
     rawData: RawEntityData,
     getIdentityMap: GetIdentityMap
   ): void {
-    const meta = getEntityMeta(entityName);
+    for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(entityName))) {
+      const nestedData = rawData[fieldName];
 
-    for (const rel of meta.relationshipFields) {
-      const nestedData = rawData[rel.fieldName];
-
-      // Skip if relationship data wasn't included in query (undefined)
-      // But process null explicitly - it means "clear the relationship"
       if (nestedData === undefined) continue;
-      // Skip if the user has locally mutated this relationship in any active tx.
-      if (model.isFieldTouched(rel.fieldName)) continue;
+      if (model.isFieldTouched(fieldName)) continue;
 
       const nestedArray: unknown[] = Array.isArray(nestedData)
         ? nestedData
         : [nestedData];
 
-      const targetMap = getIdentityMap(rel.targetEntity);
+      const targetEntity = linkAttr.entityName;
+      const targetMap = getIdentityMap(targetEntity);
 
-      if (rel.isToOne()) {
+      if (linkAttr.cardinality === "one") {
         const firstItem = toRawEntityData(nestedArray[0]);
         if (firstItem?.id) {
           let targetModel: Model | null = null;
           if (this.hasFullEntityData(firstItem)) {
-            targetModel = this.hydrate(rel.targetEntity, firstItem, getIdentityMap);
+            targetModel = this.hydrate(targetEntity, firstItem, getIdentityMap);
           } else {
             targetModel = targetMap.get(firstItem.id) ?? null;
           }
 
           if (targetModel) {
-            rel.write(model, targetModel);
-            this.setReverseRelationship(model, targetModel, rel);
+            writeField(model, fieldName, targetModel);
+            this.setReverseRelationship(model, targetModel, fieldName);
           }
         } else {
-          rel.write(model, null);
+          writeField(model, fieldName, null);
         }
       } else {
-        const existing = rel.read(model);
+        const existing = readField(model, fieldName);
         if (!Array.isArray(existing)) continue;
         existing.length = 0;
 
@@ -189,14 +182,14 @@ export class ModelHydrator<Schema extends AnySchema> {
           if (!item) continue;
           let targetModel: Model | null = null;
           if (this.hasFullEntityData(item)) {
-            targetModel = this.hydrate(rel.targetEntity, item, getIdentityMap);
+            targetModel = this.hydrate(targetEntity, item, getIdentityMap);
           } else {
             targetModel = targetMap.get(item.id) ?? null;
           }
 
           if (targetModel) {
             existing.push(targetModel);
-            this.setReverseRelationship(model, targetModel, rel);
+            this.setReverseRelationship(model, targetModel, fieldName);
           }
         }
       }
@@ -251,20 +244,19 @@ export class ModelHydrator<Schema extends AnySchema> {
   private setReverseRelationship(
     model: Model,
     targetModel: Model,
-    rel: { fieldName: string; targetEntity: EntityName; cardinality: "one" | "many"; isForward: boolean; linkName: string }
+    fieldName: string
   ): void {
-    const targetMeta = getEntityMeta(rel.targetEntity);
-    const reverseRel = targetMeta.findReverseRelationship(rel.linkName, rel.fieldName);
+    const reverse = findReverseSide(model.entityName, fieldName);
+    if (!reverse) return;
+    const [, reverseFieldName, reverseCardinality] = reverse;
 
-    if (!reverseRel) return;
-
-    if (reverseRel.isToMany()) {
-      const array = reverseRel.read(targetModel);
+    if (reverseCardinality === "many") {
+      const array = readField(targetModel, reverseFieldName);
       if (Array.isArray(array)) {
         array.push(model);
       }
     } else {
-      reverseRel.write(targetModel, model);
+      writeField(targetModel, reverseFieldName, model);
     }
   }
 }

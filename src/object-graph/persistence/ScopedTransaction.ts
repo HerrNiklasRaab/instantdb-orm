@@ -5,7 +5,7 @@ import { Model } from "../Model";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
-import { getEntityMeta } from "../store/EntityMeta";
+import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
 
 export interface TransactionStoreAccess<Schema extends AnySchema> {
   readonly db: {
@@ -17,7 +17,6 @@ export interface TransactionStoreAccess<Schema extends AnySchema> {
     set(model: Model): void;
     delete(id: string): boolean;
   };
-  getLinkLabel(entityName: string, linkName: string): string;
   rehydrateModel(model: Model, rawData: { id: string; [key: string]: unknown }): void;
 }
 
@@ -115,7 +114,8 @@ export class ScopedTransaction<Schema extends AnySchema> {
       claim: ClaimRecord
     ): SchemaChunk<Schema> | null => {
       const entityName = model.entityName;
-      const meta = getEntityMeta(entityName);
+      const attrs = getEntityAttrs(entityName);
+      const links_ = getEntityLinks(entityName);
 
       const updateData: UpdateParams<Schema, keyof Schema["entities"] & string> = {};
       const links: LinkParams<Schema, keyof Schema["entities"] & string> = {};
@@ -125,29 +125,29 @@ export class ScopedTransaction<Schema extends AnySchema> {
       let hasUnlinks = false;
 
       for (const fieldName of claim.touched) {
-        const scalarField = meta.scalarFields.find(f => f.fieldName === fieldName);
-        if (scalarField && scalarField.fieldName !== "id") {
-          const value = scalarField.read(model);
+        if (fieldName === "id") continue;
+
+        if (fieldName in attrs) {
+          const value = readField(model, fieldName);
           Reflect.set(updateData, fieldName, value instanceof Date ? value.toISOString() : value);
           hasUpdates = true;
           continue;
         }
 
-        const relField = meta.relationshipFields.find(r => r.fieldName === fieldName);
-        if (!relField) continue;
-        const value = relField.read(model);
-        const label = store.getLinkLabel(entityName, relField.linkName);
+        if (!(fieldName in links_)) continue;
+        const linkAttr = links_[fieldName];
+        const value = readField(model, fieldName);
 
-        if (relField.isToOne()) {
+        if (linkAttr.cardinality === "one") {
           const currentId = value instanceof Model ? value.id : null;
           const original = claim.data.relationships.get(fieldName);
           const originalId = typeof original === "string" ? original : null;
           if (currentId !== originalId) {
             if (originalId) {
-              hasUnlinks = appendLink(unlinks, label, originalId) || hasUnlinks;
+              hasUnlinks = appendLink(unlinks, fieldName, originalId) || hasUnlinks;
             }
             if (currentId) {
-              hasLinks = appendLink(links, label, currentId) || hasLinks;
+              hasLinks = appendLink(links, fieldName, currentId) || hasLinks;
             }
           }
         } else {
@@ -163,12 +163,12 @@ export class ScopedTransaction<Schema extends AnySchema> {
           const currSet = new Set(currentIds);
           for (const id of currSet) {
             if (!origSet.has(id)) {
-              hasLinks = appendLink(links, label, id) || hasLinks;
+              hasLinks = appendLink(links, fieldName, id) || hasLinks;
             }
           }
           for (const id of origSet) {
             if (!currSet.has(id)) {
-              hasUnlinks = appendLink(unlinks, label, id) || hasUnlinks;
+              hasUnlinks = appendLink(unlinks, fieldName, id) || hasUnlinks;
             }
           }
         }
@@ -206,17 +206,15 @@ export class ScopedTransaction<Schema extends AnySchema> {
         tx = tx.update(updateData);
       }
 
-      for (const [linkName, ids] of diff.links) {
-        const label = store.getLinkLabel(entityName, linkName);
+      for (const [fieldName, ids] of diff.links) {
         const linkData: LinkParams<Schema, keyof Schema["entities"] & string> = {};
-        Reflect.set(linkData, label, ids.length === 1 ? ids[0] : ids);
+        Reflect.set(linkData, fieldName, ids.length === 1 ? ids[0] : ids);
         tx = tx.link(linkData);
       }
 
-      for (const [linkName, ids] of diff.unlinks) {
-        const label = store.getLinkLabel(entityName, linkName);
+      for (const [fieldName, ids] of diff.unlinks) {
         const unlinkData: LinkParams<Schema, keyof Schema["entities"] & string> = {};
-        Reflect.set(unlinkData, label, ids.length === 1 ? ids[0] : ids);
+        Reflect.set(unlinkData, fieldName, ids.length === 1 ? ids[0] : ids);
         tx = tx.unlink(unlinkData);
       }
 

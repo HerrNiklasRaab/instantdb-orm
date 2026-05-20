@@ -1,5 +1,5 @@
 import type { EntityName } from "../store/EntityMeta";
-import { getEntityMeta } from "../store/EntityMeta";
+import { getEntityAttrs, getEntityLinks } from "../store/EntityMeta";
 import type { ModelSnapshot } from "./ModelSnapshot";
 
 /**
@@ -17,9 +17,8 @@ export class ModelSnapshotDiff {
     entityName: EntityName,
     private isNew: boolean
   ) {
-    const meta = getEntityMeta(entityName);
-    this.computeScalarDiff(meta);
-    this.computeRelationshipDiff(meta);
+    this.computeScalarDiff(entityName);
+    this.computeRelationshipDiff(entityName);
   }
 
   hasChanges(): boolean {
@@ -28,66 +27,59 @@ export class ModelSnapshotDiff {
     );
   }
 
-  private computeScalarDiff(meta: ReturnType<typeof getEntityMeta>): void {
+  private computeScalarDiff(entityName: EntityName): void {
+    const attrs = getEntityAttrs(entityName);
     if (this.isNew) {
-      // New entity: include ALL scalar fields (excluding id)
-      for (const field of meta.scalarFields) {
-        if (field.fieldName === "id") continue;
-        this.scalars.set(field.fieldName, this.current.scalars.get(field.fieldName));
+      for (const fieldName of Object.keys(attrs)) {
+        if (fieldName === "id") continue;
+        this.scalars.set(fieldName, this.current.scalars.get(fieldName));
       }
     } else {
-      // Existing entity: include only changed scalars
-      for (const field of meta.scalarFields) {
-        if (field.fieldName === "id") continue;
-        const originalValue = this.original.scalars.get(field.fieldName);
-        const currentValue = this.current.scalars.get(field.fieldName);
+      for (const fieldName of Object.keys(attrs)) {
+        if (fieldName === "id") continue;
+        const originalValue = this.original.scalars.get(fieldName);
+        const currentValue = this.current.scalars.get(fieldName);
         if (!scalarsEqual(originalValue, currentValue)) {
-          this.scalars.set(field.fieldName, currentValue);
+          this.scalars.set(fieldName, currentValue);
         }
       }
     }
   }
 
-  private computeRelationshipDiff(
-    meta: ReturnType<typeof getEntityMeta>
-  ): void {
-    for (const rel of meta.relationshipFields) {
-      if (rel.isToOne()) {
-        this.computeToOneDiff(rel);
+  private computeRelationshipDiff(entityName: EntityName): void {
+    for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(entityName))) {
+      if (linkAttr.cardinality === "one") {
+        this.computeToOneDiff(fieldName);
       } else {
-        this.computeToManyDiff(rel);
+        this.computeToManyDiff(fieldName);
       }
     }
   }
 
-  private computeToOneDiff(rel: { fieldName: string; linkName: string }): void {
-    const currentId = toScalarId(this.current.relationships.get(rel.fieldName));
-    const originalId = toScalarId(this.original.relationships.get(rel.fieldName));
+  private computeToOneDiff(fieldName: string): void {
+    const currentId = toScalarId(this.current.relationships.get(fieldName));
+    const originalId = toScalarId(this.original.relationships.get(fieldName));
 
     if (originalId !== currentId) {
       if (originalId) {
-        const existing = this.unlinks.get(rel.linkName) ?? [];
+        const existing = this.unlinks.get(fieldName) ?? [];
         existing.push(originalId);
-        this.unlinks.set(rel.linkName, existing);
+        this.unlinks.set(fieldName, existing);
       }
       if (currentId) {
-        const existing = this.links.get(rel.linkName) ?? [];
+        const existing = this.links.get(fieldName) ?? [];
         existing.push(currentId);
-        this.links.set(rel.linkName, existing);
+        this.links.set(fieldName, existing);
       }
     }
   }
 
-  private computeToManyDiff(rel: {
-    fieldName: string;
-    linkName: string;
-  }): void {
-    const currentIds = toIdArray(this.current.relationships.get(rel.fieldName));
-    const originalIds = toIdArray(this.original.relationships.get(rel.fieldName));
+  private computeToManyDiff(fieldName: string): void {
+    const currentIds = toIdArray(this.current.relationships.get(fieldName));
+    const originalIds = toIdArray(this.original.relationships.get(fieldName));
     const origSet = new Set(originalIds);
     const currSet = new Set(currentIds);
 
-    // Find added (to link)
     const toLink: string[] = [];
     for (const id of currSet) {
       if (!origSet.has(id)) {
@@ -95,10 +87,9 @@ export class ModelSnapshotDiff {
       }
     }
     if (toLink.length > 0) {
-      this.links.set(rel.linkName, toLink);
+      this.links.set(fieldName, toLink);
     }
 
-    // Find removed (to unlink) — only meaningful for existing entities
     if (!this.isNew) {
       const toUnlink: string[] = [];
       for (const id of origSet) {
@@ -107,7 +98,7 @@ export class ModelSnapshotDiff {
         }
       }
       if (toUnlink.length > 0) {
-        this.unlinks.set(rel.linkName, toUnlink);
+        this.unlinks.set(fieldName, toUnlink);
       }
     }
   }

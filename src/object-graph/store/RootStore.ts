@@ -2,7 +2,7 @@ import type { AnySchema } from "@upfor/shared";
 import type { InstaQLParams } from "@instantdb/core";
 import { IdentityMap } from "../IdentityMap";
 import { setDebugViewEnabled, Model } from "../Model";
-import { getEntityNames, isValidEntityName, getEntityMeta } from "./EntityMeta";
+import { getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
 import { getModelClass, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
@@ -88,12 +88,6 @@ export class RootStore<Schema extends AnySchema>
     return map;
   }
 
-  getLinkLabel(entityName: string, linkName: string): string {
-    const meta = getEntityMeta(entityName);
-    const rel = meta.relationshipFields.find((r) => r.linkName === linkName);
-    return rel?.fieldName ?? linkName;
-  }
-
   rehydrateModel(model: Model, rawData: RawEntityData): void {
     this.hydrator.rehydrate(model, rawData, this.getIdentityMapByName.bind(this));
   }
@@ -106,18 +100,17 @@ export class RootStore<Schema extends AnySchema>
 
   cleanupRelationships(deletedEntityType: string, deletedModel: Model): void {
     for (const entityName of getEntityNames()) {
-      const meta = getEntityMeta(entityName);
       const identityMap = this.getIdentityMapByName(entityName);
 
-      for (const rel of meta.relationshipFields) {
-        if (rel.targetEntity !== deletedEntityType) continue;
+      for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(entityName))) {
+        if (linkAttr.entityName !== deletedEntityType) continue;
 
         for (const model of identityMap.values()) {
-          const fieldValue = rel.read(model);
+          const fieldValue = readField(model, fieldName);
 
-          if (rel.isToOne()) {
+          if (linkAttr.cardinality === "one") {
             if (fieldValue === deletedModel) {
-              rel.write(model, null);
+              writeField(model, fieldName, null);
             }
           } else if (Array.isArray(fieldValue)) {
             const index = fieldValue.indexOf(deletedModel);
@@ -290,26 +283,25 @@ export class RootStore<Schema extends AnySchema>
       }
       visited.add(key);
 
-      const meta = getEntityMeta(key);
       const subquery: object =
         typeof value === "object" && value !== null ? { ...value } : {};
 
-      for (const rel of meta.relationshipFields) {
-        if (!Reflect.has(subquery, rel.fieldName)) {
-          Reflect.set(subquery, rel.fieldName, { $: { fields: ["id"] } });
+      for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(key))) {
+        if (!Reflect.has(subquery, fieldName)) {
+          Reflect.set(subquery, fieldName, { $: { fields: ["id"] } });
           continue;
         }
-        const existing: unknown = Reflect.get(subquery, rel.fieldName);
+        const existing: unknown = Reflect.get(subquery, fieldName);
         const nestedInput: InstaQLParams<Schema> = {};
-        Reflect.set(nestedInput, rel.targetEntity, existing);
+        Reflect.set(nestedInput, linkAttr.entityName, existing);
         const nestedExpanded = this.buildQueryWithRelationships(
           nestedInput,
           new Set(visited)
         );
         Reflect.set(
           subquery,
-          rel.fieldName,
-          Reflect.get(nestedExpanded, rel.targetEntity)
+          fieldName,
+          Reflect.get(nestedExpanded, linkAttr.entityName)
         );
       }
 

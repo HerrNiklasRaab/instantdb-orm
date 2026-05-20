@@ -9,13 +9,13 @@ export {
   isRegisteredModel,
 } from "./ModelRegistry";
 export {
-  getEntityMeta,
+  getEntityAttrs,
+  getEntityLinks,
   getEntityNames,
   isValidEntityName,
   configureEntityMeta,
-  type EntityMeta,
+  findReverseSide,
   type EntityName,
-  type RelationshipFieldMeta,
 } from "./EntityMeta";
 export { ModelHydrator, type GetIdentityMap } from "./ModelHydrator";
 export type {

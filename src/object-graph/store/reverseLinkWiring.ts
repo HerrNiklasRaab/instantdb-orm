@@ -1,5 +1,6 @@
+import type { CardinalityKind } from "@instantdb/core";
 import { Model } from "../Model";
-import { getEntityMeta, RelationshipFieldMeta } from "./EntityMeta";
+import { findReverseSide, readField, writeField } from "./EntityMeta";
 import { makeAsyncDepth } from "./asyncDepth";
 
 /**
@@ -44,20 +45,14 @@ export function withConstructorSweep<T>(fn: () => T): T {
 function applyReverseChange(
   owner: Model,
   value: Model,
-  reverseRel: RelationshipFieldMeta,
+  reverseFieldName: string,
+  reverseCardinality: CardinalityKind,
   add: boolean
 ): void {
-  // Owner is mid-construction (its own initTracking hasn't run yet) AND
-  // the wire was triggered from inside someone's wireConstructorRelationships
-  // sweep — i.e. an inline-built child is trying to wire back to its still-
-  // building parent. The parent's constructor does its own explicit
-  // back-ref push; we skip here to avoid double-adding. Outside any sweep,
-  // a mid-construction owner means an external party touched us; the wirer
-  // proceeds.
   if (owner._disposers == null && sweep.isActive()) return;
 
-  if (reverseRel.isToMany()) {
-    const arr = reverseRel.read(owner);
+  if (reverseCardinality === "many") {
+    const arr = readField(owner, reverseFieldName);
     if (!Array.isArray(arr)) return;
     if (add) {
       arr.push(value);
@@ -67,29 +62,31 @@ function applyReverseChange(
       arr.splice(idx, 1);
     }
   } else {
-    const current = reverseRel.read(owner);
+    const current = readField(owner, reverseFieldName);
     if (add) {
       if (current === value) return;
-      reverseRel.write(owner, value);
+      writeField(owner, reverseFieldName, value);
     } else {
       if (current !== value) return;
-      reverseRel.write(owner, null);
+      writeField(owner, reverseFieldName, null);
     }
   }
 }
 
 /**
  * Wires the reverse side of a forward relationship change.
- * `holder` had `rel` set/cleared; propagate to `target`'s back-reference.
+ * `holder` had `fieldName` set/cleared; propagate to `target`'s back-reference.
  */
 export function wireReverseLink(
   holder: Model,
   target: Model,
-  rel: RelationshipFieldMeta,
+  fieldName: string,
   add: boolean
 ): void {
-  const targetMeta = getEntityMeta(rel.targetEntity);
-  const reverseRel = targetMeta.findReverseRelationship(rel.linkName, rel.fieldName);
-  if (!reverseRel) return;
-  wiring.wrap(() => { applyReverseChange(target, holder, reverseRel, add); });
+  const reverse = findReverseSide(holder.entityName, fieldName);
+  if (!reverse) return;
+  const [, reverseFieldName, reverseCardinality] = reverse;
+  wiring.wrap(() => {
+    applyReverseChange(target, holder, reverseFieldName, reverseCardinality, add);
+  });
 }

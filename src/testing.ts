@@ -26,7 +26,6 @@ const stubStore: TransactionStoreAccess<AnySchema> = {
     set: () => undefined,
     delete: () => false,
   }),
-  getLinkLabel: (_entityName: string, linkName: string) => linkName,
   rehydrateModel: () => undefined,
 };
 
