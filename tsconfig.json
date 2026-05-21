@@ -1,15 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "ESNext",
     "jsx": "react-native",
     "declaration": true,
     "declarationMap": true,
     "composite": true,
     "outDir": "./dist",
     "rootDir": ".",
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "types": ["node"]
   },
   "include": ["src/**/*", "test/**/*"],
