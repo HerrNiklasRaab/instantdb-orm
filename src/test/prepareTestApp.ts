@@ -1,3 +1,4 @@
+import { env } from "@upfor/shared/env";
 import {
   getOrProvisionApp,
   wipeAppData,
@@ -13,10 +14,7 @@ import {
 export async function prepareTestApp(req: AppCacheRequest): Promise<ProvisionedApp> {
   const app = await getOrProvisionApp(req);
   if (app.reused) await wipeAppData({ app, schema: req.schema });
-  Object.assign(process.env, {
-    INSTANTDB_APP_ID: app.appId,
-    INSTANTDB_ADMIN_TOKEN: app.adminToken,
-    NODE_ENV: "test",
-  });
+  env.set("INSTANTDB_APP_ID", app.appId);
+  env.set("INSTANTDB_ADMIN_TOKEN", app.adminToken);
   return app;
 }

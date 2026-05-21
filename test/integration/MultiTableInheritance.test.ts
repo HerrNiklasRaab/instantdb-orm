@@ -175,7 +175,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
   describe("soft delete", () => {
     // Helper to mark entity as deleted directly in database
     async function markAsDeletedInDb(
-      entityType: keyof AppSchema["entities"] & string,
+      entityType: keyof AppSchema["entities"],
       entityId: string,
     ) {
       await db.transact([

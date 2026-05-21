@@ -11,6 +11,7 @@ import {
   type QuerySubscriptionState,
   type Unsubscribe,
 } from "../instantdb";
+import { env } from "@upfor/shared/env";
 import { InstantDBAdminAdapter } from "../admin/InstantDBAdminAdapter";
 
 export { id };
@@ -58,13 +59,8 @@ export class TestInstantDBClient<Schema extends AnySchema>
  * against it.
  */
 export function getAdminDb<Schema extends AnySchema>(schema: Schema): AdminDB<Schema> {
-  const appId = process.env.INSTANTDB_APP_ID;
-  const adminToken = process.env.INSTANTDB_ADMIN_TOKEN;
-  if (!appId || !adminToken) {
-    throw new Error(
-      "INSTANTDB_APP_ID / INSTANTDB_ADMIN_TOKEN missing — globalSetup should have planted them."
-    );
-  }
+  const appId = env.getOrThrow("INSTANTDB_APP_ID");
+  const adminToken = env.getOrThrow("INSTANTDB_ADMIN_TOKEN");
   return init<Schema>({ appId, adminToken, schema });
 }
 
@@ -86,11 +82,11 @@ export function initTestDatabaseAsUser<Schema extends AnySchema>(
 }
 
 /** Create (or fetch existing) auth user, return their `$users` id. */
-export async function seedAuthUser<Schema extends AnySchema>(
-  schema: Schema,
+export async function seedAuthUser(
+  schema: AnySchema,
   email: string
 ): Promise<string> {
-  const db = getAdminDb<Schema>(schema);
+  const db = getAdminDb(schema);
   await db.auth.createToken({ email });
   const user = await db.auth.getUser({ email });
   if (!user) throw new Error(`seedAuthUser: createToken succeeded but getUser returned null for ${email}`);
