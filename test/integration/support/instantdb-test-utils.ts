@@ -46,7 +46,7 @@ export function initTestDatabaseAsUser(email: string): TestInstantDBClient {
 }
 
 export function seedAuthUser(email: string): Promise<string> {
-  return sharedSeedAuthUser<AppSchema>(schema, email);
+  return sharedSeedAuthUser(schema, email);
 }
 
 /** Configure entity metadata then return a fresh admin-context client. */
