@@ -29,6 +29,8 @@ export {
   wait,
   waitFor,
   waitForSubscription,
+  txFor,
+  firstOrFail,
 } from "@upfor/sync/test";
 
 export type TestInstantDBClient = SharedTestInstantDBClient<AppSchema>;

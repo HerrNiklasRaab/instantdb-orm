@@ -197,7 +197,9 @@ export async function wipeAppData(opts: {
       if (!isPlainObject(row)) continue;
       const rowId = Reflect.get(row, "id");
       if (typeof rowId !== "string") continue;
-      chunks.push(tx[table][rowId].delete());
+      const tableTx = tx[table];
+      const rowTx = tableTx?.[rowId];
+      if (rowTx) chunks.push(rowTx.delete());
     }
   }
   if (chunks.length > 0) {

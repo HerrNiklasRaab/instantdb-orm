@@ -3,7 +3,9 @@ import { RootStore } from "../../src/object-graph/store/RootStore";
 import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
+  firstOrFail,
   setupTestDatabase,
+  txFor,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { User } from "../support/entities/User";
@@ -179,7 +181,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       entityId: string,
     ) {
       await db.transact([
-        db.tx[entityType][entityId].update({
+        txFor(db.tx, entityType, entityId).update({
           deletedAt: new Date().toISOString(),
         }),
       ]);
@@ -264,7 +266,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Re-hydrate - should only have 1 chess match
       await storeB.query({ chessMatchs: {} });
       expect(hydratedUser.chessMatchs.length).toBe(1);
-      expect(hydratedUser.chessMatchs[0].id).toBe(chess2.id);
+      expect(firstOrFail(hydratedUser.chessMatchs).id).toBe(chess2.id);
     });
 
     it("removes deleted SkiMatch from reverse array (user.skiMatchs)", async () => {
@@ -292,7 +294,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       // Re-hydrate - should only have 1 ski match
       await storeB.query({ skiMatchs: {} });
       expect(hydratedUser.skiMatchs.length).toBe(1);
-      expect(hydratedUser.skiMatchs[0].id).toBe(ski2.id);
+      expect(firstOrFail(hydratedUser.skiMatchs).id).toBe(ski2.id);
     });
 
     it("MTI deletions don't affect other MTI type arrays", async () => {

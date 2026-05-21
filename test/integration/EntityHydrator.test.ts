@@ -5,6 +5,7 @@ import {
   assertDefined,
   setupTestDatabase,
   id,
+  txFor,
   waitFor,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
@@ -103,7 +104,7 @@ describe("RootStore hydration (Integration)", () => {
     fakeUserId: string
   ) {
     await db.transact([
-      db.__adminDb.tx.posts[entityId]
+      txFor(db.__adminDb.tx, "posts", entityId)
         .update({
           title: "Test Post",
           createdAt: new Date().toISOString(),
@@ -363,7 +364,9 @@ describe("RootStore hydration (Integration)", () => {
 
       // Mark user as deleted directly in DB (simulates another device)
       await db.transact([
-        db.__adminDb.tx.users[user.id].update({ deletedAt: new Date().toISOString() }),
+        txFor(db.__adminDb.tx, "users", user.id).update({
+          deletedAt: new Date().toISOString(),
+        }),
       ]);
 
       // Wait for reactive sync to process

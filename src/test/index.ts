@@ -11,6 +11,12 @@ export {
 
 export { prepareTestApp } from "./prepareTestApp";
 
+export { assertDefined } from "./assertDefined";
+
+export { txFor } from "./txFor";
+
+export { firstOrFail } from "./firstOrFail";
+
 export {
   id,
   getAdminDb,

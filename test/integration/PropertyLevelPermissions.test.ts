@@ -7,6 +7,7 @@ import {
   initTestDatabaseAsUser,
   seedAuthUser,
   id,
+  txFor,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { User } from "../support/entities/User";
@@ -37,7 +38,7 @@ describe("Property-level permissions (Integration)", () => {
 
       // 2. Create test user with SAME ID as $users (so auth.id == data.id)
       await adminDb.__adminDb.transact([
-        adminDb.__adminDb.tx.users[authUserId].update({
+        txFor(adminDb.__adminDb.tx, "users", authUserId).update({
           name: "Owner",
           secretField: "my-secret-value",
           createdAt: new Date().toISOString(),
@@ -66,7 +67,7 @@ describe("Property-level permissions (Integration)", () => {
       await seedAuthUser(viewerEmail);
 
       await adminDb.__adminDb.transact([
-        adminDb.__adminDb.tx.users[ownerId].update({
+        txFor(adminDb.__adminDb.tx, "users", ownerId).update({
           name: "Owner",
           secretField: "secret-only-owner-sees",
           createdAt: new Date().toISOString(),

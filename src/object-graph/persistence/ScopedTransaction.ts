@@ -114,6 +114,18 @@ export class ScopedTransaction<Schema extends AnySchema> {
       return false;
     };
 
+    const txFor = (model: Model): SchemaChunk<Schema> => {
+      const entityTx = store.db.tx[model.entityName];
+      if (!entityTx) {
+        throw new Error(`Unknown entity type: ${model.entityName}`);
+      }
+      const tx = entityTx[model.id];
+      if (!tx) {
+        throw new Error(`Missing tx chunk for ${model.entityName}:${model.id}`);
+      }
+      return tx;
+    };
+
     const buildChunkFromTouched = (
       model: Model,
       claim: ClaimRecord
@@ -139,8 +151,8 @@ export class ScopedTransaction<Schema extends AnySchema> {
           continue;
         }
 
-        if (!(fieldName in links_)) continue;
         const linkAttr = links_[fieldName];
+        if (!linkAttr) continue;
         const value = readField(model, fieldName);
 
         if (linkAttr.cardinality === "one") {
@@ -183,7 +195,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
         return null;
       }
 
-      let tx = store.db.tx[entityName][model.id];
+      let tx = txFor(model);
       if (hasUpdates) {
         tx = tx.update(updateData);
       }
@@ -200,8 +212,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
       model: Model,
       diff: ModelSnapshotDiff
     ): SchemaChunk<Schema> => {
-      const entityName = model.entityName;
-      let tx = store.db.tx[entityName][model.id];
+      let tx = txFor(model);
 
       if (diff.scalars.size > 0) {
         const updateData: UpdateParams<Schema, keyof Schema["entities"] & string> = {};

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { reaction } from "mobx";
 import {
   assertDefined,
+  firstOrFail,
   setupTestDatabase,
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
@@ -186,8 +187,10 @@ describe("performance", () => {
     const fresh = new RootStore<AppSchema>({ db });
     await fresh.queryAll();
 
-    const targetPost = fresh.getById(Post, postIds[0]);
-    const untouchedPost = fresh.getById(Post, postIds[1]);
+    const targetId = firstOrFail(postIds);
+    const untouchedId = firstOrFail(postIds.slice(1));
+    const targetPost = fresh.getById(Post, targetId);
+    const untouchedPost = fresh.getById(Post, untouchedId);
     assertDefined(targetPost);
     assertDefined(untouchedPost);
 
@@ -199,7 +202,7 @@ describe("performance", () => {
     const remote = new RootStore<AppSchema>({ db });
     await remote.queryAll();
     await remote.transaction(() => {
-      const remotePost = remote.getById(Post, postIds[0]);
+      const remotePost = remote.getById(Post, targetId);
       assertDefined(remotePost);
       remotePost.title = "Updated title";
     });
@@ -238,9 +241,11 @@ describe("performance", () => {
     const fresh = new RootStore<AppSchema>({ db });
     await fresh.queryAll();
 
+    const firstPostId = firstOrFail(postIds);
+    const untouchedPostId = firstOrFail(postIds.slice(1));
     const userA = fresh.getById(User, userAId);
     const userB = fresh.getById(User, userBId);
-    const untouchedPost = fresh.getById(Post, postIds[1]);
+    const untouchedPost = fresh.getById(Post, untouchedPostId);
     assertDefined(userA);
     assertDefined(userB);
     assertDefined(untouchedPost);
@@ -255,7 +260,7 @@ describe("performance", () => {
     const remote = new RootStore<AppSchema>({ db });
     await remote.queryAll();
     await remote.transaction(() => {
-      const remotePost = remote.getById(Post, postIds[0]);
+      const remotePost = remote.getById(Post, firstPostId);
       const remoteB = remote.getById(User, userBId);
       assertDefined(remotePost);
       assertDefined(remoteB);
