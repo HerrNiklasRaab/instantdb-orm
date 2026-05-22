@@ -81,6 +81,10 @@ function applyModelDecorator<T extends ModelConstructor>(
   const entityName = explicitEntityName ?? deriveEntityName(rootClass.name);
   writeStoredEntityName(target, entityName);
 
+  if (typeof window !== "undefined") {
+    console.log(`[@model] register ${entityName} (${target.name}) in browser`);
+  }
+
   if (isSubclass) {
     const discriminatorValue = getDiscriminatorValue(target);
     if (discriminatorValue) {
