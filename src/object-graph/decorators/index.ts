@@ -1,4 +1,25 @@
 export { model, getEntityNameFromClass, ENTITY_NAME_KEY, deriveEntityName } from "./model";
-export { field, getBackingFieldName } from "./field";
+export {
+  field,
+  getBackingFieldName,
+  collectFieldDescriptors,
+  getFieldDescriptor,
+  type FieldDescriptor,
+} from "./field";
 export { inMemory, applyInMemoryDefaults } from "./inMemory";
-export { valueObject, ValueObject, type ValueObjectOptions } from "./valueObject";
+export {
+  valueObject,
+  ValueObject,
+  ValueObjectClass,
+  SpreadValueObjectClass,
+  JsonValueObjectClass,
+  Field,
+  ScalarField,
+  ValueObjectField,
+  getValueObjectClass,
+  isValueObjectClass,
+  collectModelValueObjectFields,
+  camelJoin,
+  type ValueObjectOptions,
+  type SpreadColumn,
+} from "./valueObject";

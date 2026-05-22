@@ -7,19 +7,19 @@ export class Listing extends Model {
   @field({ type: Money })
   price: Money;
 
-  @field({ type: Money })
+  @field({ type: Money, optional: true })
   minBid: Money | null = null;
 
-  @field({ type: TimeRange })
+  @field({ type: TimeRange, optional: true })
   slot: TimeRange | null = null;
 
-  @field({ type: Price })
+  @field({ type: Price, optional: true })
   flexPrice: Price | null = null;
 
   @field({ type: Tags })
   tags: Tags;
 
-  @field({ type: Schedule })
+  @field({ type: Schedule, optional: true })
   schedule: Schedule | null = null;
 
   protected override makeObservable(): void {

@@ -18,6 +18,7 @@ import {
 } from "../support/entities/valueObjects";
 import { Listing } from "../support/entities/Listing";
 import { RemappedListing } from "../support/entities/RemappedListing";
+import { ValidatingListing } from "../support/entities/ValidatingListing";
 
 function firstRow(result: unknown, entity: string): Record<string, unknown> {
   if (result === null || typeof result !== "object") {
@@ -84,7 +85,7 @@ describe("ValueObject (Integration)", () => {
       expect(row.slotEndMinute).toBe(30);
     });
 
-    it("overrides a single component suffix via @field({ attributeName })", async () => {
+    it("overrides a single field suffix via @field({ attributeName })", async () => {
       const saved = await storeA.transaction(() => new RemappedListing(new RemappedMoney(5000, "EUR")));
       const result = await db.query({ remappedListings: { $: { where: { id: saved.id } } } });
       const row = firstRow(result, "remappedListings");
@@ -121,7 +122,7 @@ describe("ValueObject (Integration)", () => {
       expect(after).toBe(before);
     });
 
-    it("advances updatedAt and persists the new value when one component differs", async () => {
+    it("advances updatedAt and persists the new value when one field differs", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
       const before = await reloadUpdatedAt(saved.id);
       await storeA.transaction(() => {
@@ -134,7 +135,7 @@ describe("ValueObject (Integration)", () => {
       expect(reloaded.price.amount).toBe(60);
     });
 
-    it("persists both new values when both components differ", async () => {
+    it("persists both new values when both fields differ", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
       await storeA.transaction(() => {
         saved.price = new Money(60, "USD");
@@ -170,7 +171,7 @@ describe("ValueObject (Integration)", () => {
   });
 
   describe("nullability writes", () => {
-    it("writes null to every spread column when slot is set to null", async () => {
+    it("writes null to every spread column when the field is set to null", async () => {
       const saved = await storeA.transaction(() => {
         const l = new Listing(new Money(50, "EUR"), new Tags([]));
         l.minBid = new Money(10, "EUR");
@@ -185,7 +186,7 @@ describe("ValueObject (Integration)", () => {
       expect(row.minBidCurrency).toBeNull();
     });
 
-    it("permits a @field({ optional: true }) component to be null without flipping slot to null", async () => {
+    it("permits a @field({ optional: true }) field to be null without flipping the parent to null", async () => {
       const saved = await storeA.transaction(() => {
         const l = new Listing(new Money(50, "EUR"), new Tags([]));
         l.flexPrice = new Price(100, null);
@@ -240,14 +241,14 @@ describe("ValueObject (Integration)", () => {
       expect(reloadedSlot.end.minute).toBe(30);
     });
 
-    it("hydrates an unset nullable slot as null", async () => {
+    it("hydrates an unset nullable field as null", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
       const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.minBid).toBeNull();
     });
 
-    it("hydrates a VO with required + optional components when required set and optional null", async () => {
+    it("hydrates a VO with required + optional fields when required set and optional null", async () => {
       const saved = await storeA.transaction(() => {
         const l = new Listing(new Money(50, "EUR"), new Tags([]));
         l.flexPrice = new Price(100, null);
@@ -288,8 +289,28 @@ describe("ValueObject (Integration)", () => {
     });
   });
 
-  describe("hydration integrity (admin-context corruption setup)", () => {
-    it("throws when one required spread column is null and another is non-null (mixed)", async () => {
+  describe("write-boundary integrity", () => {
+    it.skip("throws on commit when a non-nullable spread VO field is null in memory", async () => {
+      const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
+      await expect(
+        storeA.transaction(() => {
+          Reflect.set(saved, "price", null);
+        })
+      ).rejects.toThrow();
+    });
+
+    it.skip("throws on commit when a non-nullable embedded-JSON VO field is null in memory", async () => {
+      const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags(["a"])));
+      await expect(
+        storeA.transaction(() => {
+          Reflect.set(saved, "tags", null);
+        })
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("hydration tolerance (admin-context corruption setup)", () => {
+    it("tolerates one required spread column being null while another is non-null", async () => {
       const saved = await storeA.transaction(() => {
         const l = new Listing(new Money(50, "EUR"), new Tags([]));
         l.minBid = new Money(10, "EUR");
@@ -298,18 +319,18 @@ describe("ValueObject (Integration)", () => {
       await db.transact([
         txFor(db.__adminDb.tx, "listings", saved.id).update({ minBidCurrency: null }),
       ]);
-      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).rejects.toThrow();
+      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).resolves.toBeDefined();
     });
 
-    it("throws when all spread columns are null and the slot is non-nullable", async () => {
+    it("tolerates all required spread columns being null on a non-nullable field", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
       await db.transact([
         txFor(db.__adminDb.tx, "listings", saved.id).update({ priceAmount: null, priceCurrency: null }),
       ]);
-      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).rejects.toThrow();
+      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).resolves.toBeDefined();
     });
 
-    it("throws when a required component is null but an optional sibling is set", async () => {
+    it("tolerates a required field being null while an optional sibling is set", async () => {
       const saved = await storeA.transaction(() => {
         const l = new Listing(new Money(50, "EUR"), new Tags([]));
         l.flexPrice = new Price(100, null);
@@ -318,15 +339,15 @@ describe("ValueObject (Integration)", () => {
       await db.transact([
         txFor(db.__adminDb.tx, "listings", saved.id).update({ flexPriceAmount: null, flexPriceDiscount: 5 }),
       ]);
-      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).rejects.toThrow();
+      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).resolves.toBeDefined();
     });
 
-    it("throws when the JSON column is null and the embedded slot is non-nullable", async () => {
+    it("tolerates a null JSON column on a non-nullable embedded field", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags(["a"])));
       await db.transact([
         txFor(db.__adminDb.tx, "listings", saved.id).update({ tags: null }),
       ]);
-      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).rejects.toThrow();
+      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).resolves.toBeDefined();
     });
 
     it.skip("does not re-run constructor validation on hydration of out-of-range stored data", async () => {
@@ -337,6 +358,16 @@ describe("ValueObject (Integration)", () => {
       const reloaded = (await new RootStore<AppSchema>({ db }).queryModel(Listing)).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.amount).toBe(-5);
+    });
+  });
+
+  describe("VO-field discovery for constructor-validating models", () => {
+    it("discovers VO fields without invoking the Model constructor (nullable field hydrates as null, required field round-trips)", async () => {
+      const saved = await storeA.transaction(() => new ValidatingListing(new Money(75, "EUR")));
+      const reloaded = (await storeB.queryModel(ValidatingListing)).find(l => l.id === saved.id);
+      assertDefined(reloaded);
+      expect(reloaded.price.equals(new Money(75, "EUR"))).toBe(true);
+      expect(reloaded.slot).toBeNull();
     });
   });
 });

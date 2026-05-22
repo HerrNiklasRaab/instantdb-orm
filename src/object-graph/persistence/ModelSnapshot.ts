@@ -1,12 +1,8 @@
 import { Model } from "../Model";
 import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
+import { collectModelValueObjectFields } from "../decorators/valueObject";
 import type { RawEntityData } from "../store/types";
 
-/**
- * Captures a model's state at a point in time.
- * Used by ScopedTransaction for claim-time baselines, rollback restoration,
- * and as the empty baseline for new-model commit diffs.
- */
 export class ModelSnapshot {
   readonly scalars = new Map<string, unknown>();
   readonly relationships = new Map<string, string | string[] | null>();
@@ -14,8 +10,15 @@ export class ModelSnapshot {
   constructor(model: Model | null = null) {
     if (model === null) return;
     const entityName = model.entityName;
+    const voFields = collectModelValueObjectFields(model.constructor);
+    const filledByVO = new Set<string>();
+    for (const voField of voFields) {
+      voField.captureSnapshot(model, "", this.scalars);
+      for (const col of voField.ownedColumns("")) filledByVO.add(col);
+    }
 
     for (const fieldName of Object.keys(getEntityAttrs(entityName))) {
+      if (filledByVO.has(fieldName)) continue;
       this.scalars.set(fieldName, readField(model, fieldName));
     }
 

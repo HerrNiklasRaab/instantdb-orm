@@ -6,6 +6,7 @@ import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
 import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
+import { collectModelValueObjectFields } from "../decorators/valueObject";
 
 type SchemaChunk<Schema extends AnySchema> = TransactionChunk<
   Schema,
@@ -126,6 +127,39 @@ export class ScopedTransaction<Schema extends AnySchema> {
       return tx;
     };
 
+    const expandTouchedToColumns = (model: Model, touched: Set<string>): Set<string> => {
+      const expanded = new Set<string>();
+      const voFieldsByPropName = new Map<string, ReturnType<typeof collectModelValueObjectFields>[number]>();
+      for (const voField of collectModelValueObjectFields(model.constructor)) {
+        voFieldsByPropName.set(voField.propertyName, voField);
+      }
+      for (const field of touched) {
+        const voField = voFieldsByPropName.get(field);
+        if (voField) {
+          for (const col of voField.ownedColumns("")) expanded.add(col);
+        } else {
+          expanded.add(field);
+        }
+      }
+      return expanded;
+    };
+
+    const touchedFieldsHaveChanges = (model: Model, claim: ClaimRecord): boolean => {
+      const entityName = model.entityName;
+      const currentSnapshot = new ModelSnapshot(model);
+      const diff = new ModelSnapshotDiff(claim.data, currentSnapshot, entityName, false);
+      const expandedColumns = expandTouchedToColumns(model, claim.touched);
+      for (const columnName of diff.scalars.keys()) {
+        if (expandedColumns.has(columnName)) return true;
+      }
+      const links_ = getEntityLinks(entityName);
+      for (const fieldName of claim.touched) {
+        if (!(fieldName in links_)) continue;
+        if (diff.links.has(fieldName) || diff.unlinks.has(fieldName)) return true;
+      }
+      return false;
+    };
+
     const buildChunkFromTouched = (
       model: Model,
       claim: ClaimRecord
@@ -133,6 +167,9 @@ export class ScopedTransaction<Schema extends AnySchema> {
       const entityName = model.entityName;
       const attrs = getEntityAttrs(entityName);
       const links_ = getEntityLinks(entityName);
+      const currentSnapshot = new ModelSnapshot(model);
+      const diff = new ModelSnapshotDiff(claim.data, currentSnapshot, entityName, false);
+      const expandedColumns = expandTouchedToColumns(model, claim.touched);
 
       const updateData: UpdateParams<Schema, keyof Schema["entities"] & string> = {};
       const links: LinkParams<Schema, keyof Schema["entities"] & string> = {};
@@ -141,15 +178,16 @@ export class ScopedTransaction<Schema extends AnySchema> {
       let hasLinks = false;
       let hasUnlinks = false;
 
+      for (const [columnName, value] of diff.scalars) {
+        if (columnName === "id") continue;
+        if (!expandedColumns.has(columnName)) continue;
+        Reflect.set(updateData, columnName, value instanceof Date ? value.toISOString() : value);
+        hasUpdates = true;
+      }
+
       for (const fieldName of claim.touched) {
         if (fieldName === "id") continue;
-
-        if (fieldName in attrs) {
-          const value = readField(model, fieldName);
-          Reflect.set(updateData, fieldName, value instanceof Date ? value.toISOString() : value);
-          hasUpdates = true;
-          continue;
-        }
+        if (fieldName in attrs) continue;
 
         const linkAttr = links_[fieldName];
         if (!linkAttr) continue;
@@ -285,6 +323,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
           const built: SchemaChunk<Schema>[] = [];
           for (const [model, claim] of claimedModels) {
             if (claim.touched.size === 0) continue;
+            if (!touchedFieldsHaveChanges(model, claim)) continue;
             model.setUpdatedAt();
             const chunk = buildChunkFromTouched(model, claim);
             if (chunk) built.push(chunk);

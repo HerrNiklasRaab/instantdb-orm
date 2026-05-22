@@ -1,6 +1,7 @@
 import type { EntityName } from "../store/EntityMeta";
 import { getEntityAttrs, getEntityLinks } from "../store/EntityMeta";
 import type { ModelSnapshot } from "./ModelSnapshot";
+import type { AttrsDefs } from "@instantdb/core";
 
 /**
  * Computes the difference between two ModelSnapshots.
@@ -39,7 +40,7 @@ export class ModelSnapshotDiff {
         if (fieldName === "id") continue;
         const originalValue = this.original.scalars.get(fieldName);
         const currentValue = this.current.scalars.get(fieldName);
-        if (!scalarsEqual(originalValue, currentValue)) {
+        if (!attrValuesEqual(attrs, fieldName, originalValue, currentValue)) {
           this.scalars.set(fieldName, currentValue);
         }
       }
@@ -104,9 +105,38 @@ export class ModelSnapshotDiff {
   }
 }
 
-function scalarsEqual(a: unknown, b: unknown): boolean {
+function attrValuesEqual(
+  attrs: AttrsDefs,
+  fieldName: string,
+  a: unknown,
+  b: unknown
+): boolean {
   if (a === b) return true;
   if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  const attr = attrs[fieldName];
+  if (attr && attr.valueType === "json") return jsonValuesEqual(a, b);
+  return false;
+}
+
+function jsonValuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!jsonValuesEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (typeof a === "object" && typeof b === "object") {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const k of aKeys) {
+      if (!jsonValuesEqual(Reflect.get(a, k), Reflect.get(b, k))) return false;
+    }
+    return true;
+  }
   return false;
 }
 

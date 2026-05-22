@@ -13,6 +13,7 @@ import { findReverseSide, getEntityAttrs, getEntityLinks, readField, writeField 
 import type { RawEntityData } from "./types";
 import { RootStore } from "./RootStore";
 import { withHydration } from "./hydrationContext";
+import { collectModelValueObjectFields } from "../decorators/valueObject";
 
 export type GetIdentityMap = <K extends EntityName>(
   entityName: K
@@ -59,6 +60,10 @@ export class ModelHydrator<Schema extends AnySchema> {
 
       for (const [fieldName, linkAttr] of Object.entries(links)) {
         writeField(instance, fieldName, linkAttr.cardinality === "many" ? [] : null);
+      }
+
+      for (const voField of collectModelValueObjectFields(ModelClass)) {
+        Reflect.set(instance, voField.propertyName, null);
       }
 
       instance.initTracking(false);
@@ -110,8 +115,15 @@ export class ModelHydrator<Schema extends AnySchema> {
     getIdentityMap: GetIdentityMap
   ): void {
     runInAction(() => {
+      const voFields = collectModelValueObjectFields(model.constructor);
+      const voOwnedColumns = new Set<string>();
+      for (const voField of voFields) {
+        for (const col of voField.ownedColumns("")) voOwnedColumns.add(col);
+      }
+
       for (const [fieldName, attr] of Object.entries(getEntityAttrs(entityName))) {
         if (fieldName === "modelType") continue;
+        if (voOwnedColumns.has(fieldName)) continue;
         if (model.isFieldTouched(fieldName)) continue;
         const value = rawData[fieldName];
         if (value !== undefined) {
@@ -121,6 +133,18 @@ export class ModelHydrator<Schema extends AnySchema> {
               : value;
           writeField(model, fieldName, next);
         }
+      }
+
+      for (const voField of voFields) {
+        if (model.isFieldTouched(voField.propertyName)) continue;
+        const ownedCols = voField.ownedColumns("");
+        const anyPresent = ownedCols.some((c) => rawData[c] !== undefined);
+        if (!anyPresent) continue;
+        voField.hydrateFromColumns(
+          model,
+          (column) => rawData[column] ?? null,
+          (column) => rawData[column] !== undefined
+        );
       }
 
       this.resolveRelationshipsFromNestedData(

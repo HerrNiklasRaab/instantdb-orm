@@ -1,23 +1,18 @@
 const PRIVATE_FIELD_REGISTRY = new Map<object, Map<string, string>>();
 
+type FieldTypeRef = abstract new (...args: never[]) => unknown;
+
+export interface FieldDescriptor {
+  propertyName: string;
+  attributeName: string;
+  type?: FieldTypeRef;
+  optional: boolean;
+}
+
+const FIELD_DESCRIPTOR_REGISTRY = new Map<object, Map<string, FieldDescriptor>>();
+
 type DecoratorTarget = object | undefined;
 type DecoratorContext = string | symbol | { name: string | symbol };
-
-/**
- * Decorator to declare a private backing field for a schema attribute.
- * Apply to the private field. If attributeName is omitted, it's derived
- * from the backing field name by removing the leading underscore.
- *
- * @example
- * class ChessMatch extends Model {
- *   @field()  // attributeName inferred as "timeControl"
- *   private _timeControl: string;
- *
- *   @field({ attributeName: "customName" })  // explicit override
- *   private _foo: string;
- * }
- */
-type FieldTypeRef = abstract new (...args: never[]) => unknown;
 
 export interface FieldOptions {
   attributeName?: string;
@@ -49,12 +44,22 @@ export function field(options?: FieldOptions) {
       PRIVATE_FIELD_REGISTRY.set(ModelClass, fields);
     }
     fields.set(attributeName, propertyName);
+
+    let descriptors = FIELD_DESCRIPTOR_REGISTRY.get(ModelClass);
+    if (!descriptors) {
+      descriptors = new Map();
+      FIELD_DESCRIPTOR_REGISTRY.set(ModelClass, descriptors);
+    }
+    const descriptor: FieldDescriptor = {
+      propertyName,
+      attributeName,
+      optional: options?.optional ?? false,
+    };
+    if (options?.type) descriptor.type = options.type;
+    descriptors.set(propertyName, descriptor);
   };
 }
 
-/**
- * Get the backing field name for a schema field, if registered via @field decorator.
- */
 export function getBackingFieldName(
   ModelClass: object,
   schemaField: string
@@ -72,4 +77,45 @@ export function getBackingFieldName(
         : null;
   }
   return undefined;
+}
+
+export function getFieldDescriptor(
+  Cls: object,
+  propertyName: string
+): FieldDescriptor | undefined {
+  let current: object | null = Cls;
+  while (current && current !== Object) {
+    const descriptors = FIELD_DESCRIPTOR_REGISTRY.get(current);
+    if (descriptors?.has(propertyName)) {
+      return descriptors.get(propertyName);
+    }
+    const proto: unknown = Object.getPrototypeOf(current);
+    current =
+      proto !== null && (typeof proto === "object" || typeof proto === "function")
+        ? proto
+        : null;
+  }
+  return undefined;
+}
+
+export function collectFieldDescriptors(Cls: object): FieldDescriptor[] {
+  const out = new Map<string, FieldDescriptor>();
+  const chain: object[] = [];
+  let current: object | null = Cls;
+  while (current && current !== Object) {
+    chain.unshift(current);
+    const proto: unknown = Object.getPrototypeOf(current);
+    current =
+      proto !== null && (typeof proto === "object" || typeof proto === "function")
+        ? proto
+        : null;
+  }
+  for (const c of chain) {
+    const descriptors = FIELD_DESCRIPTOR_REGISTRY.get(c);
+    if (!descriptors) continue;
+    for (const [propertyName, descriptor] of descriptors) {
+      out.set(propertyName, descriptor);
+    }
+  }
+  return [...out.values()];
 }

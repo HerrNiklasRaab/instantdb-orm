@@ -2,8 +2,8 @@ import { field, valueObject, ValueObject } from "../../../src/object-graph";
 
 @valueObject()
 export class Money extends ValueObject {
-  readonly amount: number;
-  readonly currency: string;
+  @field() readonly amount: number;
+  @field() readonly currency: string;
 
   constructor(amount: number, currency: string) {
     super();
@@ -23,8 +23,8 @@ export class Money extends ValueObject {
 
 @valueObject()
 export class LocalTime extends ValueObject {
-  readonly hour: number;
-  readonly minute: number;
+  @field() readonly hour: number;
+  @field() readonly minute: number;
 
   constructor(hour: number, minute: number) {
     super();
@@ -52,7 +52,7 @@ export class TimeRange extends ValueObject {
 
 @valueObject()
 export class Price extends ValueObject {
-  readonly amount: number;
+  @field() readonly amount: number;
 
   @field({ optional: true })
   readonly discount: number | null;
@@ -67,7 +67,7 @@ export class Price extends ValueObject {
 
 @valueObject({ json: true })
 export class Tags extends ValueObject {
-  readonly items: readonly string[];
+  @field() readonly items: readonly string[];
 
   constructor(items: readonly string[]) {
     super();
@@ -78,8 +78,8 @@ export class Tags extends ValueObject {
 
 @valueObject({ json: true })
 export class WeirdEqMoney extends ValueObject {
-  readonly amount: number;
-  readonly currency: string;
+  @field() readonly amount: number;
+  @field() readonly currency: string;
 
   constructor(amount: number, currency: string) {
     super();
@@ -110,7 +110,7 @@ export class RemappedMoney extends ValueObject {
   @field({ attributeName: "cents" })
   readonly amount: number;
 
-  readonly currency: string;
+  @field() readonly currency: string;
 
   constructor(amount: number, currency: string) {
     super();

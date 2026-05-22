@@ -416,7 +416,7 @@ Composite, equality-by-value types that compose into Models. Two storage modes:
 - **Spread** (default): fixed-arity VOs flatten across multiple columns on the parent entity. Column names prefix from the model field name.
 - **Embedded JSON** (`@valueObject({ json: true })`): variable-arity VOs (lists, maps, anything with `*[]` inside) serialize to one `i.json()` column.
 
-VOs are immutable: frozen at construction, replace-the-slot mutation, no in-place edits.
+VOs are immutable: frozen at construction, replace-the-whole-value mutation, no in-place edits.
 
 ### Declaring a VO
 
@@ -425,8 +425,8 @@ import { ValueObject, valueObject, field } from "@upfor/sync";
 
 @valueObject()
 export class Money extends ValueObject {
-  readonly amount: number;
-  readonly currency: string;
+  @field() readonly amount: number;
+  @field() readonly currency: string;
 
   constructor(amount: number, currency: string) {
     super();
@@ -442,7 +442,7 @@ export class Money extends ValueObject {
 
 @valueObject({ json: true })
 export class Tags extends ValueObject {
-  readonly items: readonly string[];
+  @field() readonly items: readonly string[];
 
   constructor(items: readonly string[]) {
     super();
@@ -452,12 +452,12 @@ export class Tags extends ValueObject {
 }
 ```
 
-`@field()` on a VO component is only needed when remapping the column suffix (`attributeName`) or marking it optional (`optional: true`):
+**Every VO field must be decorated with `@field()`.** The decorator is how the framework discovers a VO's field list — there is no auto-introspection. `@field()` accepts the same options on VO fields as on Model fields: `optional: true` for nullable fields, `attributeName: "..."` to remap the column suffix.
 
 ```typescript
 @valueObject()
 export class Price extends ValueObject {
-  readonly amount: number;
+  @field() readonly amount: number;
 
   @field({ optional: true })
   readonly discount: number | null;
@@ -479,7 +479,7 @@ export class Listing extends Model {
   @field({ type: Money })
   price: Money;
 
-  @field({ type: TimeRange })
+  @field({ type: TimeRange, optional: true })
   slot: TimeRange | null = null;
 
   @field({ type: Tags })
@@ -488,34 +488,35 @@ export class Listing extends Model {
 }
 ```
 
-Slot nullability follows the same convention as scalar fields: `price: Money` is required and must be set in the constructor; `slot: TimeRange | null = null` is optional.
+Value-object field nullability is declared with `@field({ optional: true })`, parallel to how nullable fields are declared inside a VO class. `price: Money` (no marker) is required and must be set in the constructor; `slot: TimeRange | null = null` is nullable because the decorator says so. The init-value (`= null`) only initializes the property at runtime; it doesn't carry the nullability signal — the decorator does.
 
 ### Column naming (spread)
 
 Prefix is the model field name, recursing through nested VOs:
 
-| Field | Components | Columns |
+| Field | Inner fields | Columns |
 |---|---|---|
 | `price: Money` | `amount`, `currency` | `priceAmount`, `priceCurrency` |
-| `slot: TimeRange` (start, end of `LocalTime`) | nested | `slotStartHour`, `slotStartMinute`, `slotEndHour`, `slotEndMinute` |
+| `slot: TimeRange \| null` (start, end of `LocalTime`) | nested | `slotStartHour`, `slotStartMinute`, `slotEndHour`, `slotEndMinute` |
 | `tags: Tags` (JSON) | — | `tags` (single `i.json()` column) |
 
 Inside an embedded JSON blob, keys stay bare (no prefix) — there's no flat namespace to collide in.
 
 ### Nullability rules (spread)
 
-Evaluated independently at each VO level:
+Evaluated independently at each VO level. A "value-object field" is nullable iff its `@field` decorator carries `optional: true`.
 
-- All columns null **and** slot is nullable (`T \| null = null`) → slot is `null`.
-- All required columns set → construct the VO; optional columns may be null.
-- Any required column null with at least one other column non-null → **throw** (integrity violation).
-- All columns null with a non-nullable slot → **throw**.
+- All required columns set → construct the VO; optional fields may be null.
+- All columns null **and** the field is nullable → the field hydrates as `null`.
+- Partial column states at hydration (some required null, others set) are tolerated — the framework constructs whatever the stored data supports. Hydration trusts stored data; integrity is not re-enforced on read.
 
-For an in-VO optional component (`Price.discount`), only the **required** columns count toward the slot-null determination; the optional column is independently nullable within an otherwise-present VO.
+There is no runtime integrity guard. TypeScript + the frozen constructor close the loop on user code (you cannot construct a `Money` with a missing field without bypassing both the type system and the constructor), and framework decomposition correctness is covered by unit tests on the framework code itself. Optimistic-merge and partial-update paths therefore never trigger false-positive throws — they're allowed to produce intermediate partial-column states.
+
+For an in-VO optional field (`Price.discount`), only the **required** columns count toward the "is the field set" determination; the optional column is independently nullable within an otherwise-present VO.
 
 ### Equality and cloning
 
-- `equals(other)` is auto-generated on `ValueObject` — structural compare across registered components, recursing into nested VOs. Override per VO for non-structural semantics.
+- `equals(other)` is auto-generated on `ValueObject` — structural compare across registered fields, recursing into nested VOs. Override per VO for non-structural semantics.
 - **No generic `with()`.** Write explicit `withX` methods per VO; route them through the constructor so invariants always run.
 
 ### Hydration

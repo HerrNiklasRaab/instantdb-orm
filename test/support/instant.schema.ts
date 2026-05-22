@@ -91,6 +91,17 @@ const _schema = i.schema({
       updatedAt: i.date().indexed(),
       deletedAt: i.date().indexed().optional(),
     }),
+    validatingListings: i.entity({
+      priceAmount: i.number().optional(),
+      priceCurrency: i.string().optional(),
+      slotStartHour: i.number().optional(),
+      slotStartMinute: i.number().optional(),
+      slotEndHour: i.number().optional(),
+      slotEndMinute: i.number().optional(),
+      createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
+      deletedAt: i.date().indexed().optional(),
+    }),
     remappedListings: i.entity({
       priceCents: i.number(),
       priceCurrency: i.string(),

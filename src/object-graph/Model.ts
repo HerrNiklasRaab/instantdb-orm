@@ -18,6 +18,7 @@ import { field, applyInMemoryDefaults } from "./decorators";
 import { TransactionContext } from "./persistence/TransactionContext";
 import type { ClaimRecord } from "./persistence/ScopedTransaction";
 import { wireReverseLink, isWiringInProgress, withConstructorSweep } from "./store/reverseLinkWiring";
+import { collectModelValueObjectFields } from "./decorators/valueObject";
 import { isHydrationInProgress } from "./store/hydrationContext";
 
 /**
@@ -158,6 +159,9 @@ export abstract class Model {
       if (fieldName === "id") continue;
       const propName = getFieldNameOnModel(this, fieldName);
       propToFieldName.set(propName, fieldName);
+    }
+    for (const voField of collectModelValueObjectFields(this.constructor)) {
+      propToFieldName.set(voField.propertyName, voField.propertyName);
     }
     for (const [fieldName, linkAttr] of Object.entries(links)) {
       if (fieldName === "id") continue;

@@ -23,6 +23,7 @@ import "../../support/entities/ChessMatch";
 import "../../support/entities/SkiMatch";
 import "../../support/entities/Listing";
 import "../../support/entities/RemappedListing";
+import "../../support/entities/ValidatingListing";
 
 // Re-export shared utilities so existing call sites don't have to change.
 export {
