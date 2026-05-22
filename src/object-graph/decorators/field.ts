@@ -17,7 +17,15 @@ type DecoratorContext = string | symbol | { name: string | symbol };
  *   private _foo: string;
  * }
  */
-export function field(options?: { attributeName?: string }) {
+type FieldTypeRef = abstract new (...args: never[]) => unknown;
+
+export interface FieldOptions {
+  attributeName?: string;
+  type?: FieldTypeRef;
+  optional?: boolean;
+}
+
+export function field(options?: FieldOptions) {
   return function (target: DecoratorTarget, context: DecoratorContext): void {
     const propertyName = typeof context === "object"
       ? String(context.name)
