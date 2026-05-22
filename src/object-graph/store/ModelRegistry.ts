@@ -6,9 +6,11 @@ export type ModelClassKey = Constructor<object>;
  * Singleton registry for Model classes.
  * Populated by @model decorator at class definition time.
  */
-export class ModelRegistry {
-  private static instance: ModelRegistry | undefined;
+declare global {
+  var __upforModelRegistry: ModelRegistry | undefined;
+}
 
+export class ModelRegistry {
   private models = new Map<string, ModelConstructor>();
   private discriminators = new Map<string, Map<string, ModelConstructor>>();
   private baseClassToSubclasses = new Map<ModelClassKey, Set<ModelConstructor>>();
@@ -16,8 +18,8 @@ export class ModelRegistry {
   private constructor() {}
 
   static getInstance(): ModelRegistry {
-    ModelRegistry.instance ??= new ModelRegistry();
-    return ModelRegistry.instance;
+    globalThis.__upforModelRegistry ??= new ModelRegistry();
+    return globalThis.__upforModelRegistry;
   }
 
   /**
