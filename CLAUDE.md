@@ -128,23 +128,22 @@ export class SkiMatch extends Match { }    // → skiMatchs table
 ### `@model` Decorator
 Marks a class as a persistable entity. Required on all concrete model classes.
 
-The entity (table) name is derived from the class name by lowercasing the first letter and appending `"s"`: `User` → `users`, `ChatMembership` → `chatMemberships`. **The pluralizer is naive — it just appends `s`.** Class names whose English plural isn't `+s` need an explicit override:
+**Always pass an explicit entity name: `@model("entityName")`.** Never rely on auto-derivation.
 
 ```typescript
-@model("parties")        // Party → partys (wrong) → "parties"
+@model("users")
+export class User extends Model { ... }
+
+@model("parties")
 export class Party extends Model { ... }
 
-@model("activities")     // Activity → activitys (wrong) → "activities"
-export class Activity extends Model { ... }
+@model("$users")
+export class $User extends Model { ... }
 ```
 
-If you skip the override and the schema's entity is named differently, you'll get a runtime error like:
+The decorator can also auto-derive the entity name from the class name (`User` → `users`), but that mode is **broken under production bundlers**: SWC/Terser mangle class names (`User` → `u`), so `target.name` returns the minified identifier and `deriveEntityName` produces nonsense like `"us"`. Dev mode works (no mangling), so the failure only surfaces in `next build` / EAS prod builds with a confusing `Unknown entity type: ...` thrown deep inside the store.
 
-```
-Unknown entity type: parties. Did you add @model decorator to the model class?
-```
-
-Rule of thumb: if the class name ends in `y`, `s`, `x`, `ch`, or `sh`, pass an explicit entity name to `@model(...)`.
+Pass the entity name as a string literal — string literals are not mangled, so the registration matches the schema regardless of bundler settings.
 
 ### `@field()` Decorator
 Registers field-to-schema attribute mappings for hydration. Use when the field name differs from the schema attribute name.
