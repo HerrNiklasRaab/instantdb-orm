@@ -1,6 +1,6 @@
 export { IdentityMap } from "./IdentityMap";
 export { Model } from "./Model";
-export { model, field } from "./decorators";
+export { model, field, inMemory } from "./decorators";
 export {
   RootStore,
   ModelHydrator,

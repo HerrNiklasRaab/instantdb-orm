@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { Model, model, field } from "../../../src/object-graph";
+import { Model, model, field, inMemory } from "../../../src/object-graph";
 import type { UserProfile } from "./Profile";
 import type { Post } from "./Post";
 import type { Invitation } from "./Invitation";
@@ -31,6 +31,11 @@ export class User extends Model {
 
   // Optional test field for testing Date serialization/hydration
   testDate: Date | null = null;
+
+  // In-memory-only field (NOT in schema) — exercises whether class field
+  // initializers survive hydration via Object.create.
+  @inMemory(false)
+  inMemoryFlag: boolean = false;
 
   // Permission-restricted field - may not be returned due to permissions
   secretField: string | undefined = undefined;
@@ -66,6 +71,7 @@ export class User extends Model {
     mobxMakeObservable<User, "_name" | "_posts">(this, {
       _name: observable,
       testDate: observable,
+      inMemoryFlag: observable,
       secretField: observable,
       status: observable,
       role: observable,

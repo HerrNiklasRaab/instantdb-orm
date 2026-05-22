@@ -14,7 +14,7 @@ import {
   intercept,
   reaction,
 } from "mobx";
-import { field } from "./decorators";
+import { field, applyInMemoryDefaults } from "./decorators";
 import { TransactionContext } from "./persistence/TransactionContext";
 import type { ClaimRecord } from "./persistence/ScopedTransaction";
 import { wireReverseLink, isWiringInProgress, withConstructorSweep } from "./store/reverseLinkWiring";
@@ -117,6 +117,7 @@ export abstract class Model {
    * createForHydration().
    */
   initTracking(isNew: boolean = true): void {
+    applyInMemoryDefaults(this);
     this.makeObservable();
     const disposers: (() => void)[] = [];
     this._disposers = disposers;

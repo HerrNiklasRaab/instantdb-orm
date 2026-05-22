@@ -379,4 +379,20 @@ describe("RootStore hydration (Integration)", () => {
       expect(post.author).toBeNull();
     });
   });
+
+  describe("@inMemory field hydration", () => {
+    it("restores the registered default on a hydrated instance", async () => {
+      const createdId = await storeA.transaction(() => {
+        const user = new User("Alice");
+        user.inMemoryFlag = true;
+        return user.id;
+      });
+
+      await storeB.query({ users: {} });
+
+      const hydrated = storeB.getById(User, createdId);
+      assertDefined(hydrated);
+      expect(hydrated.inMemoryFlag).toBe(false);
+    });
+  });
 });
