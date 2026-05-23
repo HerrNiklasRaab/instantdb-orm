@@ -17,7 +17,6 @@ import {
   Tags,
   WeirdEqMoney,
   RemappedMoney,
-  Slug,
 } from "../support/entities/valueObjects";
 import { Listing } from "../support/entities/Listing";
 
@@ -174,6 +173,7 @@ describe("ValueObject — malformed declarations", () => {
           this.amount = amount;
           Object.freeze(this);
         }
+        toString(): string { return String(this.amount); }
       }
       return Empty;
     }).toThrow(/no `@field\(\)`-decorated fields/);
