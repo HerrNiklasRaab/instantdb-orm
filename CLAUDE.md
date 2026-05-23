@@ -518,6 +518,24 @@ For an in-VO optional field (`Price.discount`), only the **required** columns co
 - `equals(other)` is auto-generated on `ValueObject` — structural compare across registered fields, recursing into nested VOs. Override per VO for non-structural semantics.
 - **No generic `with()`.** Write explicit `withX` methods per VO; route them through the constructor so invariants always run.
 
+### Using VOs as Map / Set keys
+
+Native `Map` and `Set` use SameValueZero (reference equality), so two structurally-equal VO instances will not collide. `ValueObject` exposes `key(): string` returning a canonical JSON form over the registered `@field()` values in declaration order:
+
+```typescript
+const groups = new Map<string, ReactionGroup>();
+for (const r of reactions) {
+  const k = r.emoji.key();
+  const g = groups.get(k);
+  if (g) g.count += 1;
+  else groups.set(k, { emoji: r.emoji, count: 1 });
+}
+```
+
+`toCanonical()` is the protected hook the default `key()` stringifies — override it (or `key()` directly) per VO for non-standard canonicalisation. Keys reflect `attributeName`s (the schema-facing names), not property names.
+
+**Caveat — no class discrimination.** `key()` is a function of field *values* only. Two different VO classes with the same field shape will produce the same key. If a Map/Set may hold heterogeneous VOs, the caller is responsible for adding a discriminator (e.g. `` `${tag}:${vo.key()}` ``).
+
 ### Hydration
 
 Same constructor-bypass rule as Models — VOs are reconstructed via `Object.create + assign + freeze`. Invariants in VO constructors run on `new` and on `withX`, not on hydration. Stored data is trusted to be valid.

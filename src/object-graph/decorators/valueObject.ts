@@ -473,6 +473,20 @@ export abstract class ValueObject {
     }
     return klass.equals(this, other);
   }
+
+  key(): string {
+    return JSON.stringify(this.toCanonical());
+  }
+
+  protected toCanonical(): unknown {
+    const klass = getValueObjectClass(this.constructor);
+    if (!klass) {
+      throw new Error(
+        `ValueObject subclass '${this.constructor.name}' is missing the @valueObject() decorator.`
+      );
+    }
+    return klass.serializeAsJson(this);
+  }
 }
 
 export function collectModelValueObjectFields(ModelClass: object): ValueObjectField[] {

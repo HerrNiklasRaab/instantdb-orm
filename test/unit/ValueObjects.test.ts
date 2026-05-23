@@ -7,6 +7,7 @@ import {
   Money,
   LocalTime,
   TimeRange,
+  Price,
   Tags,
   WeirdEqMoney,
 } from "../support/entities/valueObjects";
@@ -51,6 +52,50 @@ describe("ValueObject — equality", () => {
     expect(m.equals(null)).toBe(false);
     expect(m.equals(undefined)).toBe(false);
     expect(m.equals({ amount: 50, currency: "EUR" })).toBe(false);
+  });
+});
+
+describe("ValueObject — key()", () => {
+  it("returns the same key for two VOs with identical field values", () => {
+    expect(new Money(50, "EUR").key()).toBe(new Money(50, "EUR").key());
+  });
+
+  it("returns different keys when any field differs", () => {
+    expect(new Money(50, "EUR").key()).not.toBe(new Money(50, "USD").key());
+    expect(new Money(50, "EUR").key()).not.toBe(new Money(60, "EUR").key());
+  });
+
+  it("recurses into nested VOs so equal nesting produces equal keys", () => {
+    const a = new TimeRange(new LocalTime(9, 0), new LocalTime(17, 0));
+    const b = new TimeRange(new LocalTime(9, 0), new LocalTime(17, 0));
+    expect(a.key()).toBe(b.key());
+  });
+
+  it("is order-sensitive for list-shaped JSON VOs", () => {
+    expect(new Tags(["a", "b"]).key()).toBe(new Tags(["a", "b"]).key());
+    expect(new Tags(["a", "b"]).key()).not.toBe(new Tags(["b", "a"]).key());
+  });
+
+  it("serializes null optional fields stably", () => {
+    expect(new Price(100, null).key()).toBe(new Price(100, null).key());
+    expect(new Price(100, null).key()).not.toBe(new Price(100, 10).key());
+  });
+
+  it("respects @field({ attributeName }) — keys reflect schema names, not property names", () => {
+    const k = new Money(50, "EUR").key();
+    expect(k).toContain("amount");
+    expect(k).toContain("currency");
+  });
+
+  it("makes VOs usable as Map keys via key()", () => {
+    const map = new Map<string, number>();
+    map.set(new Money(50, "EUR").key(), 1);
+    expect(map.get(new Money(50, "EUR").key())).toBe(1);
+    expect(map.get(new Money(50, "USD").key())).toBeUndefined();
+  });
+
+  it("does NOT discriminate by class — two VO classes with the same field shape share a key", () => {
+    expect(new Money(50, "EUR").key()).toBe(new WeirdEqMoney(50, "EUR").key());
   });
 });
 
