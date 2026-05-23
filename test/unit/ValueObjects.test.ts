@@ -16,6 +16,7 @@ import {
   Price,
   Tags,
   WeirdEqMoney,
+  RemappedMoney,
   Slug,
 } from "../support/entities/valueObjects";
 import { Listing } from "../support/entities/Listing";
@@ -89,8 +90,9 @@ describe("ValueObject — key()", () => {
   });
 
   it("respects @field({ attributeName }) — keys reflect schema names, not property names", () => {
-    const k = new Money(50, "EUR").key();
-    expect(k).toContain("amount");
+    const k = new RemappedMoney(5000, "EUR").key();
+    expect(k).toContain("cents");
+    expect(k).not.toContain("amount");
     expect(k).toContain("currency");
   });
 
