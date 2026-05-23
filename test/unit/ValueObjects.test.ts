@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { reaction } from "mobx";
-import { configureEntityMeta, valueObject, ValueObject } from "../../src/object-graph";
+import {
+  configureEntityMeta,
+  valueObject,
+  ValueObject,
+  ValueObjectStorage,
+  field,
+} from "../../src/object-graph";
 import { withTestTransaction } from "../../src/testing";
 import schema from "../support/instant.schema";
 import {
@@ -10,6 +16,7 @@ import {
   Price,
   Tags,
   WeirdEqMoney,
+  Slug,
 } from "../support/entities/valueObjects";
 import { Listing } from "../support/entities/Listing";
 
@@ -115,6 +122,42 @@ describe("ValueObject — withX cloning", () => {
     const m = new Money(50, "EUR");
     const clone = m.withAmount(60);
     expect(Object.isFrozen(clone)).toBe(true);
+  });
+});
+
+describe("ValueObject — singleColumn declaration constraints", () => {
+  it("throws at registration when a singleColumn VO has more than one @field", () => {
+    expect(() => {
+      @valueObject({ storage: ValueObjectStorage.SingleColumn })
+      class TwoField extends ValueObject {
+        @field() readonly a: string;
+        @field() readonly b: string;
+        constructor(a: string, b: string) {
+          super();
+          this.a = a;
+          this.b = b;
+          Object.freeze(this);
+        }
+        override toString(): string { return this.a; }
+      }
+      return TwoField;
+    }).toThrow(/singleColumn requires exactly one @field/);
+  });
+
+  it("throws at registration when the one @field is a nested ValueObject", () => {
+    expect(() => {
+      @valueObject({ storage: ValueObjectStorage.SingleColumn })
+      class WithNested extends ValueObject {
+        @field({ type: Money }) readonly money: Money;
+        constructor(money: Money) {
+          super();
+          this.money = money;
+          Object.freeze(this);
+        }
+        override toString(): string { return this.money.toString(); }
+      }
+      return WithNested;
+    }).toThrow(/singleColumn supports only scalar fields/);
   });
 });
 

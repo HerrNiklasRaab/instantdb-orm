@@ -15,6 +15,7 @@ import {
   Tags,
   Schedule,
   RemappedMoney,
+  Slug,
 } from "../support/entities/valueObjects";
 import { Listing } from "../support/entities/Listing";
 import { RemappedListing } from "../support/entities/RemappedListing";
@@ -102,6 +103,66 @@ describe("ValueObject (Integration)", () => {
       const row = firstRow(result, "listings");
       expect(row.tags).toEqual({ items: ["a", "b"] });
       expect("tagsItems" in row).toBe(false);
+    });
+  });
+
+  describe("singleColumn storage", () => {
+    it("writes one column named exactly after the model field — no inner-field suffix", async () => {
+      const saved = await storeA.transaction(() => {
+        const l = new Listing(new Money(50, "EUR"), new Tags([]));
+        l.slug = new Slug("my-listing");
+        return l;
+      });
+      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const row = firstRow(result, "listings");
+      expect(row.slug).toBe("my-listing");
+      expect("slugValue" in row).toBe(false);
+    });
+
+    it("stores the inner scalar as a primitive, not wrapped in an object", async () => {
+      const saved = await storeA.transaction(() => {
+        const l = new Listing(new Money(50, "EUR"), new Tags([]));
+        l.slug = new Slug("plain-string");
+        return l;
+      });
+      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const row = firstRow(result, "listings");
+      expect(typeof row.slug).toBe("string");
+    });
+
+    it("hydrates a singleColumn VO into a frozen instance equal to the original", async () => {
+      const saved = await storeA.transaction(() => {
+        const l = new Listing(new Money(50, "EUR"), new Tags([]));
+        l.slug = new Slug("hydration-test");
+        return l;
+      });
+      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      assertDefined(reloaded);
+      assertDefined(reloaded.slug);
+      expect(reloaded.slug).toBeInstanceOf(Slug);
+      expect(reloaded.slug.equals(new Slug("hydration-test"))).toBe(true);
+      expect(Object.isFrozen(reloaded.slug)).toBe(true);
+    });
+
+    it("writes null when the optional singleColumn field is set to null", async () => {
+      const saved = await storeA.transaction(() => {
+        const l = new Listing(new Money(50, "EUR"), new Tags([]));
+        l.slug = new Slug("first");
+        return l;
+      });
+      await storeA.transaction(() => {
+        saved.slug = null;
+      });
+      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const row = firstRow(result, "listings");
+      expect(row.slug).toBeNull();
+    });
+
+    it("hydrates null when the optional column is null", async () => {
+      const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
+      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      assertDefined(reloaded);
+      expect(reloaded.slug).toBeNull();
     });
   });
 

@@ -1,4 +1,4 @@
-import { field, valueObject, ValueObject } from "../../../src/object-graph";
+import { field, valueObject, ValueObject, ValueObjectStorage } from "../../../src/object-graph";
 
 @valueObject()
 export class Money extends ValueObject {
@@ -19,6 +19,10 @@ export class Money extends ValueObject {
   withCurrency(currency: string): Money {
     return new Money(this.amount, currency);
   }
+
+  override toString(): string {
+    return `${this.amount} ${this.currency}`;
+  }
 }
 
 @valueObject()
@@ -31,6 +35,10 @@ export class LocalTime extends ValueObject {
     this.hour = hour;
     this.minute = minute;
     Object.freeze(this);
+  }
+
+  override toString(): string {
+    return `${String(this.hour).padStart(2, "0")}:${String(this.minute).padStart(2, "0")}`;
   }
 }
 
@@ -48,6 +56,10 @@ export class TimeRange extends ValueObject {
     this.end = end;
     Object.freeze(this);
   }
+
+  override toString(): string {
+    return `${this.start.toString()}-${this.end.toString()}`;
+  }
 }
 
 @valueObject()
@@ -63,9 +75,13 @@ export class Price extends ValueObject {
     this.discount = discount;
     Object.freeze(this);
   }
+
+  override toString(): string {
+    return this.discount === null ? `${this.amount}` : `${this.amount} (-${this.discount})`;
+  }
 }
 
-@valueObject({ json: true })
+@valueObject({ storage: ValueObjectStorage.Json })
 export class Tags extends ValueObject {
   @field() readonly items: readonly string[];
 
@@ -74,9 +90,13 @@ export class Tags extends ValueObject {
     this.items = [...items];
     Object.freeze(this);
   }
+
+  override toString(): string {
+    return this.items.join(",");
+  }
 }
 
-@valueObject({ json: true })
+@valueObject({ storage: ValueObjectStorage.Json })
 export class WeirdEqMoney extends ValueObject {
   @field() readonly amount: number;
   @field() readonly currency: string;
@@ -91,9 +111,13 @@ export class WeirdEqMoney extends ValueObject {
   override equals(other: unknown): boolean {
     return other instanceof WeirdEqMoney && other.currency === this.currency;
   }
+
+  override toString(): string {
+    return `${this.amount} ${this.currency}`;
+  }
 }
 
-@valueObject({ json: true })
+@valueObject({ storage: ValueObjectStorage.Json })
 export class Schedule extends ValueObject {
   @field({ type: TimeRange })
   readonly weekday: TimeRange;
@@ -102,6 +126,26 @@ export class Schedule extends ValueObject {
     super();
     this.weekday = weekday;
     Object.freeze(this);
+  }
+
+  override toString(): string {
+    return this.weekday.toString();
+  }
+}
+
+@valueObject({ storage: ValueObjectStorage.SingleColumn })
+export class Slug extends ValueObject {
+  @field() readonly value: string;
+
+  constructor(value: string) {
+    super();
+    if (!value.trim()) throw new Error("Slug cannot be empty");
+    this.value = value;
+    Object.freeze(this);
+  }
+
+  override toString(): string {
+    return this.value;
   }
 }
 
@@ -117,5 +161,9 @@ export class RemappedMoney extends ValueObject {
     this.amount = amount;
     this.currency = currency;
     Object.freeze(this);
+  }
+
+  override toString(): string {
+    return `${this.amount} ${this.currency}`;
   }
 }

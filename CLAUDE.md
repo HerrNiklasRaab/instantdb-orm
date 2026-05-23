@@ -410,17 +410,18 @@ export class ChessInvitation extends Invitation {
 
 ## Value Objects
 
-Composite, equality-by-value types that compose into Models. Two storage modes:
+Composite, equality-by-value types that compose into Models. Three storage modes, selected via `storage:` on the `@valueObject` decorator (an enum from `@upfor/sync`):
 
-- **Spread** (default): fixed-arity VOs flatten across multiple columns on the parent entity. Column names prefix from the model field name.
-- **Embedded JSON** (`@valueObject({ json: true })`): variable-arity VOs (lists, maps, anything with `*[]` inside) serialize to one `i.json()` column.
+- **`ValueObjectStorage.MultiColumn`** (default): fixed-arity VOs flatten across multiple columns on the parent entity. Column names prefix from the model field name.
+- **`ValueObjectStorage.SingleColumn`**: single-value wrappers (e.g. `EmailAddress`, `Slug`) store as one typed column named exactly after the parent prefix — no inner-field suffix. The VO must have exactly one `@field()` and it must be scalar (no nested VO). When used as a model field, the column is the model field's name. When nested inside another VO, the column is the parent prefix (e.g. `Contact.email: Email` nested under `User.contact` produces column `contactEmail`).
+- **`ValueObjectStorage.Json`**: variable-arity VOs (lists, maps, anything with `*[]` inside) serialize to one `i.json()` column.
 
 VOs are immutable: frozen at construction, replace-the-whole-value mutation, no in-place edits.
 
 ### Declaring a VO
 
 ```typescript
-import { ValueObject, valueObject, field } from "@upfor/sync";
+import { ValueObject, valueObject, field, ValueObjectStorage } from "@upfor/sync";
 
 @valueObject()
 export class Money extends ValueObject {
@@ -439,7 +440,7 @@ export class Money extends ValueObject {
   withCurrency(currency: string): Money { return new Money(this.amount, currency); }
 }
 
-@valueObject({ json: true })
+@valueObject({ storage: ValueObjectStorage.Json })
 export class Tags extends ValueObject {
   @field() readonly items: readonly string[];
 
@@ -489,7 +490,27 @@ export class Listing extends Model {
 
 Value-object field nullability is declared with `@field({ optional: true })`, parallel to how nullable fields are declared inside a VO class. `price: Money` (no marker) is required and must be set in the constructor; `slot: TimeRange | null = null` is nullable because the decorator says so. The init-value (`= null`) only initializes the property at runtime; it doesn't carry the nullability signal — the decorator does.
 
-### Column naming (spread)
+### Declaring a singleColumn VO
+
+For single-value wrappers (typed wrapper around one primitive — emails, slugs, handles), use `storage: ValueObjectStorage.SingleColumn`. The column is named exactly after the model field; the inner field contributes nothing to the column name. Useful when the column name is owned by an external system (e.g. an auth provider writes the `email` column) and must stay literal.
+
+```typescript
+@valueObject({ storage: ValueObjectStorage.SingleColumn })
+export class EmailAddress extends ValueObject {
+  @field() readonly value: string;
+
+  constructor(value: string) {
+    super();
+    if (!value.trim()) throw new Error("EmailAddress cannot be empty");
+    this.value = value;
+    Object.freeze(this);
+  }
+}
+```
+
+With `email: EmailAddress` on a model, the storage column is just `email` (not `emailValue`). The framework throws at registration if a singleColumn VO has 0 or 2+ fields, or if its one field is a nested-VO field.
+
+### Column naming (multiColumn / spread)
 
 Prefix is the model field name, recursing through nested VOs:
 
@@ -497,6 +518,7 @@ Prefix is the model field name, recursing through nested VOs:
 |---|---|---|
 | `price: Money` | `amount`, `currency` | `priceAmount`, `priceCurrency` |
 | `slot: TimeRange \| null` (start, end of `LocalTime`) | nested | `slotStartHour`, `slotStartMinute`, `slotEndHour`, `slotEndMinute` |
+| `email: EmailAddress` (singleColumn) | `value` | `email` (inner name absorbed) |
 | `tags: Tags` (JSON) | — | `tags` (single `i.json()` column) |
 
 Inside an embedded JSON blob, keys stay bare (no prefix) — there's no flat namespace to collide in.

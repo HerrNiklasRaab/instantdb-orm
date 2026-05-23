@@ -87,6 +87,7 @@ const _schema = i.schema({
       flexPriceDiscount: i.number().optional(),
       tags: i.json().optional(),
       schedule: i.json().optional(),
+      slug: i.string().optional(),
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
       deletedAt: i.date().indexed().optional(),

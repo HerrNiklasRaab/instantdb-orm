@@ -1,7 +1,13 @@
 import { collectFieldDescriptors, type FieldDescriptor } from "./field";
 
+export enum ValueObjectStorage {
+  MultiColumn = "multiColumn",
+  SingleColumn = "singleColumn",
+  Json = "json",
+}
+
 export interface ValueObjectOptions {
-  json?: boolean;
+  storage?: ValueObjectStorage;
 }
 
 export type AnyClass = abstract new (...args: never[]) => unknown;
@@ -12,9 +18,20 @@ const MODEL_FIELDS_CACHE = new WeakMap<object, ValueObjectField[]>();
 
 export function valueObject(options?: ValueObjectOptions) {
   return function <T extends ConcreteVOCtor>(target: T): T {
-    const klass: ValueObjectClass = options?.json
-      ? new JsonValueObjectClass(target)
-      : new SpreadValueObjectClass(target);
+    const storage = options?.storage ?? ValueObjectStorage.MultiColumn;
+    let klass: ValueObjectClass;
+    switch (storage) {
+      case ValueObjectStorage.Json:
+        klass = new JsonValueObjectClass(target);
+        break;
+      case ValueObjectStorage.SingleColumn:
+        klass = new SingleColumnValueObjectClass(target);
+        break;
+      case ValueObjectStorage.MultiColumn:
+      default:
+        klass = new SpreadValueObjectClass(target);
+        break;
+    }
     REGISTRY.set(target, klass);
     klass.validateFields();
     return target;
@@ -255,7 +272,7 @@ export abstract class ValueObjectClass<T extends ValueObject = ValueObject> {
 
   constructor(readonly ctor: ConcreteVOCtor<T>) {}
 
-  abstract readonly mode: "spread" | "json";
+  abstract readonly mode: "spread" | "singleColumn" | "json";
 
   fields(): readonly Field[] {
     if (this._fields) return this._fields;
@@ -346,6 +363,64 @@ function buildField(propertyName: string, d: FieldDescriptor | undefined): Field
     }
   }
   return new ScalarField(propertyName, attributeName, optional);
+}
+
+export class SingleColumnValueObjectClass<T extends ValueObject = ValueObject> extends ValueObjectClass<T> {
+  override readonly mode = "singleColumn" as const;
+
+  override validateFields(): void {
+    super.validateFields();
+    const descriptors = collectFieldDescriptors(this.ctor);
+    if (descriptors.length !== 1) {
+      throw new Error(
+        `ValueObject class '${this.ctor.name}' has storage: 'singleColumn' but ${descriptors.length} @field()s. ` +
+        `singleColumn requires exactly one @field().`
+      );
+    }
+    if (descriptors[0]?.type) {
+      throw new Error(
+        `ValueObject class '${this.ctor.name}' has storage: 'singleColumn' with a nested ValueObject @field(). ` +
+        `singleColumn supports only scalar fields.`
+      );
+    }
+  }
+
+  override ownedColumns(prefix: string): string[] {
+    return [prefix];
+  }
+
+  override decomposeIntoSpread(
+    prefix: string,
+    value: unknown,
+    holderOptional: boolean,
+    out: SpreadColumn[]
+  ): void {
+    if (value == null || !(value instanceof this.ctor)) {
+      out.push({ columnName: prefix, value: null, optional: holderOptional });
+      return;
+    }
+    const field = this.fields()[0];
+    if (!field) {
+      out.push({ columnName: prefix, value: null, optional: holderOptional });
+      return;
+    }
+    out.push({ columnName: prefix, value: field.readValue(value), optional: holderOptional });
+  }
+
+  override assembleFromSpread(
+    prefix: string,
+    _holderOptional: boolean,
+    readColumn: (column: string) => unknown
+  ): T | null {
+    const raw: unknown = readColumn(prefix);
+    if (raw == null) return null;
+    const target = makeBlankInstance(this.ctor);
+    const field = this.fields()[0];
+    if (!field) return null;
+    field.setValue(target, raw);
+    Object.freeze(target);
+    return target;
+  }
 }
 
 export class JsonValueObjectClass<T extends ValueObject = ValueObject> extends ValueObjectClass<T> {
@@ -477,6 +552,8 @@ export abstract class ValueObject {
   key(): string {
     return JSON.stringify(this.toCanonical());
   }
+
+  abstract toString(): string;
 
   protected toCanonical(): unknown {
     const klass = getValueObjectClass(this.constructor);
