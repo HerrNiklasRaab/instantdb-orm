@@ -1,4 +1,4 @@
-import { Model } from "../Model";
+import { Model, isModel } from "../Model";
 import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
 import { collectModelValueObjectFields } from "../decorators/valueObject";
 import type { RawEntityData } from "../store/types";
@@ -26,13 +26,13 @@ export class ModelSnapshot {
       const value = readField(model, fieldName);
 
       if (linkAttr.cardinality === "one") {
-        const id = value instanceof Model ? value.id : null;
+        const id = isModel(value) ? value.id : null;
         this.relationships.set(fieldName, id);
       } else {
         const ids: string[] = [];
         if (Array.isArray(value)) {
           for (const item of value) {
-            if (item instanceof Model) ids.push(item.id);
+            if (isModel(item)) ids.push(item.id);
           }
         }
         this.relationships.set(fieldName, ids);

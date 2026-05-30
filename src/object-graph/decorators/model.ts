@@ -24,7 +24,6 @@ function readParentClass(cls: object): Constructor<object> | null {
   return typeof proto === "function" ? proto : null;
 }
 
-/** Get entity name from a class (set by @model decorator) */
 export function getEntityNameFromClass(ModelClass: ModelClassType): string {
   const stored = readStoredEntityName(ModelClass);
   if (!stored) {
@@ -35,11 +34,6 @@ export function getEntityNameFromClass(ModelClass: ModelClassType): string {
   return stored;
 }
 
-/**
- * Finds the root domain class (first class in prototype chain whose parent is Model).
- * For STI, this determines the shared table name.
- * Uses name comparison to avoid circular import with Model.ts.
- */
 function findRootModelClass(target: ModelClassType): Constructor<object> {
   let current: Constructor<object> = target;
   while (current.name !== MODEL_BASE_CLASS_NAME) {
@@ -51,10 +45,6 @@ function findRootModelClass(target: ModelClassType): Constructor<object> {
   return target;
 }
 
-/**
- * Reads discriminator value from 'modelType' getter on the class prototype.
- * The modelType must be defined as a getter: `get modelType() { return "value"; }`
- */
 function getDiscriminatorValue(target: ModelClassType): string | undefined {
   const descriptor = Object.getOwnPropertyDescriptor(target.prototype, "modelType");
   if (!descriptor) return undefined;
@@ -68,9 +58,6 @@ function getDiscriminatorValue(target: ModelClassType): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-/**
- * Internal helper that applies the @model decorator logic.
- */
 function applyModelDecorator<T extends ModelConstructor>(
   target: T,
   explicitEntityName?: string
@@ -105,9 +92,11 @@ function applyModelDecorator<T extends ModelConstructor>(
   return target;
 }
 
-function isModelConstructor(value: Constructor<object>): value is ModelConstructor {
+function isModelConstructor(value: unknown): value is ModelConstructor {
   return typeof value === "function" && "prototype" in value;
 }
+
+type LooseClassDecorator<T> = (target: T, context: object) => T;
 
 /**
  * Registers a model class in the registry.
@@ -115,31 +104,31 @@ function isModelConstructor(value: Constructor<object>): value is ModelConstruct
  * Or accepts explicit entity name: @model("users")
  * For STI subclasses, derives entity name from root domain class.
  *
- * @example
- * @model
- * class User extends Model { }
- *
- * @example with explicit name
- * @model("users")
- * class AppUser extends Model { }
- *
- * @example STI
- * abstract class MatchInvitation extends Model { }
- *
- * @model
- * class ChessMatchInvitation extends MatchInvitation {
- *   get modelType() { return "chess"; }
- * }
+ * Decorator type intentionally uses a loose `context: object` so classes with
+ * private constructors (e.g. hydration-only models) can be decorated. TS's
+ * `ClassDecoratorContext<T>` strictly requires `T extends abstract new (...args)
+ * => any`, which excludes private-constructor classes.
  */
-export function model<T extends ModelConstructor>(target: T): T;
-export function model(entityName: string): <T extends ModelConstructor>(target: T) => T;
-export function model(
-  targetOrEntityName: ModelConstructor | string
-): ModelConstructor | (<T extends ModelConstructor>(target: T) => T) {
+export function model<T>(target: T, context: object): T;
+export function model(entityName: string): <T>(target: T, context: object) => T;
+export function model<T>(
+  targetOrEntityName: T | string,
+  _context?: object,
+): T | LooseClassDecorator<T> {
   if (typeof targetOrEntityName === "string") {
-    // Called as @model("entityName") - return decorator factory
-    return <T extends ModelConstructor>(target: T) => applyModelDecorator(target, targetOrEntityName);
+    const entityName = targetOrEntityName;
+    return (target, _ctx) => {
+      if (!isModelConstructor(target)) {
+        throw new Error("@model can only decorate a class");
+      }
+      applyModelDecorator(target, entityName);
+      return target;
+    };
   }
-  // Called as @model - apply directly
-  return applyModelDecorator(targetOrEntityName);
+  if (!isModelConstructor(targetOrEntityName)) {
+    throw new Error("@model can only decorate a class");
+  }
+  applyModelDecorator(targetOrEntityName);
+  return targetOrEntityName;
 }
+

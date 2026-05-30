@@ -9,6 +9,7 @@ import type {
   RoomsDef,
 } from "@instantdb/core";
 import { getBackingFieldName } from "../decorators/field";
+import { syncGlobalState } from "../globalState";
 
 export type EntityName = string;
 
@@ -100,7 +101,7 @@ class EntityDescriptor {
   }
 }
 
-class EntityRegistry {
+export class EntityRegistry {
   private readonly descriptors: Map<EntityName, EntityDescriptor>;
   readonly names: readonly EntityName[];
 
@@ -135,19 +136,18 @@ class EntityRegistry {
   }
 }
 
-let REGISTRY: EntityRegistry | null = null;
-
 function requireRegistry(): EntityRegistry {
-  if (!REGISTRY) {
+  const registry = syncGlobalState().entityRegistry;
+  if (!registry) {
     throw new Error(
       "EntityMeta: schema not configured. Did you call configureEntityMeta()?"
     );
   }
-  return REGISTRY;
+  return registry;
 }
 
 export function configureEntityMeta(schema: SchemaConfig): void {
-  REGISTRY = new EntityRegistry(schema);
+  syncGlobalState().entityRegistry = new EntityRegistry(schema);
 }
 
 export function getEntityAttrs(entityName: EntityName): AttrsDefs {
@@ -166,9 +166,9 @@ export function findReverseSide(
 }
 
 export function getEntityNames(): readonly EntityName[] {
-  return REGISTRY?.names ?? [];
+  return syncGlobalState().entityRegistry?.names ?? [];
 }
 
 export function isValidEntityName(name: string): name is EntityName {
-  return REGISTRY?.has(name) ?? false;
+  return syncGlobalState().entityRegistry?.has(name) ?? false;
 }

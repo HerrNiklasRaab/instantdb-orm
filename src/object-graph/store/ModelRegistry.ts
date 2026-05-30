@@ -1,4 +1,5 @@
 import type { Constructor, ModelConstructor } from "./types";
+import { syncGlobalState } from "../globalState";
 
 export type ModelClassKey = Constructor<object>;
 
@@ -6,10 +7,6 @@ export type ModelClassKey = Constructor<object>;
  * Singleton registry for Model classes.
  * Populated by @model decorator at class definition time.
  */
-declare global {
-  var __upforModelRegistry: ModelRegistry | undefined;
-}
-
 export class ModelRegistry {
   private models = new Map<string, ModelConstructor>();
   private discriminators = new Map<string, Map<string, ModelConstructor>>();
@@ -18,8 +15,7 @@ export class ModelRegistry {
   private constructor() {}
 
   static getInstance(): ModelRegistry {
-    globalThis.__upforModelRegistry ??= new ModelRegistry();
-    return globalThis.__upforModelRegistry;
+    return (syncGlobalState().modelRegistry ??= new ModelRegistry());
   }
 
   /**

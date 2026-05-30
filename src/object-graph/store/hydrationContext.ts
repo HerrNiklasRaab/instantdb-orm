@@ -9,7 +9,7 @@ import { makeAsyncDepth } from "./asyncDepth";
  * Without this guard, the tx-only enforcement on Model would fire on every
  * hydration write and break query/subscribe paths.
  */
-const hydration = makeAsyncDepth();
+const hydration = makeAsyncDepth("@upfor/sync.hydration");
 
 export function isHydrationInProgress(): boolean {
   return hydration.isActive();

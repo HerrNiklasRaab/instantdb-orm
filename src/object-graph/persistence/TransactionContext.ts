@@ -1,10 +1,6 @@
 import type { AnySchema } from "../../instantdb";
 import type { ScopedTransaction } from "./ScopedTransaction";
-
-type AsyncLocalStorageLike<T> = {
-  getStore(): T | undefined;
-  run<R>(store: T, fn: () => R): R;
-};
+import { syncGlobalState, type AsyncLocalStorageLike } from "../globalState";
 
 function isRequire(value: unknown): value is (id: string) => unknown {
   return typeof value === "function";
@@ -34,29 +30,35 @@ function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction<AnySchema>
   }
 }
 
-const asyncLocalStorage: AsyncLocalStorageLike<ScopedTransaction<AnySchema>> | null =
-  tryLoadAsyncHooks();
-
-let globalCurrent: ScopedTransaction<AnySchema> | null = null;
+function transactionAls(): AsyncLocalStorageLike<ScopedTransaction<AnySchema>> | null {
+  const state = syncGlobalState();
+  if (state.transactionAls === undefined) {
+    state.transactionAls = tryLoadAsyncHooks();
+  }
+  return state.transactionAls;
+}
 
 export const TransactionContext = {
   get current(): ScopedTransaction<AnySchema> | null {
-    if (asyncLocalStorage) {
-      return asyncLocalStorage.getStore() ?? null;
+    const als = transactionAls();
+    if (als) {
+      return als.getStore() ?? null;
     }
-    return globalCurrent;
+    return syncGlobalState().transactionCurrent ?? null;
   },
 
   run<T>(tx: ScopedTransaction<AnySchema>, fn: () => T): T {
-    if (asyncLocalStorage) {
-      return asyncLocalStorage.run(tx, fn);
+    const als = transactionAls();
+    if (als) {
+      return als.run(tx, fn);
     }
-    const previous = globalCurrent;
-    globalCurrent = tx;
+    const state = syncGlobalState();
+    const previous = state.transactionCurrent ?? null;
+    state.transactionCurrent = tx;
     try {
       return fn();
     } finally {
-      globalCurrent = previous;
+      state.transactionCurrent = previous;
     }
   },
 };

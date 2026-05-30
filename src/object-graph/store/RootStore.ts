@@ -1,5 +1,9 @@
 import type { AnySchema } from "../../instantdb";
 import type { InstaQLParams, InstaQLResponse, ValidQuery } from "@instantdb/core";
+import { observable, runInAction } from "mobx";
+
+let syncTraceEnabled = false;
+export function enableSyncTrace(): void { syncTraceEnabled = true; }
 import { IdentityMap } from "../IdentityMap";
 import { setDebugViewEnabled, Model } from "../Model";
 import { getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
@@ -21,7 +25,27 @@ function isInstanceOf<T extends Model>(
   value: Model,
   EntityClass: ModelClass<T>
 ): value is T {
-  return Object.prototype.isPrototypeOf.call(EntityClass.prototype, value);
+  if (Object.prototype.isPrototypeOf.call(EntityClass.prototype, value)) return true;
+  // Cross-bundle fallback: EntityClass may be a duplicate class identity from
+  // another bundle. Re-resolve through the shared registry. For STI concrete
+  // classes, discriminate by modelType so we don't falsely accept siblings.
+  const expectedDiscriminator = Reflect.get(EntityClass.prototype, "modelType") as unknown;
+  const subclasses = getSubclasses(EntityClass);
+  const candidates: ModelClass[] = subclasses.length > 0 ? subclasses : [EntityClass];
+  for (const cls of candidates) {
+    try {
+      const canonical = getModelClass(getEntityNameFromClass(cls));
+      if (!Object.prototype.isPrototypeOf.call(canonical.prototype, value)) continue;
+      if (typeof expectedDiscriminator === "string") {
+        const actualDiscriminator = Reflect.get(value, "modelType") as unknown;
+        if (actualDiscriminator !== expectedDiscriminator) continue;
+      }
+      return true;
+    } catch {
+      // class has no entity name (abstract w/o registered subclasses) — skip
+    }
+  }
+  return false;
 }
 
 function isRawEntityData(v: unknown): v is RawEntityData {
@@ -42,6 +66,7 @@ export class RootStore<Schema extends AnySchema>
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private subscriptions = new Map<string, { close(): void }>();
   private hydrator: ModelHydrator<Schema>;
+  private _initialSyncComplete = observable.box(false);
   readonly db: InstantDBClient<Schema>;
 
   constructor(config: RootStoreConfig<Schema>) {
@@ -218,6 +243,20 @@ export class RootStore<Schema extends AnySchema>
             }
             return;
           }
+          if (syncTraceEnabled) {
+            const raw: unknown = Reflect.get(data, subscriptionKey);
+            const ids = Array.isArray(raw)
+              ? raw
+                  .map((r: unknown) => {
+                    if (typeof r !== "object" || r === null || !("id" in r)) return "?";
+                    const id: unknown = r.id;
+                    return typeof id === "string" ? id.slice(0, 8) : "?";
+                  })
+                  .join(",")
+              : "<not-array>";
+            const count = Array.isArray(raw) ? raw.length : 0;
+            console.log(`[sync:${subscriptionKey}] count=${count} first=${isFirstCallback ? "y" : "n"} ids=${ids}`);
+          }
           const result = onData(data);
 
           if (isFirstCallback) {
@@ -313,15 +352,30 @@ export class RootStore<Schema extends AnySchema>
   }
 
   /** Subscribe to live updates for all registered entity classes */
+  /**
+   * True once every entity subscription opened by `subscribeAll` has delivered
+   * its first snapshot. Observable — read it from an `observer` to gate UI on
+   * the store being hydrated (e.g. onboarding routing must not decide before
+   * the user's relationships have synced).
+   */
+  get initialSyncComplete(): boolean {
+    return this._initialSyncComplete.get();
+  }
+
   subscribeAll(callback?: () => void): { close(): void } {
     const entityNames = getEntityNames();
+    runInAction(() => { this._initialSyncComplete.set(false); });
 
-    for (const name of entityNames) {
+    const firstSnapshots = entityNames.map((name) => {
       const ModelClass = getModelClass(name);
-      void this.subscribeModel(ModelClass, () => {
+      return this.subscribeModel(ModelClass, () => {
         callback?.();
       });
-    }
+    });
+
+    void Promise.allSettled(firstSnapshots).then(() => {
+      runInAction(() => { this._initialSyncComplete.set(true); });
+    });
 
     return {
       close: () => {

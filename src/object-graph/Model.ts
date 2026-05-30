@@ -33,6 +33,20 @@ export function setDebugViewEnabled(enabled: boolean): void {
   debugViewEnabled = enabled;
 }
 
+/**
+ * Copy-safe "is this a Model?" check. `instanceof Model` compares against the
+ * `Model` class of the *current* bundle copy, but Next/turbopack loads many
+ * copies of this package — a model built by one copy fails `instanceof` against
+ * another copy's `Model`. The brand is keyed by `Symbol.for`, so every copy
+ * stamps the same key on its `Model.prototype` and the check holds across
+ * copies. (Subclass identity still goes through the registry — see RootStore.)
+ */
+const MODEL_BRAND = Symbol.for("@upfor/sync.Model");
+
+export function isModel(value: unknown): value is Model {
+  return value !== null && typeof value === "object" && MODEL_BRAND in value;
+}
+
 export abstract class Model {
   readonly id: string;
 
@@ -195,10 +209,10 @@ export abstract class Model {
         if (relFieldName === undefined) return;
         const oldVal: unknown = change.oldValue;
         const newVal: unknown = change.newValue;
-        if (oldVal instanceof Model && oldVal !== newVal) {
+        if (isModel(oldVal) && oldVal !== newVal) {
           wireReverseLink(this, oldVal, relFieldName, false);
         }
-        if (newVal instanceof Model && oldVal !== newVal) {
+        if (isModel(newVal) && oldVal !== newVal) {
           wireReverseLink(this, newVal, relFieldName, true);
         }
       });
@@ -216,17 +230,17 @@ export abstract class Model {
       const arrayObservable = rawArray;
       const members = new Set<Model>();
       for (const item of arrayObservable) {
-        if (item instanceof Model) members.add(item);
+        if (isModel(item)) members.add(item);
       }
 
       try {
         const disposer = observe(arrayObservable, (change) => {
           if (change.type === "splice") {
             for (const added of change.added) {
-              if (added instanceof Model) wireReverseLink(this, added, relFieldName, true);
+              if (isModel(added)) wireReverseLink(this, added, relFieldName, true);
             }
             for (const removed of change.removed) {
-              if (removed instanceof Model) wireReverseLink(this, removed, relFieldName, false);
+              if (isModel(removed)) wireReverseLink(this, removed, relFieldName, false);
             }
           }
         });
@@ -241,13 +255,13 @@ export abstract class Model {
             if (change.removedCount > 0) {
               for (let i = 0; i < change.removedCount; i++) {
                 const removedItem: unknown = arrayObservable[change.index + i];
-                if (removedItem instanceof Model) members.delete(removedItem);
+                if (isModel(removedItem)) members.delete(removedItem);
               }
             }
             if (change.added.length > 0) {
               const filteredAdded: Model[] = [];
               for (const item of change.added) {
-                if (item instanceof Model && !members.has(item)) {
+                if (isModel(item) && !members.has(item)) {
                   members.add(item);
                   filteredAdded.push(item);
                 }
@@ -303,10 +317,10 @@ export abstract class Model {
       for (const [fieldName, linkAttr] of Object.entries(links)) {
         const value = readField(this, fieldName);
         if (linkAttr.cardinality === "one") {
-          if (value instanceof Model) wireReverseLink(this, value, fieldName, true);
+          if (isModel(value)) wireReverseLink(this, value, fieldName, true);
         } else if (Array.isArray(value)) {
           for (const child of value) {
-            if (child instanceof Model) wireReverseLink(this, child, fieldName, true);
+            if (isModel(child)) wireReverseLink(this, child, fieldName, true);
           }
         }
       }
@@ -361,3 +375,6 @@ export abstract class Model {
     return deriveEntityName(this.constructor.name);
   }
 }
+
+Object.defineProperty(Model.prototype, MODEL_BRAND, { value: true });
+

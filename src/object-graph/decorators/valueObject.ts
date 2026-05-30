@@ -1,4 +1,5 @@
 import { collectFieldDescriptors, type FieldDescriptor } from "./field";
+import { syncGlobalState } from "../globalState";
 
 export enum ValueObjectStorage {
   MultiColumn = "multiColumn",
@@ -13,11 +14,11 @@ export interface ValueObjectOptions {
 export type AnyClass = abstract new (...args: never[]) => unknown;
 type ConcreteVOCtor<T extends ValueObject = ValueObject> = new (...args: never[]) => T;
 
-const REGISTRY = new Map<object, ValueObjectClass>();
+const REGISTRY = (syncGlobalState().valueObjectRegistry ??= new Map<object, ValueObjectClass>());
 const MODEL_FIELDS_CACHE = new WeakMap<object, ValueObjectField[]>();
 
 export function valueObject(options?: ValueObjectOptions) {
-  return function <T extends ConcreteVOCtor>(target: T): T {
+  return function <T extends ConcreteVOCtor>(target: T, context: ClassDecoratorContext<T>): T {
     const storage = options?.storage ?? ValueObjectStorage.MultiColumn;
     let klass: ValueObjectClass;
     switch (storage) {
@@ -33,7 +34,11 @@ export function valueObject(options?: ValueObjectOptions) {
         break;
     }
     REGISTRY.set(target, klass);
-    klass.validateFields();
+    // Validation runs after the class's Symbol.metadata is assigned (post-decoration),
+    // so `collectFieldDescriptors(target)` can see the @field()-decorated members.
+    context.addInitializer(() => {
+      klass.validateFields();
+    });
     return target;
   };
 }

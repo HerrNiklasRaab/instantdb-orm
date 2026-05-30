@@ -12,11 +12,7 @@
     "./testing": "./src/testing.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "npm run test:unit && npm run test:integration",
-    "test:watch": "vitest",
-    "test:unit": "vitest run --config vitest.unit.config.ts",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@instantdb/platform": "^1.0.35",
@@ -30,13 +26,19 @@
     "@instantdb/react": ">=1.0.0"
   },
   "peerDependenciesMeta": {
-    "@instantdb/admin": { "optional": true },
-    "@instantdb/react": { "optional": true }
+    "@instantdb/admin": {
+      "optional": true
+    },
+    "@instantdb/react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@instantdb/admin": "^1.0.35",
     "@instantdb/core": "^1.0.35",
     "@instantdb/react": "^1.0.35",
-    "dotenv": "^17.4.2"
+    "@swc/core": "^1.15.40",
+    "dotenv": "^17.4.2",
+    "unplugin-swc": "^1.5.9"
   }
 }

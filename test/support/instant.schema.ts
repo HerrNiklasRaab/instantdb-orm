@@ -32,6 +32,7 @@ const _schema = i.schema({
       modelType: i.string(), // discriminator: 'chess' | 'ski'
       createdAt: i.date().indexed(),
       updatedAt: i.date().indexed(),
+      status: i.string().optional(),
       // Chess-specific (optional)
       timeControl: i.string().optional(),
       rated: i.boolean().optional(),

@@ -14,10 +14,7 @@
  * Each caller owns its own depth instance, so concerns stay isolated.
  */
 
-type AsyncLocalStorageLike<T> = {
-  getStore(): T | undefined;
-  run<R>(store: T, fn: () => R): R;
-};
+import { syncGlobalState, type AsyncLocalStorageLike } from "../globalState";
 
 type AsyncLocalStorageCtorType = new <T>() => AsyncLocalStorageLike<T>;
 
@@ -49,27 +46,33 @@ export interface AsyncDepth {
   wrap<T>(fn: () => T): T;
 }
 
-export function makeAsyncDepth(): AsyncDepth {
-  const storage: AsyncLocalStorageLike<number> | null = AsyncLocalStorageCtor
-    ? new AsyncLocalStorageCtor<number>()
-    : null;
-  let fallback = 0;
+export function makeAsyncDepth(key: string): AsyncDepth {
+  const slots = (syncGlobalState().asyncDepths ??= new Map());
+  let slot = slots.get(key);
+  if (!slot) {
+    slot = {
+      storage: AsyncLocalStorageCtor ? new AsyncLocalStorageCtor<number>() : null,
+      fallback: { count: 0 },
+    };
+    slots.set(key, slot);
+  }
+  const { storage, fallback } = slot;
 
   return {
     isActive(): boolean {
       if (storage) return (storage.getStore() ?? 0) > 0;
-      return fallback > 0;
+      return fallback.count > 0;
     },
     wrap<T>(fn: () => T): T {
       if (storage) {
         const next = (storage.getStore() ?? 0) + 1;
         return storage.run(next, fn);
       }
-      fallback++;
+      fallback.count++;
       try {
         return fn();
       } finally {
-        fallback--;
+        fallback.count--;
       }
     },
   };

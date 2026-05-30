@@ -19,6 +19,32 @@ export type GetIdentityMap = <K extends EntityName>(
   entityName: K
 ) => IdentityMap<ModelInstanceFor<K>>;
 
+// Build a blank instance of the registry's class for `entityName`, narrowed to
+// its model type. Identity is verified against the exact class prototype, not
+// `instanceof Model`: across duplicate bundle copies the two `Model` classes
+// aren't ===, so an `instanceof` check would wrongly fail. See globalState.ts
+// for why copies exist.
+function createBlankInstance<K extends EntityName>(
+  ModelClass: ReturnType<typeof getModelClass>,
+  entityName: K
+): ModelInstanceFor<K> {
+  const proto: object = ModelClass.prototype;
+  const blank: unknown = Object.create(proto);
+  if (!hasExactPrototype<K>(blank, proto)) {
+    throw new Error(
+      `Hydration produced a non-Model instance for entity '${entityName}'.`
+    );
+  }
+  return blank;
+}
+
+function hasExactPrototype<K extends EntityName>(
+  value: unknown,
+  proto: object
+): value is ModelInstanceFor<K> {
+  return value !== null && typeof value === "object" && Reflect.getPrototypeOf(value) === proto;
+}
+
 export class ModelHydrator<Schema extends AnySchema> {
   constructor(private store: RootStore<Schema>) { }
 
@@ -43,13 +69,7 @@ export class ModelHydrator<Schema extends AnySchema> {
     const links = getEntityLinks(entityName);
 
     const model = identityMap.getOrCreate(rawData.id, () => {
-      const blank: unknown = Object.create(ModelClass.prototype);
-      if (!(blank instanceof Model)) {
-        throw new Error(
-          `Hydration produced a non-Model instance for entity '${entityName}'.`
-        );
-      }
-      const instance: ModelInstanceFor<K> = blank;
+      const instance = createBlankInstance<K>(ModelClass, entityName);
 
       Reflect.set(instance, "id", rawData.id);
 

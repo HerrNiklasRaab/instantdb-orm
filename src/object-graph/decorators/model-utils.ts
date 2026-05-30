@@ -1,5 +1,5 @@
 /** Symbol to store entity name on the class */
-export const ENTITY_NAME_KEY = Symbol("entityName");
+export const ENTITY_NAME_KEY = Symbol.for("@upfor/sync.entityName");
 
 /** Derive entity name from class name: User → "users", MatchInvitation → "matchInvitations" */
 export function deriveEntityName(className: string): string {

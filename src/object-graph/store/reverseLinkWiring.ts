@@ -24,8 +24,8 @@ import { makeAsyncDepth } from "./asyncDepth";
  *     external party reached into us; the wirer should propagate the
  *     back-ref normally.
  */
-const wiring = makeAsyncDepth();
-const sweep = makeAsyncDepth();
+const wiring = makeAsyncDepth("@upfor/sync.wiring");
+const sweep = makeAsyncDepth("@upfor/sync.sweep");
 
 export function isWiringInProgress(): boolean {
   return wiring.isActive();

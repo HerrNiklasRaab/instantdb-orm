@@ -1,7 +1,7 @@
 import { runInAction } from "mobx";
 import type { LinkParams, TransactionChunk, TxChunk, UpdateParams } from "@instantdb/core";
 import type { AnySchema } from "../../instantdb";
-import { Model } from "../Model";
+import { Model, isModel } from "../Model";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
@@ -194,7 +194,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
         const value = readField(model, fieldName);
 
         if (linkAttr.cardinality === "one") {
-          const currentId = value instanceof Model ? value.id : null;
+          const currentId = isModel(value) ? value.id : null;
           const original = claim.data.relationships.get(fieldName);
           const originalId = typeof original === "string" ? original : null;
           if (currentId !== originalId) {
@@ -209,7 +209,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
           const currentIds: string[] = [];
           if (Array.isArray(value)) {
             for (const item of value) {
-              if (item instanceof Model) currentIds.push(item.id);
+              if (isModel(item)) currentIds.push(item.id);
             }
           }
           const original = claim.data.relationships.get(fieldName);
