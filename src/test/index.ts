@@ -1,11 +1,5 @@
 export {
-  provisionTempInstantApp,
-  pushSchema,
-  pushPerms,
-  getOrProvisionApp,
-  wipeAppData,
-  type TempInstantApp,
-  type ProvisionedApp,
+  TempInstantApp,
   type AppCacheRequest,
 } from "./tempInstantApp";
 

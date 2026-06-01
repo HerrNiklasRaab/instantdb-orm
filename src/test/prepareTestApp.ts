@@ -1,19 +1,12 @@
 import { env } from "@upfor/shared/env";
 import {
-  getOrProvisionApp,
-  wipeAppData,
+  TestAppProvisioner,
   type AppCacheRequest,
-  type ProvisionedApp,
+  type TempInstantApp,
 } from "./tempInstantApp";
 
-/**
- * Provision (or reuse) a cached temp InstantDB app, wipe data on reuse, and
- * plant the env vars the admin SDK + any in-process service need to find it.
- * Callers add their own service-specific env on top.
- */
-export async function prepareTestApp(req: AppCacheRequest): Promise<ProvisionedApp> {
-  const app = await getOrProvisionApp(req);
-  if (app.reused) await wipeAppData({ app, schema: req.schema });
+export async function prepareTestApp(req: AppCacheRequest): Promise<TempInstantApp> {
+  const app = await TestAppProvisioner.fromRequest(req).getCleanApp();
   env.set("INSTANTDB_APP_ID", app.appId);
   env.set("INSTANTDB_ADMIN_TOKEN", app.adminToken);
   return app;
