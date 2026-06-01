@@ -1,7 +1,6 @@
 export { IdentityMap } from "./IdentityMap";
 export { Model } from "./Model";
 export { model, field, inMemory, valueObject, ValueObject, ValueObjectStorage, type ValueObjectOptions } from "./decorators";
-export { enableSyncTrace } from "./store/RootStore";
 export {
   RootStore,
   ModelHydrator,

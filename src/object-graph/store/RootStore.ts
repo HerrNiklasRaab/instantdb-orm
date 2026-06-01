@@ -2,8 +2,6 @@ import type { AnySchema } from "../../instantdb";
 import type { InstaQLParams, InstaQLResponse, ValidQuery } from "@instantdb/core";
 import { observable, runInAction } from "mobx";
 
-let syncTraceEnabled = false;
-export function enableSyncTrace(): void { syncTraceEnabled = true; }
 import { IdentityMap } from "../IdentityMap";
 import { setDebugViewEnabled, Model } from "../Model";
 import { getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
@@ -242,20 +240,6 @@ export class RootStore<Schema extends AnySchema>
               reject(new Error(error.message));
             }
             return;
-          }
-          if (syncTraceEnabled) {
-            const raw: unknown = Reflect.get(data, subscriptionKey);
-            const ids = Array.isArray(raw)
-              ? raw
-                  .map((r: unknown) => {
-                    if (typeof r !== "object" || r === null || !("id" in r)) return "?";
-                    const id: unknown = r.id;
-                    return typeof id === "string" ? id.slice(0, 8) : "?";
-                  })
-                  .join(",")
-              : "<not-array>";
-            const count = Array.isArray(raw) ? raw.length : 0;
-            console.log(`[sync:${subscriptionKey}] count=${count} first=${isFirstCallback ? "y" : "n"} ids=${ids}`);
           }
           const result = onData(data);
 
