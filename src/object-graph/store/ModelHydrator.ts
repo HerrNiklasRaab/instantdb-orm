@@ -9,11 +9,11 @@ import {
 } from "./ModelRegistry";
 import type { EntityName } from "./EntityMeta";
 import type { ModelInstanceFor } from "./types";
-import { findReverseSide, getEntityAttrs, getEntityLinks, readField, writeField } from "./EntityMeta";
+import { findReverseSide, getEntityLinks, readField, writeField } from "./EntityMeta";
 import type { RawEntityData } from "./types";
 import { RootStore } from "./RootStore";
 import { withHydration } from "./hydrationContext";
-import { collectModelValueObjectFields } from "../decorators/valueObject";
+import { fieldsForModel } from "./fieldsForEntity";
 
 export type GetIdentityMap = <K extends EntityName>(
   entityName: K
@@ -65,7 +65,6 @@ export class ModelHydrator<Schema extends AnySchema> {
   ): ModelInstanceFor<K> | null {
     const ModelClass = this.resolveModelClass(entityName, rawData);
     const identityMap = getIdentityMap(entityName);
-    const attrs = getEntityAttrs(entityName);
     const links = getEntityLinks(entityName);
 
     const model = identityMap.getOrCreate(rawData.id, () => {
@@ -73,17 +72,16 @@ export class ModelHydrator<Schema extends AnySchema> {
 
       Reflect.set(instance, "id", rawData.id);
 
-      for (const fieldName of Object.keys(attrs)) {
-        if (fieldName === "modelType") continue;
-        writeField(instance, fieldName, undefined);
+      // Seed each column-field so the property exists before makeObservable
+      // (MobX throws on annotated-but-absent fields). undefined is the uniform
+      // "not returned" sentinel; present columns overwrite it in updateModelFields
+      // (a present-but-empty column becomes null via the codec's assemble).
+      for (const field of fieldsForModel(ModelClass, entityName)) {
+        Reflect.set(instance, field.propertyName, undefined);
       }
 
       for (const [fieldName, linkAttr] of Object.entries(links)) {
         writeField(instance, fieldName, linkAttr.cardinality === "many" ? [] : null);
-      }
-
-      for (const voField of collectModelValueObjectFields(ModelClass)) {
-        Reflect.set(instance, voField.propertyName, null);
       }
 
       instance.initTracking(false);
@@ -135,32 +133,17 @@ export class ModelHydrator<Schema extends AnySchema> {
     getIdentityMap: GetIdentityMap
   ): void {
     runInAction(() => {
-      const voFields = collectModelValueObjectFields(model.constructor);
-      const voOwnedColumns = new Set<string>();
-      for (const voField of voFields) {
-        for (const col of voField.ownedColumns("")) voOwnedColumns.add(col);
-      }
-
-      for (const [fieldName, attr] of Object.entries(getEntityAttrs(entityName))) {
-        if (fieldName === "modelType") continue;
-        if (voOwnedColumns.has(fieldName)) continue;
-        if (model.isFieldTouched(fieldName)) continue;
-        const value = rawData[fieldName];
-        if (value !== undefined) {
-          const next =
-            attr.valueType === "date" && value != null && (typeof value === "string" || typeof value === "number")
-              ? new Date(value)
-              : value;
-          writeField(model, fieldName, next);
+      // Every column flows through a Field+codec — composed fields (VO/Temporal)
+      // use their declared codec; un-annotated columns get a default codec by
+      // valueType (date → Temporal.Instant, else passthrough). No raw path.
+      for (const field of fieldsForModel(model.constructor, entityName)) {
+        if (model.isFieldTouched(field.attributeName)) continue;
+        let anyPresent = false;
+        for (const col of field.ownedColumns("")) {
+          if (rawData[col] !== undefined) { anyPresent = true; break; }
         }
-      }
-
-      for (const voField of voFields) {
-        if (model.isFieldTouched(voField.propertyName)) continue;
-        const ownedCols = voField.ownedColumns("");
-        const anyPresent = ownedCols.some((c) => rawData[c] !== undefined);
         if (!anyPresent) continue;
-        voField.hydrateFromColumns(
+        field.hydrateFromColumns(
           model,
           (column) => rawData[column] ?? null,
           (column) => rawData[column] !== undefined

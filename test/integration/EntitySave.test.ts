@@ -5,6 +5,7 @@ import {
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import { Temporal } from "../../src/object-graph";
 import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
@@ -72,8 +73,8 @@ describe("Entity persistence via transaction (Integration)", () => {
       expect(hydratedUser.name).toBe("New Name");
     });
 
-    it("converts Date to ISO string", async () => {
-      const testDate = new Date("2024-06-15T10:30:00.000Z");
+    it("serializes a Temporal.Instant field to its ISO string", async () => {
+      const testDate = Temporal.Instant.from("2024-06-15T10:30:00.000Z");
       const user = await store.transaction(() => {
         const u = new User("Test");
         u.testDate = testDate;
@@ -82,7 +83,7 @@ describe("Entity persistence via transaction (Integration)", () => {
 
       const result = await db.query({ users: { $: { where: { id: user.id } } } });
       const savedUser = firstUserWithTestDate(result);
-      expect(savedUser?.testDate).toBe(testDate.toISOString());
+      expect(savedUser?.testDate).toBe(testDate.toString());
     });
   });
 
@@ -240,7 +241,7 @@ describe("Entity persistence via transaction (Integration)", () => {
         user.name = "Changed";
       });
 
-      expect(user.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+      expect(Temporal.Instant.compare(user.updatedAt, originalUpdatedAt)).toBeGreaterThan(0);
     });
 
     it("does not change createdAt on subsequent commits", async () => {
@@ -266,10 +267,10 @@ describe("Entity persistence via transaction (Integration)", () => {
       const hydratedUser = users.find((u) => u.id === user.id);
 
       assertDefined(hydratedUser);
-      expect(hydratedUser.createdAt).toBeInstanceOf(Date);
-      expect(hydratedUser.updatedAt).toBeInstanceOf(Date);
-      expect(hydratedUser.createdAt.toISOString()).toBe(savedCreatedAt.toISOString());
-      expect(hydratedUser.updatedAt.toISOString()).toBe(savedUpdatedAt.toISOString());
+      expect(hydratedUser.createdAt).toBeInstanceOf(Temporal.Instant);
+      expect(hydratedUser.updatedAt).toBeInstanceOf(Temporal.Instant);
+      expect(hydratedUser.createdAt.toString()).toBe(savedCreatedAt.toString());
+      expect(hydratedUser.updatedAt.toString()).toBe(savedUpdatedAt.toString());
     });
   });
 });

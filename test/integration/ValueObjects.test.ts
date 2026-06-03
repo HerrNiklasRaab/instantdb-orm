@@ -170,7 +170,7 @@ describe("ValueObject (Integration)", () => {
     async function reloadUpdatedAt(id: string): Promise<number> {
       const reloaded = (await new RootStore<AppSchema>({ db }).queryModel(Listing)).find(l => l.id === id);
       assertDefined(reloaded);
-      return reloaded.updatedAt.getTime();
+      return reloaded.updatedAt.epochMilliseconds;
     }
 
     it("does not bump updatedAt when replacing a slot with a structurally-equal spread VO", async () => {

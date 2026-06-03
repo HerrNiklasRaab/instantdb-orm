@@ -1,6 +1,6 @@
 import { Model, isModel } from "../Model";
 import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
-import { collectModelValueObjectFields } from "../decorators/valueObject";
+import { fieldsForModel } from "../store/fieldsForEntity";
 import type { RawEntityData } from "../store/types";
 
 export class ModelSnapshot {
@@ -10,16 +10,15 @@ export class ModelSnapshot {
   constructor(model: Model | null = null) {
     if (model === null) return;
     const entityName = model.entityName;
-    const voFields = collectModelValueObjectFields(model.constructor);
-    const filledByVO = new Set<string>();
-    for (const voField of voFields) {
-      voField.captureSnapshot(model, "", this.scalars);
-      for (const col of voField.ownedColumns("")) filledByVO.add(col);
+    for (const field of fieldsForModel(model.constructor, entityName)) {
+      field.captureSnapshot(model, "", this.scalars);
     }
 
-    for (const fieldName of Object.keys(getEntityAttrs(entityName))) {
-      if (filledByVO.has(fieldName)) continue;
-      this.scalars.set(fieldName, readField(model, fieldName));
+    // The STI discriminator is a read-only getter, not a writable Field, so it
+    // is excluded from the field set — but it must still be written to its
+    // column. Capture it directly when the entity has a `modelType` attr.
+    if ("modelType" in getEntityAttrs(entityName)) {
+      this.scalars.set("modelType", readField(model, "modelType"));
     }
 
     for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(entityName))) {
@@ -48,7 +47,7 @@ export class ModelSnapshot {
     const data: RawEntityData = { id };
 
     for (const [fieldName, value] of this.scalars) {
-      data[fieldName] = value instanceof Date ? value.toISOString() : value;
+      data[fieldName] = value;
     }
 
     for (const [fieldName, value] of this.relationships) {

@@ -15,10 +15,11 @@ import {
   reaction,
 } from "mobx";
 import { field, applyInMemoryDefaults } from "./decorators";
+import { Temporal } from "./temporal";
+import { fieldsForModel } from "./store/fieldsForEntity";
 import { TransactionContext } from "./persistence/TransactionContext";
 import type { ClaimRecord } from "./persistence/ScopedTransaction";
 import { wireReverseLink, isWiringInProgress, withConstructorSweep } from "./store/reverseLinkWiring";
-import { collectModelValueObjectFields } from "./decorators/valueObject";
 import { isHydrationInProgress } from "./store/hydrationContext";
 
 /**
@@ -50,14 +51,14 @@ export function isModel(value: unknown): value is Model {
 export abstract class Model {
   readonly id: string;
 
-  @field()
-  private readonly _createdAt: Date;
+  @field({ type: Temporal.Instant })
+  private readonly _createdAt: Temporal.Instant;
 
-  @field()
-  private _updatedAt: Date;
+  @field({ type: Temporal.Instant })
+  private _updatedAt: Temporal.Instant;
 
-  @field()
-  private _deletedAt: Date | null = null;
+  @field({ type: Temporal.Instant, optional: true })
+  private _deletedAt: Temporal.Instant | null = null;
 
   /**
    * MobX observer/interceptor disposers. `null` before `initTracking` runs —
@@ -83,24 +84,24 @@ export abstract class Model {
 
   constructor(id?: string) {
     this.id = id ?? uuidv4();
-    this._createdAt = new Date();
-    this._updatedAt = new Date();
+    this._createdAt = Temporal.Now.instant();
+    this._updatedAt = Temporal.Now.instant();
   }
 
-  get createdAt(): Date {
+  get createdAt(): Temporal.Instant {
     return this._createdAt;
   }
 
-  get updatedAt(): Date {
+  get updatedAt(): Temporal.Instant {
     return this._updatedAt;
   }
 
   /** Sets updatedAt timestamp to now. Called by ScopedTransaction.commit before flushing. */
   setUpdatedAt(): void {
-    this._updatedAt = new Date();
+    this._updatedAt = Temporal.Now.instant();
   }
 
-  get deletedAt(): Date | null {
+  get deletedAt(): Temporal.Instant | null {
     return this._deletedAt;
   }
 
@@ -109,7 +110,7 @@ export abstract class Model {
    * commits it.
    */
   delete(): void {
-    this._deletedAt = new Date();
+    this._deletedAt = Temporal.Now.instant();
   }
 
   /**
@@ -118,9 +119,9 @@ export abstract class Model {
    */
   protected makeObservable(): void {
     mobxMakeObservable<Model, "_createdAt" | "_updatedAt" | "_deletedAt">(this, {
-      _createdAt: observable,
-      _updatedAt: observable,
-      _deletedAt: observable,
+      _createdAt: observable.ref,
+      _updatedAt: observable.ref,
+      _deletedAt: observable.ref,
       debugView: false,
     });
   }
@@ -164,18 +165,16 @@ export abstract class Model {
   }
 
   private setupObservers(disposers: (() => void)[]): void {
-    const attrs = getEntityAttrs(this.entityName);
     const links = getEntityLinks(this.entityName);
 
     const propToFieldName = new Map<string, string>();
     const toOneRelByProp = new Map<string, string>();
-    for (const fieldName of Object.keys(attrs)) {
-      if (fieldName === "id") continue;
-      const propName = getFieldNameOnModel(this, fieldName);
-      propToFieldName.set(propName, fieldName);
-    }
-    for (const voField of collectModelValueObjectFields(this.constructor)) {
-      propToFieldName.set(voField.propertyName, voField.propertyName);
+    for (const field of fieldsForModel(this.constructor, this.entityName)) {
+      // Map the mutated property → its claim key (the schema-facing
+      // attributeName): a backing field like `_name` claims column `name`; a
+      // composed field claims its own prefix. Claims, snapshots, and rollback
+      // all key by attributeName.
+      propToFieldName.set(field.propertyName, field.attributeName);
     }
     for (const [fieldName, linkAttr] of Object.entries(links)) {
       if (fieldName === "id") continue;
@@ -351,13 +350,18 @@ export abstract class Model {
   }
 
   private buildDebugViewSnapshot(): Record<string, unknown> {
-    const attrs = getEntityAttrs(this.entityName);
     const links = getEntityLinks(this.entityName);
     const snapshot: Record<string, unknown> = { id: this.id };
 
-    for (const fieldName of Object.keys(attrs)) {
-      const value = readField(this, fieldName);
-      snapshot[fieldName] = value instanceof Date ? value.toISOString() : value;
+    // Columns through the same codec path persistence uses, so values come out
+    // already serialized (Temporal → readable ISO string) — no separate
+    // display conversion.
+    const scalars = new Map<string, unknown>();
+    for (const field of fieldsForModel(this.constructor, this.entityName)) {
+      field.captureSnapshot(this, "", scalars);
+    }
+    for (const [column, value] of scalars) {
+      snapshot[column] = value;
     }
 
     for (const fieldName of Object.keys(links)) {

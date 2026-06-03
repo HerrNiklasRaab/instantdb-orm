@@ -111,6 +111,25 @@ const _schema = i.schema({
       updatedAt: i.date().indexed(),
       deletedAt: i.date().indexed().optional(),
     }),
+    // Temporal-type fixtures. Scalar temporal types store as i.date()
+    // (anchored where they have no natural instant); Duration as an ISO
+    // i.string(); ZonedDateTime as instant (i.date()) + IANA zone (i.string()).
+    appointments: i.entity({
+      scheduledFor: i.date().indexed(), // Temporal.Instant (required)
+      day: i.date().indexed().optional(), // Temporal.PlainDate (UTC midnight)
+      startTime: i.date().indexed().optional(), // Temporal.PlainTime (1970 anchor)
+      localStart: i.date().indexed().optional(), // Temporal.PlainDateTime (wall-clock=UTC)
+      billingMonth: i.date().indexed().optional(), // Temporal.PlainYearMonth (first-of-month)
+      anniversary: i.date().indexed().optional(), // Temporal.PlainMonthDay (1972 leap anchor)
+      zonedStartInstant: i.date().indexed().optional(), // Temporal.ZonedDateTime instant
+      zonedStartZone: i.string().optional(), // Temporal.ZonedDateTime IANA zone id
+      duration: i.string().optional(), // Temporal.Duration ISO string
+      vacationFrom: i.date().indexed().optional(), // DateRange VO: from (Temporal.PlainDate)
+      vacationTo: i.date().indexed().optional(), // DateRange VO: to (Temporal.PlainDate)
+      createdAt: i.date().indexed(),
+      updatedAt: i.date().indexed(),
+      deletedAt: i.date().indexed().optional(),
+    }),
   },
   links: {
     usersProfile: {

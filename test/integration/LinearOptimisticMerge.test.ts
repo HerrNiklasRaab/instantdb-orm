@@ -167,6 +167,34 @@ describe("Linear-style optimistic merge", () => {
     expect(stored.title).toBe("Fix login bug");
   });
 
+  // Same-field conflict on a backing field whose claim key (attribute `name`)
+  // differs from its property name (`_name`). The hydrator's touched-skip keys
+  // by attributeName; keying by propertyName silently clobbers the user's
+  // in-flight edit. Regression for the $User.birthday → birthdayDate case.
+  it("same-field conflict on a remapped backing field (name) — user's edit wins", async () => {
+    const user = await store.transaction(() => new User("Alice"));
+
+    await store.transaction(async () => {
+      user.name = "Alice Local";
+
+      await applyRemote((remote) => {
+        const remoteUser = remote.getById(User, user.id);
+        assertDefined(remoteUser);
+        remoteUser.name = "Alice Remote";
+      });
+
+      await store.queryModel(User);
+
+      expect(user.name).toBe("Alice Local");
+    });
+
+    const verify = freshStore();
+    await verify.queryAll();
+    const stored = verify.getById(User, user.id);
+    assertDefined(stored);
+    expect(stored.name).toBe("Alice Local");
+  });
+
   // ---------------------------------------------------------------------------
   // To-many additive merge (labels)
   // ---------------------------------------------------------------------------

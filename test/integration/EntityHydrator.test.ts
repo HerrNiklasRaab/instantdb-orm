@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import { Temporal } from "../../src/object-graph";
 import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
@@ -31,7 +32,7 @@ describe("RootStore hydration (Integration)", () => {
   async function createUserInStoreA(
     data: Partial<{
       name: string;
-      testDate: Date;
+      testDate: Temporal.Instant;
     }> = {}
   ): Promise<User> {
     return storeA.transaction(() => {
@@ -126,15 +127,16 @@ describe("RootStore hydration (Integration)", () => {
     });
 
     it("converts date fields to Date objects", async () => {
-      const testDate = new Date("2024-01-01T00:00:00.000Z");
+      const testDate = Temporal.Instant.from("2024-01-01T00:00:00.000Z");
       const userA = await createUserInStoreA({ testDate });
 
       const users = await storeB.queryModel(User);
       const user = users.find((u) => u.id === userA.id);
 
       assertDefined(user);
-      expect(user.testDate).toBeInstanceOf(Date);
-      expect(user.testDate).toEqual(testDate);
+      expect(user.testDate).toBeInstanceOf(Temporal.Instant);
+      assertDefined(user.testDate);
+      expect(user.testDate.equals(testDate)).toBe(true);
     });
 
     it("uses identity map - same ID returns same instance", async () => {

@@ -111,8 +111,10 @@ function attrValuesEqual(
   a: unknown,
   b: unknown
 ): boolean {
+  // Snapshot scalars are already codec-serialized column values (Temporal →
+  // ISO string), so scalar columns compare by `===`. Only json columns need a
+  // structural compare.
   if (a === b) return true;
-  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
   const attr = attrs[fieldName];
   if (attr && attr.valueType === "json") return jsonValuesEqual(a, b);
   return false;

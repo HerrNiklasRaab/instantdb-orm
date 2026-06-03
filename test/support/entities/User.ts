@@ -1,5 +1,5 @@
 import { makeObservable as mobxMakeObservable, observable } from "mobx";
-import { Model, model, field, inMemory } from "../../../src/object-graph";
+import { Model, model, field, inMemory, Temporal } from "../../../src/object-graph";
 import type { UserProfile } from "./Profile";
 import type { Post } from "./Post";
 import type { Invitation } from "./Invitation";
@@ -29,8 +29,9 @@ export class User extends Model {
     this._name = value;
   }
 
-  // Optional test field for testing Date serialization/hydration
-  testDate: Date | null = null;
+  // Optional test field for an un-annotated i.date() column — exercises the
+  // default hydration to Temporal.Instant (no @field type annotation).
+  testDate: Temporal.Instant | null = null;
 
   // In-memory-only field (NOT in schema) — exercises whether class field
   // initializers survive hydration via Object.create.

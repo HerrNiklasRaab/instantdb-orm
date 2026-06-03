@@ -6,7 +6,7 @@ import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
 import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
-import { collectModelValueObjectFields } from "../decorators/valueObject";
+import { fieldsForModel } from "../store/fieldsForEntity";
 
 type SchemaChunk<Schema extends AnySchema> = TransactionChunk<
   Schema,
@@ -128,17 +128,20 @@ export class ScopedTransaction<Schema extends AnySchema> {
     };
 
     const expandTouchedToColumns = (model: Model, touched: Set<string>): Set<string> => {
-      const expanded = new Set<string>();
-      const voFieldsByPropName = new Map<string, ReturnType<typeof collectModelValueObjectFields>[number]>();
-      for (const voField of collectModelValueObjectFields(model.constructor)) {
-        voFieldsByPropName.set(voField.propertyName, voField);
+      // Touched keys are attributeNames (see Model.setupObservers); expand each
+      // to its owned columns (a composed field spans several; a plain field is
+      // its single column).
+      const columnsByAttr = new Map<string, string[]>();
+      for (const field of fieldsForModel(model.constructor, model.entityName)) {
+        columnsByAttr.set(field.attributeName, field.ownedColumns(""));
       }
-      for (const field of touched) {
-        const voField = voFieldsByPropName.get(field);
-        if (voField) {
-          for (const col of voField.ownedColumns("")) expanded.add(col);
+      const expanded = new Set<string>();
+      for (const attr of touched) {
+        const columns = columnsByAttr.get(attr);
+        if (columns) {
+          for (const col of columns) expanded.add(col);
         } else {
-          expanded.add(field);
+          expanded.add(attr);
         }
       }
       return expanded;
@@ -181,7 +184,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
       for (const [columnName, value] of diff.scalars) {
         if (columnName === "id") continue;
         if (!expandedColumns.has(columnName)) continue;
-        Reflect.set(updateData, columnName, value instanceof Date ? value.toISOString() : value);
+        Reflect.set(updateData, columnName, value);
         hasUpdates = true;
       }
 
@@ -255,7 +258,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
       if (diff.scalars.size > 0) {
         const updateData: UpdateParams<Schema, keyof Schema["entities"] & string> = {};
         for (const [field, value] of diff.scalars) {
-          Reflect.set(updateData, field, value instanceof Date ? value.toISOString() : value);
+          Reflect.set(updateData, field, value);
         }
         tx = tx.update(updateData);
       }

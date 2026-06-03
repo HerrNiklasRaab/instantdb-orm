@@ -299,7 +299,7 @@ export class Post extends Model {
 
 ### Automatic Timestamps
 
-Model base class provides automatic timestamp management (no need to define in subclasses):
+Model base class provides automatic timestamp management (no need to define in subclasses). All three are `Temporal.Instant` (`deletedAt: Temporal.Instant | null`) — see [Temporal types](#temporal-types). The DB columns stay `i.date()`.
 - `createdAt` / `updatedAt`: Set automatically on construction, `updatedAt` updates on each `save()`
 - `deletedAt`: Defaults to `null`, set via `store.delete(entity)`
 - MobX observables for these fields are set up via the base `makeObservable()` method
@@ -407,6 +407,9 @@ export class ChessInvitation extends Invitation {
 | `src/object-graph/store/ModelHydrator.ts` | Raw data → model instances |
 | `src/object-graph/store/EntityMeta.ts` | Schema metadata registry |
 | `src/object-graph/store/ModelRegistry.ts` | Model class registry |
+| `src/object-graph/columns/ColumnCodec.ts` | `ColumnCodec` (Leaf/Composite), value⟷column(s) |
+| `src/object-graph/decorators/valueObject.ts` | `Field`, VO codecs, `collectAllFields` (one Field per column) |
+| `src/object-graph/temporal/` | Temporal codecs, brand registry, `Temporal` re-export |
 
 ## Value Objects
 
@@ -564,9 +567,31 @@ Same constructor-bypass rule as Models — VOs are reconstructed via `Object.cre
 
 ### Change tracking
 
-Spread VOs use the existing column-level snapshot machinery — the VO setter on the model decomposes into per-column `writeField` calls, and `ModelSnapshotDiff` compares scalars as it does today. Embedded JSON adds a structural-compare branch in the diff. No VO awareness leaks into `ChangeTracker`.
+Every column — VO, Temporal, or plain — goes through one `Field`+codec path (`collectAllFields`): the snapshot decomposes each field to its column value(s), and `ModelSnapshotDiff` compares those. There is no separate raw-column path and no VO/Temporal awareness in `ChangeTracker`.
 
 See [ADR 0004](../../docs/adr/0004-value-objects-in-sync.md) for the design rationale.
+
+## Temporal types
+
+First-class [Temporal](https://tc39.es/proposal-temporal/docs/) support. Any property (Model or VO) can declare a Temporal type; **JS `Date` is not used anywhere in the model layer** — import `Temporal` from `@upfor/sync`, never the polyfill directly.
+
+```typescript
+import { Temporal } from "@upfor/sync";
+
+@field({ type: Temporal.Instant })
+scheduledFor: Temporal.Instant;
+
+@field({ type: Temporal.PlainDate, optional: true })
+day: Temporal.PlainDate | null = null;
+```
+
+- **Declare** with `@field({ type: Temporal.X })`, same as VOs. Works on Model fields, VO fields, and nested. `optional: true` for nullable.
+- **Storage** (DB column stays a normal InstantDB type): `Instant` / `PlainDate` / `PlainDateTime` / `PlainYearMonth` → `i.date()`; `PlainTime` / `PlainMonthDay` → `i.date()` (anchored to a sentinel instant for DB ordering); `Duration` → `i.string()` (ISO); `ZonedDateTime` → `i.date()` instant + `i.string()` zone (columns `fieldInstant` + `fieldZone`). Wire form is the canonical ISO string; **full precision preserved** (no ms floor).
+- **Un-annotated `i.date()` columns default to `Temporal.Instant`** — base timestamps included. You only annotate to get a non-instant type.
+- **Comparisons/sorts**: `Temporal.Instant.compare(a, b)`, `a.equals(b)`. No `.getTime()` / `.toISOString()`.
+- **Local calendar** (Temporal has no implicit zone): convert via `instant.toZonedDateTimeISO(zone)`. There is no `Date`-style implicit device zone.
+
+Internals: one codec per type (`ColumnCodec`, brand-keyed registry), the same `Field`/codec path VOs use — every column read/write goes through a codec, no special-casing. See [ADR 0005](../../docs/adr/0005-temporal-types-in-sync.md).
 
 ## Design Patterns
 

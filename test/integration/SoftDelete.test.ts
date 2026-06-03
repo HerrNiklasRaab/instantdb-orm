@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import { Temporal } from "../../src/object-graph";
 import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
@@ -43,7 +44,7 @@ describe("Soft Delete (Integration)", () => {
 
       expect(user.deletedAt).toBeNull();
       await store.transaction(() => { user.delete(); });
-      expect(user.deletedAt).toBeInstanceOf(Date);
+      expect(user.deletedAt).toBeInstanceOf(Temporal.Instant);
 
       const result = await db.query({ users: { $: { where: { id: user.id } } } });
       const users = usersWithDeletedAt(result);

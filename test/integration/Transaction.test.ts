@@ -5,6 +5,7 @@ import {
   type TestInstantDBClient,
 } from "./support/instantdb-test-utils";
 import { RootStore } from "../../src/object-graph/store/RootStore";
+import { Temporal } from "../../src/object-graph";
 import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
@@ -146,7 +147,7 @@ describe("Transaction (Integration)", () => {
       const tx = store.createTransaction();
       tx.run(() => {
         user.name = "Changed";
-        user.testDate = new Date("2024-01-01");
+        user.testDate = Temporal.Instant.from("2024-01-01T00:00:00Z");
       });
 
       tx.rollback();

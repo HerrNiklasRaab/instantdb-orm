@@ -58,7 +58,7 @@ describe("Property-level permissions (Integration)", () => {
       expect(user.secretField).toBe("my-secret-value");
     });
 
-    it("non-owner cannot see secretField (returns null)", async () => {
+    it("non-owner cannot see secretField (returns undefined)", async () => {
       const ownerEmail = `owner-${id()}@example.com`;
       const viewerEmail = `viewer-${id()}@example.com`;
 
