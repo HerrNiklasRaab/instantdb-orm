@@ -344,7 +344,7 @@ $users: i.entity({
 
 When adding fields to models, also update `packages/bl/src/instant.schema.ts` and push:
 ```bash
-infisical run --env=dev -- bash -c 'npx instant-cli@latest push schema -p admin -a "$INSTANTDB_APP_ID" -y'
+infisical run --env=dev -- bash -c 'bunx instant-cli@latest push schema -p admin -a "$INSTANTDB_APP_ID" -y'
 ```
 
 ### Inheritance Example
@@ -626,4 +626,3 @@ export class User extends Model {
 ```
 
 Always run tests if you made relevant changes to sync package
-
