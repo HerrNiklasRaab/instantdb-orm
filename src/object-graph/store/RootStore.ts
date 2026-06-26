@@ -435,6 +435,15 @@ export class RootStore<Schema extends AnySchema>
     let firstResolved = false;
 
     return new Promise<{ close(): void }>((resolve, reject) => {
+      const close = () => {
+        closed = true;
+        unsubscribe();
+        const cleanup = () => {
+          prevStore?.dispose();
+          prevStore = null;
+        };
+        queue = queue.then(cleanup, cleanup);
+      };
       const unsubscribe = this.db.unsafeSubscribeQuery(
         expandedQuery,
         ({ error, data }) => {
@@ -467,17 +476,7 @@ export class RootStore<Schema extends AnySchema>
 
           if (!firstResolved) {
             firstResolved = true;
-            resolve({
-              close: () => {
-                closed = true;
-                unsubscribe();
-                const cleanup = () => {
-                  prevStore?.dispose();
-                  prevStore = null;
-                };
-                queue = queue.then(cleanup, cleanup);
-              },
-            });
+            resolve({ close });
           }
         }
       );
