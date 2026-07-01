@@ -1,7 +1,7 @@
 import { runInAction } from "mobx";
 import type { AnySchema } from "../../instantdb";
 import type { IdentityMap } from "../IdentityMap";
-import { Model } from "../Model";
+import { Model, ModelLifecycle } from "../Model";
 import {
   getModelClass,
   getModelClassForDiscriminator,
@@ -84,7 +84,7 @@ export class ModelHydrator<Schema extends AnySchema> {
         writeField(instance, fieldName, linkAttr.cardinality === "many" ? [] : null);
       }
 
-      instance.initTracking(false);
+      instance.initTracking(ModelLifecycle.Persisted);
 
       return instance;
     });

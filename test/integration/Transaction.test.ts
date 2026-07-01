@@ -9,6 +9,7 @@ import { Temporal } from "../../src/object-graph";
 import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
+import { Tag } from "../support/entities/Tag";
 
 describe("Transaction (Integration)", () => {
   let db: TestInstantDBClient;
@@ -29,6 +30,10 @@ describe("Transaction (Integration)", () => {
 
   function createPost(title = "Test Post"): Post {
     return new Post(title);
+  }
+
+  function createTag(name = "Test Tag"): Tag {
+    return new Tag(name);
   }
 
   /** Setup helper: persist a freshly-constructed entity through a tx. */
@@ -290,6 +295,148 @@ describe("Transaction (Integration)", () => {
       expect(() => { tx.run(() => { }); }).toThrow("Transaction has already been finalized");
       await expect(tx.commit()).rejects.toThrow("Transaction has already been finalized");
       expect(() => { tx.rollback(); }).toThrow("Transaction has already been finalized");
+    });
+  });
+
+  describe("transient model adoption", () => {
+    it("persists a transient model assigned through a to-one relationship", async () => {
+      const user = await persist(() => createUser("Author"));
+      const post = createPost("Transient Post");
+
+      await store.transaction(() => {
+        post.author = user;
+      });
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      await storeB.queryModel(Post);
+      const savedPost = storeB.getById(Post, post.id);
+
+      expect(savedPost?.title).toBe("Transient Post");
+      expect(savedPost?.author?.id).toBe(user.id);
+    });
+
+    it("persists a transient model pushed into a to-many relationship", async () => {
+      const user = await persist(() => createUser("Author"));
+      const post = createPost("Transient Post");
+
+      await store.transaction(() => {
+        user.posts.push(post);
+      });
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      await storeB.queryModel(Post);
+      const savedUser = storeB.getById(User, user.id);
+      const savedPost = storeB.getById(Post, post.id);
+
+      expect(savedPost?.title).toBe("Transient Post");
+      expect(savedPost?.author?.id).toBe(user.id);
+      expect(savedUser?.posts.map((p) => p.id)).toContain(post.id);
+    });
+
+    it("persists a connected transient graph when one member is attached", async () => {
+      const tag = await persist(() => createTag("poker"));
+      const author = createUser("Transient Author");
+      const post = new Post("Transient Graph Post", author);
+
+      await store.transaction(() => {
+        tag.posts.push(post);
+      });
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      await storeB.queryModel(Post);
+      await storeB.queryModel(Tag);
+      const savedAuthor = storeB.getById(User, author.id);
+      const savedPost = storeB.getById(Post, post.id);
+      const savedTag = storeB.getById(Tag, tag.id);
+
+      expect(savedAuthor?.name).toBe("Transient Author");
+      expect(savedPost?.title).toBe("Transient Graph Post");
+      expect(savedPost?.author?.id).toBe(author.id);
+      expect(savedPost?.tags.map((saved) => saved.id)).toContain(tag.id);
+      expect(savedTag?.posts.map((saved) => saved.id)).toContain(post.id);
+    });
+
+    it("restores an adopted transient model on rollback and allows retry", async () => {
+      const user = await persist(() => createUser("Author"));
+      const post = createPost("Retryable Post");
+
+      const tx = store.createTransaction();
+      tx.run(() => {
+        post.author = user;
+      });
+
+      expect(store.getById(Post, post.id)).toBe(post);
+      expect(post.author).toBe(user);
+
+      tx.rollback();
+
+      expect(store.getById(Post, post.id)).toBeUndefined();
+      expect(post.author).toBeNull();
+      expect(user.posts).not.toContain(post);
+
+      await store.transaction(() => {
+        post.author = user;
+      });
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      await storeB.queryModel(Post);
+      const savedPost = storeB.getById(Post, post.id);
+
+      expect(savedPost?.title).toBe("Retryable Post");
+      expect(savedPost?.author?.id).toBe(user.id);
+    });
+
+    it("restores a transaction-created model on rollback and allows retry", async () => {
+      const user = await persist(() => createUser("Author"));
+      const tx = store.createTransaction();
+      let post: Post | undefined;
+
+      tx.run(() => {
+        post = createPost("Transaction-Born Post");
+      });
+
+      assertDefined(post);
+      const retryPost = post;
+      expect(store.getById(Post, retryPost.id)).toBe(retryPost);
+
+      tx.rollback();
+
+      expect(store.getById(Post, retryPost.id)).toBeUndefined();
+
+      await store.transaction(() => {
+        retryPost.author = user;
+      });
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(User);
+      await storeB.queryModel(Post);
+      const savedPost = storeB.getById(Post, retryPost.id);
+
+      expect(savedPost?.title).toBe("Transaction-Born Post");
+      expect(savedPost?.author?.id).toBe(user.id);
+    });
+
+    it("throws for scalar-only mutation of a transient model and does not persist it", async () => {
+      const post = createPost("Transient Post");
+      let error: unknown = null;
+
+      try {
+        await store.transaction(() => {
+          post.title = "Changed Without Relationship";
+        });
+      } catch (caught) {
+        error = caught;
+      }
+
+      expect(error).toBeInstanceOf(Error);
+
+      const storeB = createVerificationStore();
+      await storeB.queryModel(Post);
+      expect(storeB.getById(Post, post.id)).toBeUndefined();
     });
   });
 

@@ -305,11 +305,14 @@ describe("Reverse link wiring (in-memory)", () => {
       post1.tags.push(tag2);
       post2.tags.push(tag1);
 
-      expect(tag1.posts).toEqual(expect.arrayContaining([post1, post2]));
+      expect(tag1.posts).toContain(post1);
+      expect(tag1.posts).toContain(post2);
       expect(tag1.posts).toHaveLength(2);
-      expect(tag2.posts).toEqual([post1]);
+      expect(tag2.posts).toContain(post1);
+      expect(tag2.posts).toHaveLength(1);
       expect(post1.tags).toHaveLength(2);
-      expect(post2.tags).toEqual([tag1]);
+      expect(post2.tags).toContain(tag1);
+      expect(post2.tags).toHaveLength(1);
     });
   });
 

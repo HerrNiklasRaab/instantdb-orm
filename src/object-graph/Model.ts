@@ -14,7 +14,7 @@ import {
   intercept,
   reaction,
 } from "mobx";
-import { field, applyInMemoryDefaults } from "./decorators";
+import { field, inMemory, applyInMemoryDefaults } from "./decorators";
 import { Temporal } from "./temporal";
 import { fieldsForModel } from "./store/fieldsForEntity";
 import { TransactionContext } from "./persistence/TransactionContext";
@@ -48,6 +48,12 @@ export function isModel(value: unknown): value is Model {
   return value !== null && typeof value === "object" && MODEL_BRAND in value;
 }
 
+export enum ModelLifecycle {
+  Transient = "transient",
+  PendingNew = "pendingNew",
+  Persisted = "persisted",
+}
+
 export abstract class Model {
   readonly id: string;
 
@@ -72,8 +78,11 @@ export abstract class Model {
    * model. Read by `ModelHydrator` (and `isFieldTouched`) to decide whether
    * a remote update should overwrite a given field. `null` when no tx is
    * currently editing the model.
-   */
+  */
   _activeClaims: Set<ClaimRecord> | null = null;
+
+  @inMemory(ModelLifecycle.Transient)
+  private _lifecycle: ModelLifecycle = ModelLifecycle.Transient;
 
   /**
    * Plain JS snapshot for debugging. Auto-updates via MobX reaction.
@@ -132,20 +141,28 @@ export abstract class Model {
    * observers. Public so hydrator can call it after creating instance via
    * createForHydration().
    */
-  initTracking(isNew: boolean = true): void {
+  initTracking(lifecycle: ModelLifecycle = ModelLifecycle.Transient): void {
     applyInMemoryDefaults(this);
     this.makeObservable();
     const disposers: (() => void)[] = [];
     this._disposers = disposers;
     this.setupObservers(disposers);
     this.setupDebugView();
-    if (isNew) {
-      TransactionContext.current?.registerNew(this);
-      this.wireConstructorRelationships();
+    switch (lifecycle) {
+      case ModelLifecycle.Transient:
+        this._lifecycle = ModelLifecycle.Transient;
+        TransactionContext.current?.registerNew(this);
+        this.wireConstructorRelationships();
+        return;
+      case ModelLifecycle.Persisted:
+        this._lifecycle = ModelLifecycle.Persisted;
+        return;
+      case ModelLifecycle.PendingNew:
+        throw new Error("Use ScopedTransaction.registerNew to create pending-new models.");
     }
   }
 
-  /** Dispose all observers/interceptors. Called by ScopedTransaction.rollback for new models. */
+  /** Dispose all observers/interceptors. */
   disposeTracking(): void {
     for (const disposer of this._disposers ?? []) {
       disposer();
@@ -164,10 +181,34 @@ export abstract class Model {
     return false;
   }
 
+  _adoptAsPendingNew(): boolean {
+    if (this._lifecycle === ModelLifecycle.Persisted) return false;
+    if (this._lifecycle === ModelLifecycle.PendingNew) return false;
+    if (this._disposers == null) return false;
+    this._lifecycle = ModelLifecycle.PendingNew;
+    return true;
+  }
+
+  _persistPendingNew(): void {
+    this.assertPendingNewLifecycle("persist");
+    this._lifecycle = ModelLifecycle.Persisted;
+  }
+
+  _discardPendingNew(): void {
+    this.assertPendingNewLifecycle("discard");
+    this._lifecycle = ModelLifecycle.Transient;
+  }
+
+  private assertPendingNewLifecycle(action: string): void {
+    if (this._lifecycle === ModelLifecycle.PendingNew) return;
+    throw new Error(`Cannot ${action} ${this.entityName} ${this.id}; model is ${this._lifecycle}.`);
+  }
+
   private setupObservers(disposers: (() => void)[]): void {
     const links = getEntityLinks(this.entityName);
 
     const propToFieldName = new Map<string, string>();
+    const relationshipPropToFieldName = new Map<string, string>();
     const toOneRelByProp = new Map<string, string>();
     for (const field of fieldsForModel(this.constructor, this.entityName)) {
       // Map the mutated property → its claim key (the schema-facing
@@ -180,6 +221,7 @@ export abstract class Model {
       if (fieldName === "id") continue;
       const propName = getFieldNameOnModel(this, fieldName);
       propToFieldName.set(propName, fieldName);
+      relationshipPropToFieldName.set(propName, fieldName);
       if (linkAttr.cardinality === "one") {
         toOneRelByProp.set(propName, fieldName);
       }
@@ -190,7 +232,13 @@ export abstract class Model {
         if (typeof change.name === "string") {
           const fieldName = propToFieldName.get(change.name);
           if (fieldName !== undefined) {
-            this.claimForCurrentTransaction(fieldName);
+            const relFieldName = relationshipPropToFieldName.get(change.name);
+            if (relFieldName !== undefined) {
+              const newValue: unknown = change.type === "remove" ? undefined : change.newValue;
+              this.trackRelationshipMutation(relFieldName, isModel(newValue) ? [newValue] : []);
+            } else {
+              this.claimScalarForCurrentTransaction(fieldName);
+            }
           }
         }
         return change;
@@ -226,7 +274,7 @@ export abstract class Model {
       const relFieldName = fieldName;
       const rawArray: unknown = readField(this, fieldName);
       if (!Array.isArray(rawArray)) continue;
-      const arrayObservable = rawArray;
+      const arrayObservable: unknown[] = rawArray;
       const members = new Set<Model>();
       for (const item of arrayObservable) {
         if (isModel(item)) members.add(item);
@@ -249,19 +297,18 @@ export abstract class Model {
       }
       try {
         const interceptDisposer = intercept(arrayObservable, (change) => {
-          this.claimForCurrentTransaction(relFieldName);
           if (change.type === "splice") {
+            const removedItems: Model[] = [];
             if (change.removedCount > 0) {
               for (let i = 0; i < change.removedCount; i++) {
                 const removedItem: unknown = arrayObservable[change.index + i];
-                if (isModel(removedItem)) members.delete(removedItem);
+                if (isModel(removedItem)) removedItems.push(removedItem);
               }
             }
+            const filteredAdded: Model[] = [];
             if (change.added.length > 0) {
-              const filteredAdded: Model[] = [];
               for (const item of change.added) {
                 if (isModel(item) && !members.has(item)) {
-                  members.add(item);
                   filteredAdded.push(item);
                 }
               }
@@ -272,6 +319,18 @@ export abstract class Model {
             } else if (change.removedCount === 0) {
               return null;
             }
+            this.trackRelationshipMutation(relFieldName, filteredAdded);
+            for (const removedItem of removedItems) {
+              members.delete(removedItem);
+            }
+            for (const addedItem of filteredAdded) {
+              members.add(addedItem);
+            }
+          } else {
+            this.trackRelationshipMutation(
+              relFieldName,
+              isModel(change.newValue) ? [change.newValue] : []
+            );
           }
           return change;
         });
@@ -282,15 +341,15 @@ export abstract class Model {
     }
   }
 
-  private claimForCurrentTransaction(fieldName: string): void {
+  private currentMutationTransaction(): typeof TransactionContext.current {
     // Skip claims that originate from reverse-link wiring. The wirer's
     // mutation on the wired side is bookkeeping (the forward-side row's
     // `link` op is what InstantDB persists), so the wired side should not
     // be drawn into the active transaction's commit.
-    if (isWiringInProgress()) return;
+    if (isWiringInProgress()) return null;
     // Hydration writes scalars and relationships through MobX-observed
     // properties; those mutations are framework-internal, not user intent.
-    if (isHydrationInProgress()) return;
+    if (isHydrationInProgress()) return null;
     const tx = TransactionContext.current;
     if (!tx) {
       throw new Error(
@@ -298,7 +357,31 @@ export abstract class Model {
         `Wrap the mutation in store.transaction(() => ...).`
       );
     }
+    return tx;
+  }
+
+  private claimScalarForCurrentTransaction(fieldName: string): void {
+    const tx = this.currentMutationTransaction();
+    if (!tx) return;
+    if (this._lifecycle === ModelLifecycle.PendingNew) return;
+    if (this._lifecycle === ModelLifecycle.Transient) {
+      throw new Error(
+        `Cannot mutate transient ${this.entityName} ${this.id} field "${fieldName}" inside a transaction before attaching it through a relationship.`
+      );
+    }
     tx.claim(this, fieldName);
+  }
+
+  private trackRelationshipMutation(fieldName: string, relatedModels: readonly Model[]): void {
+    const tx = this.currentMutationTransaction();
+    if (!tx) return;
+    tx.adopt(this);
+    for (const model of relatedModels) {
+      tx.adopt(model);
+    }
+    if (this._lifecycle !== ModelLifecycle.PendingNew) {
+      tx.claim(this, fieldName);
+    }
   }
 
   /**
@@ -381,4 +464,3 @@ export abstract class Model {
 }
 
 Object.defineProperty(Model.prototype, MODEL_BRAND, { value: true });
-

@@ -39,6 +39,10 @@ export interface ClaimRecord {
   readonly touched: Set<string>;
 }
 
+interface NewModelRecord {
+  readonly data: ModelSnapshot;
+}
+
 /**
  * Members are all Schema-free in signature and the typed store is held in
  * closures bound at construction. That makes the class structurally
@@ -48,6 +52,7 @@ export interface ClaimRecord {
 export class ScopedTransaction<Schema extends AnySchema> {
   readonly claim: (model: Model, fieldName: string) => void;
   readonly registerNew: (model: Model) => void;
+  readonly adopt: (model: Model) => void;
   readonly has: (model: Model) => boolean;
   readonly run: <T>(fn: () => T) => T;
   readonly commit: () => Promise<void>;
@@ -56,7 +61,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
 
   constructor(store: TransactionStoreAccess<Schema>) {
     const claimedModels = new Map<Model, ClaimRecord>();
-    const newModels = new Set<Model>();
+    const newModels = new Map<Model, NewModelRecord>();
     let finalized = false;
 
     const assertActive = (): void => {
@@ -75,6 +80,40 @@ export class ScopedTransaction<Schema extends AnySchema> {
       claimedModels.clear();
       newModels.clear();
       finalized = true;
+    };
+
+    const relatedModelsFor = (model: Model): Model[] => {
+      const result: Model[] = [];
+      for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(model.entityName))) {
+        const value = readField(model, fieldName);
+        if (linkAttr.cardinality === "one") {
+          if (isModel(value)) result.push(value);
+        } else if (Array.isArray(value)) {
+          for (const item of value) {
+            if (isModel(item)) result.push(item);
+          }
+        }
+      }
+      return result;
+    };
+
+    const registerNewGraph = (model: Model, visited: Set<Model>): void => {
+      assertActive();
+      if (visited.has(model)) return;
+      visited.add(model);
+      if (!newModels.has(model)) {
+        if (!model._adoptAsPendingNew()) return;
+        newModels.set(model, { data: new ModelSnapshot(model) });
+
+        const identityMap = store.getIdentityMapByName(model.entityName);
+        if (!identityMap.has(model.id)) {
+          identityMap.set(model);
+        }
+      }
+      if (!newModels.has(model)) return;
+      for (const relatedModel of relatedModelsFor(model)) {
+        registerNewGraph(relatedModel, visited);
+      }
     };
 
     const restoreTouchedFields = (model: Model, claim: ClaimRecord): void => {
@@ -301,14 +340,11 @@ export class ScopedTransaction<Schema extends AnySchema> {
     };
 
     this.registerNew = (model: Model): void => {
-      assertActive();
-      if (newModels.has(model)) return;
-      newModels.add(model);
+      registerNewGraph(model, new Set());
+    };
 
-      const identityMap = store.getIdentityMapByName(model.entityName);
-      if (!identityMap.has(model.id)) {
-        identityMap.set(model);
-      }
+    this.adopt = (model: Model): void => {
+      registerNewGraph(model, new Set());
     };
 
     this.has = (model: Model): boolean =>
@@ -331,7 +367,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
             const chunk = buildChunkFromTouched(model, claim);
             if (chunk) built.push(chunk);
           }
-          for (const model of newModels) {
+          for (const model of newModels.keys()) {
             // Bump updatedAt BEFORE snapshotting so the diff carries the
             // bumped timestamp out to the DB.
             model.setUpdatedAt();
@@ -345,6 +381,16 @@ export class ScopedTransaction<Schema extends AnySchema> {
         if (chunks.length > 0) {
           await store.db.transact(chunks);
         }
+        for (const model of newModels.keys()) {
+          model._persistPendingNew();
+        }
+      } catch (error) {
+        for (const model of newModels.keys()) {
+          const identityMap = store.getIdentityMapByName(model.entityName);
+          identityMap.delete(model.id);
+          model._discardPendingNew();
+        }
+        throw error;
       } finally {
         releaseAll();
       }
@@ -357,10 +403,13 @@ export class ScopedTransaction<Schema extends AnySchema> {
           for (const [model, claim] of claimedModels) {
             restoreTouchedFields(model, claim);
           }
-          for (const model of newModels) {
+          for (const [model, record] of newModels) {
+            store.rehydrateModel(model, record.data.toRawEntityData(model.id));
+          }
+          for (const model of newModels.keys()) {
             const identityMap = store.getIdentityMapByName(model.entityName);
             identityMap.delete(model.id);
-            model.disposeTracking();
+            model._discardPendingNew();
           }
         });
       } finally {
@@ -370,6 +419,11 @@ export class ScopedTransaction<Schema extends AnySchema> {
 
     this.dispose = (): void => {
       if (!finalized) {
+        for (const model of newModels.keys()) {
+          const identityMap = store.getIdentityMapByName(model.entityName);
+          identityMap.delete(model.id);
+          model._discardPendingNew();
+        }
         releaseAll();
       }
     };

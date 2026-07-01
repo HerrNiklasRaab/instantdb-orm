@@ -1,5 +1,5 @@
 export { IdentityMap } from "./IdentityMap";
-export { Model } from "./Model";
+export { Model, ModelLifecycle } from "./Model";
 export { Temporal } from "./temporal";
 export { model, field, inMemory, valueObject, ValueObject, ValueObjectStorage, type ValueObjectOptions } from "./decorators";
 export {

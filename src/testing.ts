@@ -31,5 +31,9 @@ const stubStore: TransactionStoreAccess<AnySchema> = {
 
 export function withTestTransaction<T>(fn: () => T): T {
   const tx = new ScopedTransaction<AnySchema>(stubStore);
-  return TransactionContext.run(tx, fn);
+  try {
+    return TransactionContext.run(tx, fn);
+  } finally {
+    tx.dispose();
+  }
 }
