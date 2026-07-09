@@ -24,6 +24,7 @@ export interface TransactionStoreAccess<Schema extends AnySchema> {
     delete(id: string): boolean;
   };
   rehydrateModel(model: Model, rawData: { id: string; [key: string]: unknown }): void;
+  evictModel(model: Model): void;
 }
 
 /**
@@ -53,6 +54,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
   readonly claim: (model: Model, fieldName: string) => void;
   readonly registerNew: (model: Model) => void;
   readonly adopt: (model: Model) => void;
+  readonly deleteModel: (model: Model) => void;
   readonly has: (model: Model) => boolean;
   readonly run: <T>(fn: () => T) => T;
   readonly commit: () => Promise<void>;
@@ -62,6 +64,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
   constructor(store: TransactionStoreAccess<Schema>) {
     const claimedModels = new Map<Model, ClaimRecord>();
     const newModels = new Map<Model, NewModelRecord>();
+    const deletedModels = new Set<Model>();
     let finalized = false;
 
     const assertActive = (): void => {
@@ -79,6 +82,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
       }
       claimedModels.clear();
       newModels.clear();
+      deletedModels.clear();
       finalized = true;
     };
 
@@ -288,6 +292,24 @@ export class ScopedTransaction<Schema extends AnySchema> {
       return tx;
     };
 
+    const buildSoftDeleteChunk = (model: Model): SchemaChunk<Schema> | null => {
+      model.setUpdatedAt();
+      const snapshot = new ModelSnapshot(model);
+      const deletedAt = snapshot.scalars.get("deletedAt");
+      if (deletedAt === null || deletedAt === undefined) return null;
+
+      const updateData: UpdateParams<Schema, keyof Schema["entities"] & string> = {};
+      Reflect.set(updateData, "deletedAt", deletedAt);
+      const updatedAt = snapshot.scalars.get("updatedAt");
+      if (updatedAt !== undefined) {
+        Reflect.set(updateData, "updatedAt", updatedAt);
+      }
+      return txFor(model).update(updateData);
+    };
+
+    const buildPhysicalDeleteChunk = (model: Model): SchemaChunk<Schema> =>
+      txFor(model).delete();
+
     const buildTxChunkFromDiff = (
       model: Model,
       diff: ModelSnapshotDiff
@@ -347,8 +369,16 @@ export class ScopedTransaction<Schema extends AnySchema> {
       registerNewGraph(model, new Set());
     };
 
+    this.deleteModel = (model: Model): void => {
+      assertActive();
+      if (newModels.has(model)) {
+        throw new Error(`Cannot delete new ${model.entityName} ${model.id}.`);
+      }
+      deletedModels.add(model);
+    };
+
     this.has = (model: Model): boolean =>
-      claimedModels.has(model) || newModels.has(model);
+      claimedModels.has(model) || newModels.has(model) || deletedModels.has(model);
 
     this.run = <T>(fn: () => T): T => {
       assertActive();
@@ -357,10 +387,12 @@ export class ScopedTransaction<Schema extends AnySchema> {
 
     this.commit = async (): Promise<void> => {
       assertActive();
+      let firstCommitSucceeded = false;
       try {
         const chunks = TransactionContext.run(this, () => {
           const built: SchemaChunk<Schema>[] = [];
           for (const [model, claim] of claimedModels) {
+            if (deletedModels.has(model)) continue;
             if (claim.touched.size === 0) continue;
             if (!touchedFieldsHaveChanges(model, claim)) continue;
             model.setUpdatedAt();
@@ -375,20 +407,36 @@ export class ScopedTransaction<Schema extends AnySchema> {
             if (!diff.hasChanges()) continue;
             built.push(buildTxChunkFromDiff(model, diff));
           }
+          for (const model of deletedModels) {
+            const chunk = buildSoftDeleteChunk(model);
+            if (chunk) built.push(chunk);
+          }
           return built;
         });
 
         if (chunks.length > 0) {
           await store.db.transact(chunks);
         }
+        firstCommitSucceeded = true;
         for (const model of newModels.keys()) {
           model._persistPendingNew();
         }
+        if (deletedModels.size > 0) {
+          for (const model of deletedModels) {
+            store.evictModel(model);
+          }
+          await store.db.transact([...deletedModels].map(buildPhysicalDeleteChunk));
+          for (const model of deletedModels) {
+            model._markHardDeleted();
+          }
+        }
       } catch (error) {
-        for (const model of newModels.keys()) {
-          const identityMap = store.getIdentityMapByName(model.entityName);
-          identityMap.delete(model.id);
-          model._discardPendingNew();
+        if (!firstCommitSucceeded) {
+          for (const model of newModels.keys()) {
+            const identityMap = store.getIdentityMapByName(model.entityName);
+            identityMap.delete(model.id);
+            model._discardPendingNew();
+          }
         }
         throw error;
       } finally {

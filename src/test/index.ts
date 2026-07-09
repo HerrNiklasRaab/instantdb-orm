@@ -12,6 +12,10 @@ export { txFor } from "./txFor";
 export { firstOrFail } from "./firstOrFail";
 
 export {
+  InMemoryInstantDBSyncClient,
+} from "./inMemoryInstantDB";
+
+export {
   id,
   getAdminDb,
   initTestDatabase,

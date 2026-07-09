@@ -512,7 +512,7 @@ describe("Linear-style optimistic merge", () => {
       await applyRemote((remote) => {
         const remoteIssue = remote.getById(Post, issue.id);
         assertDefined(remoteIssue);
-        remoteIssue.delete();
+        remoteIssue.softDelete();
       });
 
       await store.queryModel(Post);

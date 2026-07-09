@@ -49,10 +49,43 @@ export class User extends Model {
 
 ### RootStore (`src/object-graph/store/RootStore.ts`)
 Central coordinator for all persistence operations:
-- `save(model)` - Persists tracked changes to InstantDB
-- `delete(model)` - Soft-deletes with relationship cleanup
+- `transaction(() => { ... })` - Persists tracked model changes to InstantDB
 - `queryModel(EntityClass)` - Fetches and hydrates entities
 - `subscribeModel(EntityClass, callback)` - Live subscriptions
+
+## Testing
+
+Use `InMemoryInstantDBSyncClient` from `@upfor/sync/test` for unit tests that need a real `RootStore` with in-memory InstantDB client behavior.
+
+```ts
+const store = new RootStore<AppSchema>({
+  db: new InMemoryInstantDBSyncClient<AppSchema>({ schema }),
+});
+
+store.subscribeAll();
+```
+
+No requery before assert is needed if `subscribeAll()` was used.
+
+### Deleting Models
+
+Use model methods inside a transaction:
+
+```typescript
+await store.transaction(() => {
+  model.delete(); // soft-delete first, then physically delete
+});
+
+await store.transaction(() => {
+  model.softDelete(); // only when the row must remain as a tombstone
+});
+```
+
+Rules:
+- `delete()` is the normal deletion path.
+- `softDelete()` is explicit tombstone behavior; do not use it unless the domain needs retained deleted rows.
+- If physical delete fails, the row remains soft-deleted.
+- Do not delete shared rows that other users still need.
 
 ### IdentityMap (`src/object-graph/IdentityMap.ts`)
 Caches model instances by ID. Ensures reference equality:
@@ -301,7 +334,7 @@ export class Post extends Model {
 
 Model base class provides automatic timestamp management (no need to define in subclasses). All three are `Temporal.Instant` (`deletedAt: Temporal.Instant | null`) — see [Temporal types](#temporal-types). The DB columns stay `i.date()`.
 - `createdAt` / `updatedAt`: Set automatically on construction, `updatedAt` updates on each `save()`
-- `deletedAt`: Defaults to `null`, set via `store.delete(entity)`
+- `deletedAt`: Defaults to `null`, set via `model.softDelete()` or the first phase of `model.delete()`
 - MobX observables for these fields are set up via the base `makeObservable()` method
 
 ### Schema Requirements

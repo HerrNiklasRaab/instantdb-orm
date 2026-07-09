@@ -11,6 +11,7 @@ import { getEntityNameFromClass } from "../decorators";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
 import { TransactionContext } from "../persistence/TransactionContext";
 import { InstantDBClient } from "./types";
+import { withHydration } from "./hydrationContext";
 import type {
   ModelConstructor,
   RawEntityData,
@@ -74,7 +75,9 @@ export class RootStore<Schema extends AnySchema>
     this.initializeIdentityMaps();
   }
 
-  dispose(): void { }
+  dispose(): void {
+    this.closeSubscriptions();
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Transaction API
@@ -157,11 +160,30 @@ export class RootStore<Schema extends AnySchema>
     }
   }
 
+  evictModel(model: Model): void {
+    withHydration(() => {
+      runInAction(() => {
+        this.cleanupRelationships(model.entityName, model);
+        this.getIdentityMapByName(model.entityName).delete(model.id);
+      });
+    });
+  }
+
   getAll<T extends Model>(EntityClass: ModelClass<T>): T[] {
     const result: T[] = [];
     for (const map of this.identityMapsFor(EntityClass)) {
       for (const entity of map.values()) {
         if (isInstanceOf(entity, EntityClass)) result.push(entity);
+      }
+    }
+    return result;
+  }
+
+  getAllModels(): Model[] {
+    const result: Model[] = [];
+    for (const map of this.identityMaps.values()) {
+      for (const entity of map.values()) {
+        result.push(entity);
       }
     }
     return result;
@@ -217,6 +239,7 @@ export class RootStore<Schema extends AnySchema>
       rawDataArray,
       this.getIdentityMapByName.bind(this)
     );
+    this.reconcileFullEntitySnapshot(entityName, rawDataArray);
     return hydrated.filter((m): m is T => isInstanceOf(m, EntityClass));
   }
 
@@ -282,6 +305,7 @@ export class RootStore<Schema extends AnySchema>
           rawDataArray,
           this.getIdentityMapByName.bind(this)
         );
+        this.reconcileFullEntitySnapshot(entityName, rawDataArray);
         return hydrated.filter((m): m is T => isInstanceOf(m, EntityClass));
       },
       callback
@@ -363,11 +387,16 @@ export class RootStore<Schema extends AnySchema>
 
     return {
       close: () => {
-        for (const sub of this.subscriptions.values()) {
-          sub.close();
-        }
+        this.closeSubscriptions();
       },
     };
+  }
+
+  private closeSubscriptions(): void {
+    for (const sub of [...this.subscriptions.values()]) {
+      sub.close();
+    }
+    this.subscriptions.clear();
   }
 
   async query<Q extends InstaQLParams<Schema>>(
@@ -481,5 +510,15 @@ export class RootStore<Schema extends AnySchema>
         }
       );
     });
+  }
+
+  private reconcileFullEntitySnapshot(
+    entityName: keyof Schema["entities"] & string,
+    rawDataArray: readonly RawEntityData[]
+  ): void {
+    const seenIds = new Set(rawDataArray.map((row) => row.id));
+    for (const model of this.getIdentityMapByName(entityName).values()) {
+      if (!seenIds.has(model.id)) this.evictModel(model);
+    }
   }
 }

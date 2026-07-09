@@ -52,6 +52,7 @@ export enum ModelLifecycle {
   Transient = "transient",
   PendingNew = "pendingNew",
   Persisted = "persisted",
+  HardDeleted = "hardDeleted",
 }
 
 export abstract class Model {
@@ -114,12 +115,20 @@ export abstract class Model {
     return this._deletedAt;
   }
 
-  /**
-   * Soft-delete this model. Stamps `deletedAt`; the surrounding transaction
-   * commits it.
-   */
-  delete(): void {
+  softDelete(): void {
     this._deletedAt = Temporal.Now.instant();
+  }
+
+  delete(): void {
+    const tx = this.currentMutationTransaction();
+    if (!tx) return;
+    if (this._lifecycle !== ModelLifecycle.Persisted) {
+      throw new Error(`Cannot delete ${this.entityName} ${this.id}; model is ${this._lifecycle}.`);
+    }
+    if (this._deletedAt === null) {
+      this._deletedAt = Temporal.Now.instant();
+    }
+    tx.deleteModel(this);
   }
 
   /**
@@ -159,6 +168,8 @@ export abstract class Model {
         return;
       case ModelLifecycle.PendingNew:
         throw new Error("Use ScopedTransaction.registerNew to create pending-new models.");
+      case ModelLifecycle.HardDeleted:
+        throw new Error("Cannot initialize a hard-deleted model.");
     }
   }
 
@@ -197,6 +208,10 @@ export abstract class Model {
   _discardPendingNew(): void {
     this.assertPendingNewLifecycle("discard");
     this._lifecycle = ModelLifecycle.Transient;
+  }
+
+  _markHardDeleted(): void {
+    this._lifecycle = ModelLifecycle.HardDeleted;
   }
 
   private assertPendingNewLifecycle(action: string): void {
@@ -364,6 +379,9 @@ export abstract class Model {
     const tx = this.currentMutationTransaction();
     if (!tx) return;
     if (this._lifecycle === ModelLifecycle.PendingNew) return;
+    if (this._lifecycle === ModelLifecycle.HardDeleted) {
+      throw new Error(`Cannot mutate hard-deleted ${this.entityName} ${this.id}.`);
+    }
     if (this._lifecycle === ModelLifecycle.Transient) {
       throw new Error(
         `Cannot mutate transient ${this.entityName} ${this.id} field "${fieldName}" inside a transaction before attaching it through a relationship.`
@@ -375,6 +393,9 @@ export abstract class Model {
   private trackRelationshipMutation(fieldName: string, relatedModels: readonly Model[]): void {
     const tx = this.currentMutationTransaction();
     if (!tx) return;
+    if (this._lifecycle === ModelLifecycle.HardDeleted) {
+      throw new Error(`Cannot mutate hard-deleted ${this.entityName} ${this.id}.`);
+    }
     tx.adopt(this);
     for (const model of relatedModels) {
       tx.adopt(model);

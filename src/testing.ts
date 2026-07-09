@@ -27,6 +27,7 @@ const stubStore: TransactionStoreAccess<AnySchema> = {
     delete: () => false,
   }),
   rehydrateModel: () => undefined,
+  evictModel: () => undefined,
 };
 
 export function withTestTransaction<T>(fn: () => T): T {
