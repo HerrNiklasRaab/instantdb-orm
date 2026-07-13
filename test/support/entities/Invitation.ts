@@ -8,7 +8,7 @@ import type { User } from "./User";
 // the metadata-inheritance walk across three levels (Model → Invitation →
 // ChessInvitation/SkiInvitation).
 export abstract class Invitation extends Model {
-  abstract readonly modelType: string; // discriminator
+  abstract get modelType(): string;
 
   // Relationship to User
   inviter: User | null = null;
