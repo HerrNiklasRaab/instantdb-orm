@@ -30,11 +30,20 @@ const stubStore: TransactionStoreAccess<AnySchema> = {
   evictModel: () => undefined,
 };
 
-export function withTestTransaction<T>(fn: () => T): T {
+export function withTestTransaction<T>(fn: () => Promise<T>): Promise<T>;
+export function withTestTransaction<T>(fn: () => T): T;
+export function withTestTransaction<T>(fn: () => T | Promise<T>): T | Promise<T> {
   const tx = new ScopedTransaction<AnySchema>(stubStore);
+  let result: T | Promise<T>;
   try {
-    return TransactionContext.run(tx, fn);
-  } finally {
+    result = TransactionContext.run(tx, fn);
+  } catch (err) {
     tx.dispose();
+    throw err;
   }
+  if (result instanceof Promise) {
+    return result.finally(() => { tx.dispose(); });
+  }
+  tx.dispose();
+  return result;
 }
