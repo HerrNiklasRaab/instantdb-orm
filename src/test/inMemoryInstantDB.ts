@@ -84,6 +84,11 @@ export class InMemoryInstantDBSyncClient<Schema extends AnySchema>
             ...config,
             appId,
             devtool: false,
+            // A guaranteed-refused local port: the Reactor's socket must fail
+            // fast and identically everywhere. Dialing the real Instant API
+            // hangs on CI runners with restricted egress, which parks every
+            // transact() until the test times out.
+            websocketURI: "ws://127.0.0.1:9",
           },
           MapInstantStore,
           QuietNetworkListener,
