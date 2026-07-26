@@ -11,7 +11,6 @@ import {
   type QuerySubscriptionState,
   type Unsubscribe,
 } from "../instantdb";
-import { env } from "@upfor/shared/env";
 import { InstantDBAdminAdapter } from "../admin/InstantDBAdminAdapter";
 
 export { id };
@@ -59,8 +58,14 @@ export class TestInstantDBClient<Schema extends AnySchema>
  * against it.
  */
 export function getAdminDb<Schema extends AnySchema>(schema: Schema): AdminDB<Schema> {
-  const appId = env.getOrThrow("INSTANTDB_APP_ID");
-  const adminToken = env.getOrThrow("INSTANTDB_ADMIN_TOKEN");
+  const appId = process.env.INSTANTDB_APP_ID;
+  const adminToken = process.env.INSTANTDB_ADMIN_TOKEN;
+  if (appId === undefined) {
+    throw new Error("env var INSTANTDB_APP_ID is required but not set");
+  }
+  if (adminToken === undefined) {
+    throw new Error("env var INSTANTDB_ADMIN_TOKEN is required but not set");
+  }
   return init<Schema>({ appId, adminToken, schema });
 }
 

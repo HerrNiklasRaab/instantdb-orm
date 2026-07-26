@@ -17,7 +17,6 @@
   "dependencies": {
     "@instantdb/platform": "^1.0.35",
     "@js-temporal/polyfill": "^0.5.1",
-    "@upfor/shared": "*",
     "mobx": "^6.15.3",
     "uuid": "^14.0.0"
   },
