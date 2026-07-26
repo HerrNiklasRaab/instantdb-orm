@@ -1,6 +1,12 @@
-# Stop writing your business rules twice
+# A Linear-like sync API on top of InstantDB
 
-**A typed, reactive ORM for [InstantDB](https://instantdb.com).** Model your domain as real classes with real behavior — then run identical code on the server, on the web, and on mobile.
+Since installing Linear for the first time, I was in awe of their sync engine. Not even necessarily for the user-facing benefits — real-time sync, everything loading instantly — but for the insane simplification on the developer experience side. No API juggling, no model mapping between the view, the business logic, and the data layer.
+
+I dug through countless libraries and products and finally landed on [InstantDB](https://instantdb.com), probably the best backend of this new era of sync.
+
+What they built is amazing, and a real step up. But it didn't provide the API I'd want as someone familiar with Domain Driven Design.
+
+So I built it:
 
 ---
 
