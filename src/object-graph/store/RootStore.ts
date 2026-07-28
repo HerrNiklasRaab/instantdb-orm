@@ -314,19 +314,16 @@ export class RootStore<Schema extends AnySchema>
     return { entities, close };
   }
 
+  // Recursion is bounded by the caller's query tree: only explicitly
+  // requested link subtrees recurse, and the id-only stubs injected for
+  // unrequested links are terminal. An entity may therefore legitimately
+  // appear on several roots or several times along one path.
   private buildQueryWithRelationships<Q extends InstaQLParams<Schema>>(
-    queryObj: Q,
-    visited: Set<string> = new Set()
+    queryObj: Q
   ): Q {
     const expanded = { ...queryObj };
     for (const key of Object.keys(expanded)) {
       if (key === "$" || !isValidEntityName(key)) continue;
-
-      if (visited.has(key)) {
-        Reflect.set(expanded, key, { $: { fields: ["id"] } });
-        continue;
-      }
-      visited.add(key);
 
       const value: unknown = Reflect.get(expanded, key);
       const subquery: InstaQLParams<Schema> =
@@ -341,7 +338,7 @@ export class RootStore<Schema extends AnySchema>
         const existing: unknown = Reflect.get(subquery, fieldName);
         const wrapper: InstaQLParams<Schema> = {};
         Reflect.set(wrapper, linkAttr.entityName, existing);
-        const expandedWrapper = this.buildQueryWithRelationships(wrapper, new Set(visited));
+        const expandedWrapper = this.buildQueryWithRelationships(wrapper);
         Reflect.set(subquery, fieldName, Reflect.get(expandedWrapper, linkAttr.entityName));
       }
     }

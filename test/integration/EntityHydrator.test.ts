@@ -397,4 +397,20 @@ describe("RootStore hydration (Integration)", () => {
       expect(hydrated.inMemoryFlag).toBe(false);
     });
   });
+
+  describe("multi-root query", () => {
+    it("hydrates links of an entity that another root also queries", async () => {
+      const alice = await createUserInStoreA({ name: "Alice" });
+      const post = await storeA.transaction(() => new Post("Hello", new User("Bob")));
+
+      await storeB.query({
+        users: { $: { where: { id: alice.id } } },
+        posts: { author: {} },
+      });
+
+      const hydrated = storeB.getById(Post, post.id);
+      assertDefined(hydrated);
+      expect(hydrated.author?.name).toBe("Bob");
+    });
+  });
 });
