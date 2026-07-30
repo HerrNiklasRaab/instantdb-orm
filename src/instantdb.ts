@@ -18,6 +18,19 @@ export type QuerySubscriptionState<Schema extends AnySchema, Q> =
   | { error: { message: string; traceId?: string }; data: undefined }
   | { error: undefined; data: InstaQLResponse<Schema, Q> };
 
+const IDENTITY_CHANGED_ERROR_TYPE = "user-changed";
+
+// InstantDB clears its whole pending-mutation queue the moment the client's
+// auth identity changes, rejecting every unconfirmed write with this body
+// type. Nothing can recover such a write: the identity that was permitted to
+// author it no longer exists on this client.
+export function writeDroppedByIdentityChange(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const body: unknown = Reflect.get(error, "body");
+  if (typeof body !== "object" || body === null) return false;
+  return Reflect.get(body, "type") === IDENTITY_CHANGED_ERROR_TYPE;
+}
+
 export abstract class InstantDBClient<Schema extends AnySchema> {
   abstract query<Q extends ValidQuery<Q, Schema>>(
     query: Q,

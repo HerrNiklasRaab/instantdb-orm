@@ -1,6 +1,6 @@
 import { runInAction } from "mobx";
 import type { LinkParams, TransactionChunk, TxChunk, UpdateParams } from "@instantdb/core";
-import type { AnySchema } from "../../instantdb";
+import { writeDroppedByIdentityChange, type AnySchema } from "../../instantdb";
 import { Model, isModel } from "../Model";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
@@ -438,6 +438,11 @@ export class ScopedTransaction<Schema extends AnySchema> {
             model._discardPendingNew();
           }
         }
+        // A write the departed identity authored can never land, and no caller
+        // outlives the identity to act on it — every consumer is unmounting
+        // with the authenticated tree. Raising it would only surface as an
+        // unobserved rejection.
+        if (writeDroppedByIdentityChange(error)) return;
         throw error;
       } finally {
         releaseAll();
