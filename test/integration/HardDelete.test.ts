@@ -131,25 +131,12 @@ describe("Hard Delete (Integration)", () => {
     expect(verificationStore.getById(Post, post.id)).toBeUndefined();
   });
 
-  it("reconciles remote hard deletes from full entity snapshots", async () => {
-    const user = await store.transaction(() => new User("Test User"));
-    const storeA = new RootStore<AppSchema>({ db });
-    const storeB = new RootStore<AppSchema>({ db });
-
-    await storeA.queryModel(User);
-    const hydrated = storeA.getById(User, user.id);
-    assertDefined(hydrated);
-
-    await storeB.queryModel(User);
-    const toDelete = storeB.getById(User, user.id);
-    assertDefined(toDelete);
-    await storeB.transaction(() => { toDelete.delete(); });
-
-    await storeA.queryModel(User);
-    expect(storeA.getById(User, user.id)).toBeUndefined();
-  });
-
-  it("reconciles remote hard deletes from full entity subscriptions", async () => {
+  // softDelete, not delete(): a server-computed stream only guarantees it
+  // eventually reflects the final state. delete()'s two commits can coalesce
+  // into one recomputation that skips the tombstone state, and the final
+  // state of a completed delete carries no trace — the tombstone emission is
+  // only guaranteed while the tombstone IS the final state.
+  it("drops a soft-deleted row from a live subscriber when its tombstone arrives", async () => {
     const user = await store.transaction(() => new User("Test User"));
     const storeA = new RootStore<AppSchema>({ db });
     const storeB = new RootStore<AppSchema>({ db });
@@ -159,7 +146,7 @@ describe("Hard Delete (Integration)", () => {
     await storeB.queryModel(User);
     const toDelete = storeB.getById(User, user.id);
     assertDefined(toDelete);
-    await storeB.transaction(() => { toDelete.delete(); });
+    await storeB.transaction(() => { toDelete.softDelete(); });
 
     await waitFor(() => storeA.getById(User, user.id) === undefined, 8000);
     subscription.close();

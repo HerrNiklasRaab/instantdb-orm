@@ -1,7 +1,9 @@
 import type { CardinalityKind } from "@instantdb/core";
 import { Model } from "../Model";
+import { TransactionContext } from "../persistence/TransactionContext";
 import { findReverseSide, readField, writeField } from "./EntityMeta";
 import { makeAsyncDepth } from "./asyncDepth";
+import { isHydrationInProgress } from "./hydrationContext";
 
 /**
  * Two stack-scoped guards backing the wirer:
@@ -50,6 +52,14 @@ function applyReverseChange(
   add: boolean
 ): void {
   if (owner._disposers == null && sweep.isActive()) return;
+
+  // The wired side is claim-invisible by design (see above), which also makes
+  // it invisible to the hydrator's touched-field protection. Shield it for the
+  // transaction's lifetime instead: a snapshot produced before this commit
+  // cannot know the link and must not reconcile it away.
+  if (!isHydrationInProgress()) {
+    TransactionContext.current?.shield(owner, reverseFieldName);
+  }
 
   if (reverseCardinality === "many") {
     const arr = readField(owner, reverseFieldName);

@@ -52,6 +52,7 @@ interface NewModelRecord {
  */
 export class ScopedTransaction<Schema extends AnySchema> {
   readonly claim: (model: Model, fieldName: string) => void;
+  readonly shield: (model: Model, fieldName: string) => void;
   readonly registerNew: (model: Model) => void;
   readonly adopt: (model: Model) => void;
   readonly deleteModel: (model: Model) => void;
@@ -63,6 +64,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
 
   constructor(store: TransactionStoreAccess<Schema>) {
     const claimedModels = new Map<Model, ClaimRecord>();
+    const shieldedFields = new Map<Model, Set<string>>();
     const newModels = new Map<Model, NewModelRecord>();
     const deletedModels = new Set<Model>();
     let finalized = false;
@@ -73,6 +75,18 @@ export class ScopedTransaction<Schema extends AnySchema> {
       }
     };
 
+    const releaseShields = (): void => {
+      for (const [model, fields] of shieldedFields) {
+        for (const field of fields) {
+          model._activeShields?.delete(field);
+        }
+        if (model._activeShields && model._activeShields.size === 0) {
+          model._activeShields = null;
+        }
+      }
+      shieldedFields.clear();
+    };
+
     const releaseAll = (): void => {
       for (const [model, record] of claimedModels) {
         model._activeClaims?.delete(record);
@@ -80,6 +94,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
           model._activeClaims = null;
         }
       }
+      releaseShields();
       claimedModels.clear();
       newModels.clear();
       deletedModels.clear();
@@ -361,6 +376,18 @@ export class ScopedTransaction<Schema extends AnySchema> {
       record.touched.add(fieldName);
     };
 
+    this.shield = (model: Model, fieldName: string): void => {
+      assertActive();
+      let fields = shieldedFields.get(model);
+      if (!fields) {
+        fields = new Set();
+        shieldedFields.set(model, fields);
+      }
+      fields.add(fieldName);
+      if (!model._activeShields) model._activeShields = new Set();
+      model._activeShields.add(fieldName);
+    };
+
     this.registerNew = (model: Model): void => {
       registerNewGraph(model, new Set());
     };
@@ -452,6 +479,9 @@ export class ScopedTransaction<Schema extends AnySchema> {
     this.rollback = (): void => {
       assertActive();
       try {
+        // Restoration rehydrates through the hydrator, which skips shielded
+        // fields — and a rolled-back transaction's link state is void anyway.
+        releaseShields();
         runInAction(() => {
           for (const [model, claim] of claimedModels) {
             restoreTouchedFields(model, claim);

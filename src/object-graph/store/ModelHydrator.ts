@@ -170,6 +170,7 @@ export class ModelHydrator<Schema extends AnySchema> {
 
       if (nestedData === undefined) continue;
       if (model.isFieldTouched(fieldName)) continue;
+      if (model.isFieldShielded(fieldName)) continue;
 
       const nestedArray: unknown[] = Array.isArray(nestedData)
         ? nestedData

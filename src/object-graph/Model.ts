@@ -82,6 +82,15 @@ export abstract class Model {
   */
   _activeClaims: Set<ClaimRecord> | null = null;
 
+  /**
+   * Fields the reverse-link wirer wrote on behalf of an open transaction.
+   * Wired sides are deliberately claim-invisible (claiming them would emit
+   * permission-failing updates against rows the actor doesn't own), so this
+   * is their hydration protection: reconciliation must not overwrite link
+   * state the server hasn't seen yet. `null` when no tx holds shields here.
+   */
+  _activeShields: Set<string> | null = null;
+
   @inMemory(ModelLifecycle.Transient)
   private _lifecycle: ModelLifecycle = ModelLifecycle.Transient;
 
@@ -190,6 +199,11 @@ export abstract class Model {
       if (claim.touched.has(fieldName)) return true;
     }
     return false;
+  }
+
+  /** True if the wirer wrote `fieldName` on behalf of a still-open transaction. */
+  isFieldShielded(fieldName: string): boolean {
+    return this._activeShields?.has(fieldName) ?? false;
   }
 
   _adoptAsPendingNew(): boolean {

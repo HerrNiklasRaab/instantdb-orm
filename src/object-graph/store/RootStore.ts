@@ -239,7 +239,6 @@ export class RootStore<Schema extends AnySchema>
       rawDataArray,
       this.getIdentityMapByName.bind(this)
     );
-    this.reconcileFullEntitySnapshot(entityName, rawDataArray);
     return hydrated.filter((m): m is T => isInstanceOf(m, EntityClass));
   }
 
@@ -305,7 +304,6 @@ export class RootStore<Schema extends AnySchema>
           rawDataArray,
           this.getIdentityMapByName.bind(this)
         );
-        this.reconcileFullEntitySnapshot(entityName, rawDataArray);
         return hydrated.filter((m): m is T => isInstanceOf(m, EntityClass));
       },
       callback
@@ -509,13 +507,4 @@ export class RootStore<Schema extends AnySchema>
     });
   }
 
-  private reconcileFullEntitySnapshot(
-    entityName: keyof Schema["entities"] & string,
-    rawDataArray: readonly RawEntityData[]
-  ): void {
-    const seenIds = new Set(rawDataArray.map((row) => row.id));
-    for (const model of this.getIdentityMapByName(entityName).values()) {
-      if (!seenIds.has(model.id)) this.evictModel(model);
-    }
-  }
 }

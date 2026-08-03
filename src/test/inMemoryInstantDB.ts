@@ -56,11 +56,8 @@ export class InMemoryInstantDBSyncClient<Schema extends AnySchema>
     callback: (state: QuerySubscriptionState<Schema, Q>) => void,
   ): Unsubscribe {
     const unsubscribe = this.db.subscribeQuery(query, (state) => {
-      if (state.error) {
-        callback({ error: state.error, data: undefined });
-      } else {
-        callback({ error: undefined, data: state.data });
-      }
+      if (state.error) callback({ error: state.error, data: undefined });
+      else callback({ error: undefined, data: state.data });
     });
     this.primeQuery(query);
     return unsubscribe;
