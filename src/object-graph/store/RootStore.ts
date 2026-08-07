@@ -5,7 +5,7 @@ import { observable, runInAction } from "mobx";
 import { IdentityMap } from "../IdentityMap";
 import { setDebugViewEnabled, Model } from "../Model";
 import { getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
-import { getModelClass, getSubclasses } from "./ModelRegistry";
+import { getModelClass, getModelClassForDiscriminator, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
@@ -33,7 +33,14 @@ function isInstanceOf<T extends Model>(
   const candidates: ModelClass[] = subclasses.length > 0 ? subclasses : [EntityClass];
   for (const cls of candidates) {
     try {
-      const canonical = getModelClass(getEntityNameFromClass(cls));
+      const entityName = getEntityNameFromClass(cls);
+      // An STI table holds one class per discriminator and none under the
+      // entity name, so resolving by name alone lands on whichever subclass
+      // registered first — a sibling, which rejects every other subtype.
+      const canonical = typeof expectedDiscriminator === "string"
+        ? getModelClassForDiscriminator(entityName, expectedDiscriminator)
+        : getModelClass(entityName);
+      if (!canonical) continue;
       if (!Object.prototype.isPrototypeOf.call(canonical.prototype, value)) continue;
       if (typeof expectedDiscriminator === "string") {
         const actualDiscriminator = Reflect.get(value, "modelType") as unknown;

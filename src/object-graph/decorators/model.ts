@@ -1,10 +1,8 @@
 import { modelRegistry } from "../store/ModelRegistry";
 import type { Constructor, ModelConstructor } from "../store/types";
-import { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
+import { ENTITY_NAME_KEY, deriveEntityName, isModelBaseClass } from "./model-utils";
 
 export { ENTITY_NAME_KEY, deriveEntityName } from "./model-utils";
-
-const MODEL_BASE_CLASS_NAME = "Model";
 
 type ModelClassType =
   | (abstract new (...args: never[]) => { id: string })
@@ -36,10 +34,10 @@ export function getEntityNameFromClass(ModelClass: ModelClassType): string {
 
 function findRootModelClass(target: ModelClassType): Constructor<object> {
   let current: Constructor<object> = target;
-  while (current.name !== MODEL_BASE_CLASS_NAME) {
+  while (!isModelBaseClass(current)) {
     const parent = readParentClass(current);
     if (!parent) return target;
-    if (parent.name === MODEL_BASE_CLASS_NAME) return current;
+    if (isModelBaseClass(parent)) return current;
     current = parent;
   }
   return target;
@@ -82,7 +80,7 @@ function applyModelDecorator<T extends ModelConstructor>(
   }
 
   let parent = readParentClass(target);
-  while (parent && parent.name !== MODEL_BASE_CLASS_NAME) {
+  while (parent && !isModelBaseClass(parent)) {
     if (isModelConstructor(parent)) {
       modelRegistry.registerSubclass(parent, target);
     }

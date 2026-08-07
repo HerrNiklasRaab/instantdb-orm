@@ -6,7 +6,7 @@ import {
   getFieldNameOnModel,
   readField,
 } from "./store/EntityMeta";
-import { ENTITY_NAME_KEY, deriveEntityName } from "./decorators/model-utils";
+import { ENTITY_NAME_KEY, MODEL_BRAND, deriveEntityName } from "./decorators/model-utils";
 import {
   makeObservable as mobxMakeObservable,
   observable,
@@ -42,8 +42,6 @@ export function setDebugViewEnabled(enabled: boolean): void {
  * stamps the same key on its `Model.prototype` and the check holds across
  * copies. (Subclass identity still goes through the registry — see RootStore.)
  */
-const MODEL_BRAND = Symbol.for("@upfor/sync.Model");
-
 export function isModel(value: unknown): value is Model {
   return value !== null && typeof value === "object" && MODEL_BRAND in value;
 }
