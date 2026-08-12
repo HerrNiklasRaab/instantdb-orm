@@ -1,6 +1,12 @@
-import type { AnySchema } from "../../instantdb";
+import type { AnySchema, QuerySubscriptionState } from "../../instantdb";
 import type { InstaQLParams, InstaQLResponse, ValidQuery } from "@instantdb/core";
 import { observable, runInAction } from "mobx";
+
+import { ResilientSubscription } from "../../subscriptions/ResilientSubscription";
+import {
+  ConsoleSubscriptionObserver,
+  type SubscriptionObserver,
+} from "../../subscriptions/SubscriptionObserver";
 
 import { IdentityMap } from "../IdentityMap";
 import { setDebugViewEnabled, Model } from "../Model";
@@ -74,9 +80,16 @@ export class RootStore<Schema extends AnySchema>
   private hydrator: ModelHydrator<Schema>;
   private _initialSyncComplete = observable.box(false);
   readonly db: InstantDBClient<Schema>;
+  readonly subscriptionObserver: SubscriptionObserver;
+  // Retained whole: the per-callback stores of `subscribeQueryIsolated` are
+  // built from it, and rebuilding a `{ db }` literal there would silently drop
+  // every other setting on the way in.
+  private readonly config: RootStoreConfig<Schema>;
 
   constructor(config: RootStoreConfig<Schema>) {
     this.db = config.db;
+    this.config = config;
+    this.subscriptionObserver = config.subscriptionObserver ?? new ConsoleSubscriptionObserver();
     setDebugViewEnabled(config.debugView ?? false);
     this.hydrator = new ModelHydrator<Schema>(this);
     this.initializeIdentityMaps();
@@ -264,7 +277,14 @@ export class RootStore<Schema extends AnySchema>
         query,
         ({ error, data }) => {
           if (error) {
-            console.error(`Subscription error for ${subscriptionKey}:`, error.message);
+            // No reconnect here: this path is the websocket client, whose own
+            // Reactor already supervises reconnection. Only the reporting was
+            // missing.
+            this.subscriptionObserver.degraded({
+              label: subscriptionKey,
+              message: error.message,
+              ...(error.status === undefined ? {} : { status: error.status }),
+            });
             if (isFirstCallback) {
               reject(new Error(error.message));
             }
@@ -455,62 +475,84 @@ export class RootStore<Schema extends AnySchema>
    */
   async subscribeQueryIsolated<Q extends InstaQLParams<Schema>>(
     queryObj: Q & ValidQuery<Q, Schema>,
-    handler: (store: RootStore<Schema>, prev: RootStore<Schema> | null) => Promise<void> | void
+    handler: (store: RootStore<Schema>, prev: RootStore<Schema> | null) => Promise<void> | void,
+    options: { label?: string } = {}
   ): Promise<{ close(): void }> {
     const expandedQuery = this.buildQueryWithRelationships(queryObj);
-    const config: RootStoreConfig<Schema> = { db: this.db };
+    const label = options.label ?? "subscribeQueryIsolated";
+    const config = this.config;
 
+    // These outlive a reconnect on purpose. A re-opened subscription is a fresh
+    // full snapshot, never a resumption, so a `prevStore` reset to null would
+    // make every reactor keyed on "not in prev" reprocess its whole result set.
     let prevStore: RootStore<Schema> | null = null;
     let queue: Promise<void> = Promise.resolve();
     let closed = false;
     let firstResolved = false;
+    let transport: { close(): void } | null = null;
 
     return new Promise<{ close(): void }>((resolve, reject) => {
       const close = () => {
         closed = true;
-        unsubscribe();
+        transport?.close();
         const cleanup = () => {
           prevStore?.dispose();
           prevStore = null;
         };
         queue = queue.then(cleanup, cleanup);
       };
-      const unsubscribe = this.db.unsafeSubscribeQuery(
-        expandedQuery,
-        ({ error, data }) => {
-          if (closed) return;
-          if (error) {
-            console.error("subscribeQueryIsolated error:", error.message);
-            if (!firstResolved) {
-              firstResolved = true;
-              reject(new Error(error.message));
-            }
-            return;
-          }
-          queue = queue.then(async () => {
-            if (closed) {
-              prevStore?.dispose();
-              prevStore = null;
-              return;
-            }
-            const callbackStore = new RootStore<Schema>(config);
-            try {
-              callbackStore.hydrateResult(data);
-              await handler(callbackStore, prevStore);
-            } catch (err) {
-              console.error("subscribeQueryIsolated callback failed:", err);
-            } finally {
-              prevStore?.dispose();
-              prevStore = callbackStore;
-            }
-          });
 
+      const subscription = new ResilientSubscription<
+        QuerySubscriptionState<Schema, Q & ValidQuery<Q, Schema>>
+      >({
+        label,
+        subscribe: (onPayload) => this.db.unsafeSubscribeQuery(expandedQuery, onPayload),
+        readError: (payload) => payload.error,
+        observer: this.subscriptionObserver,
+      });
+
+      transport = subscription.run(({ error, data }) => {
+        if (closed) return;
+        if (error) {
+          // Only failures the supervisor is not handling itself arrive here: a
+          // transient blip, or one that landed before the subscription ever
+          // worked. The second must still fail the caller — booting a reactor
+          // on a query that never connected is worse than not booting.
           if (!firstResolved) {
             firstResolved = true;
-            resolve({ close });
+            reject(new Error(error.message));
           }
+          return;
         }
-      );
+        queue = queue.then(async () => {
+          if (closed) {
+            prevStore?.dispose();
+            prevStore = null;
+            return;
+          }
+          const callbackStore = new RootStore<Schema>(config);
+          try {
+            callbackStore.hydrateResult(data);
+            await handler(callbackStore, prevStore);
+          } catch (err) {
+            // Keep the old `prev`. Rotating it here would move the entities the
+            // handler failed on into "already seen", and every reactor that
+            // spots work by their absence from `prev` would skip them forever.
+            this.subscriptionObserver.handlerFailed({ label, error: err });
+            callbackStore.dispose();
+            return;
+          }
+          prevStore?.dispose();
+          prevStore = callbackStore;
+        });
+
+        if (!firstResolved) {
+          firstResolved = true;
+          resolve({ close });
+        }
+      });
+
+      if (closed) transport.close();
     });
   }
 

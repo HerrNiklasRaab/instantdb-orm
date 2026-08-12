@@ -29,4 +29,15 @@ export {
   InstantDBClient,
   type Unsubscribe,
 } from "./persistence";
-export type { AnySchema, QuerySubscriptionState } from "../instantdb";
+export type { AnySchema, QuerySubscriptionState, SubscriptionError } from "../instantdb";
+export {
+  ResilientSubscription,
+  SubscriptionRetryPolicy,
+  ConsoleSubscriptionObserver,
+  type ResilientSubscriptionDeps,
+  type SubscriptionObserver,
+  type SubscriptionFault,
+  type SubscriptionOutage,
+  type SubscriptionRecovery,
+  type SubscriptionHandlerFailure,
+} from "../subscriptions";

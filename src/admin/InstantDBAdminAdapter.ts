@@ -61,8 +61,17 @@ export class InstantDBAdminAdapter<Schema extends AnySchema> extends InstantDBCl
   ): Unsubscribe {
     const subscription = this.client.subscribeQuery<Q>(query, (payload) => {
       if (payload.type === "error") {
+        // `isClosed` is the whole signal: the EventSource behind this stream
+        // gives up permanently on a non-200 reconnect, and nothing re-opens it
+        // unless the caller does. Flattening it to a message once cost us a
+        // day and a half of deaf reactors.
         callback({
-          error: { message: payload.error.message },
+          error: {
+            message: payload.error.message,
+            status: payload.error.status,
+            isClosed: payload.isClosed,
+            ...(payload.error.traceId === undefined ? {} : { traceId: payload.error.traceId }),
+          },
           data: undefined,
         });
       } else {

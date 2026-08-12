@@ -14,8 +14,22 @@ export type AnySchema = InstantSchemaDef<EntitiesDef, LinksDef<EntitiesDef>, Roo
 
 export type Unsubscribe = () => void;
 
+/**
+ * A subscription failure. `isClosed` is the difference between a blip and a
+ * funeral: the admin SSE transport gives up for good on a non-200 reconnect
+ * (WHATWG "fail the connection"), and only the caller can re-subscribe past
+ * that. Left `undefined` by transports that cannot know — the websocket client
+ * supervises its own reconnects, so closedness is not its caller's business.
+ */
+export interface SubscriptionError {
+  message: string;
+  status?: number;
+  isClosed?: boolean;
+  traceId?: string;
+}
+
 export type QuerySubscriptionState<Schema extends AnySchema, Q> =
-  | { error: { message: string; traceId?: string }; data: undefined }
+  | { error: SubscriptionError; data: undefined }
   | { error: undefined; data: InstaQLResponse<Schema, Q> };
 
 const IDENTITY_CHANGED_ERROR_TYPE = "user-changed";

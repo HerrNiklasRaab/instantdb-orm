@@ -1,5 +1,6 @@
 import type { AnySchema } from "../../instantdb";
 import type { Model } from "../Model";
+import type { SubscriptionObserver } from "../../subscriptions/SubscriptionObserver";
 import { InstantDBClient } from "../persistence/types";
 
 export interface RawEntityData {
@@ -21,6 +22,11 @@ export interface RootStoreConfig<Schema extends AnySchema> {
    * model's data. Enable only when you actually need debugger inspection.
    */
   debugView?: boolean;
+  /**
+   * Where subscription health is reported. Defaults to the console, which is
+   * where it went for as long as nobody was listening.
+   */
+  subscriptionObserver?: SubscriptionObserver;
 }
 
 export type Constructor<T = unknown> = { prototype: T; readonly name: string };

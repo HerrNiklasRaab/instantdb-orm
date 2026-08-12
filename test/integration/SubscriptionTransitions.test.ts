@@ -94,4 +94,38 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
 
     sub.close();
   });
+
+  // A reactor spots its work by absence from `prev`. If a throwing handler
+  // still advanced `prev`, the entity it choked on would be "already seen" from
+  // then on and never processed again — a silent, permanent drop.
+  it("keeps an entity new to the handler after the handler threw on it", async () => {
+    const store = new RootStore<AppSchema>({ db });
+    const seen: string[] = [];
+    let thrown = false;
+
+    const sub = await store.subscribeQueryIsolated(
+      { users: {} },
+      (curr, prev) => {
+        for (const user of curr.getAll(User)) {
+          if (prev?.getById(User, user.id)) continue;
+          if (!thrown) {
+            thrown = true;
+            throw new Error("handler blew up on first sight");
+          }
+          seen.push(user.id);
+        }
+      }
+    );
+
+    const seedStore = new RootStore<AppSchema>({ db });
+    const u = await seedStore.transaction(() => new User("survivor"));
+
+    await waitFor(() => thrown, 8000);
+    // Any later callback must still offer the same user as unseen.
+    await seedStore.transaction(() => new User("nudge"));
+
+    await waitFor(() => seen.includes(u.id), 8000);
+
+    sub.close();
+  });
 });
