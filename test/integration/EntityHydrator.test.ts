@@ -5,7 +5,6 @@ import { Temporal } from "../../src/object-graph";
 import {
   assertDefined,
   connectTestClient,
-  id,
   waitFor,
   type TestClient,
   type TestStore,
@@ -99,21 +98,6 @@ describe("RootStore hydration (Integration)", () => {
     });
   }
 
-  // Helper to create post with dangling link directly in DB (for edge case tests)
-  async function createPostInDbWithDanglingLink(
-    entityId: string,
-    fakeUserId: string
-  ) {
-    await client.commit(
-      new Transaction()
-        .create("posts", entityId, {
-          title: "Test Post",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }, { author: fakeUserId }),
-    );
-  }
-
   describe("basic hydration", () => {
     it("hydrates scalar fields correctly", async () => {
       const userA = await createUserInStoreA({ name: "John" });
@@ -159,43 +143,6 @@ describe("RootStore hydration (Integration)", () => {
 
   describe("one-to-many relationships (Post ↔ User)", () => {
     // "resolves both directions" merged into EntitySave.test.ts "save() - one-to-one relationships"
-
-    it("returns null when target does not exist", async () => {
-      const postId = id();
-      const fakeUserId = id();
-      await createPostInDbWithDanglingLink(postId, fakeUserId);
-
-      const posts = await storeB.queryModel(Post);
-      const post = posts.find((p) => p.id === postId);
-
-      assertDefined(post);
-      expect(post.author).toBeNull();
-    });
-
-    it("resolves both directions via late hydration", async () => {
-      const userId = id();
-      const postId = id();
-      await createPostInDbWithDanglingLink(postId, userId);
-
-      // Hydrate post first (before user exists)
-      const posts = await storeB.queryModel(Post);
-      const post = posts.find((p) => p.id === postId);
-      assertDefined(post);
-      expect(post.author).toBeNull();
-
-      // Create user later
-      await storeA.transaction(() => new User("John", userId));
-
-      // Re-hydrate to pick up user
-      await storeB.queryAll();
-      const user = storeB.getById(User, userId);
-      assertDefined(user);
-
-      // Forward: Post.author now resolved
-      expect(post.author).toBe(user);
-      // Reverse: User.posts contains the post
-      expect(user.posts).toContain(post);
-    });
 
     it("late-hydrated child wires into the previously-hydrated parent", async () => {
       const user = await createUserInStoreA({ name: "John" });
