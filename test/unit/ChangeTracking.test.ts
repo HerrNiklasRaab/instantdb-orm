@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { configureEntityMeta, Temporal } from "../../src/object-graph";
-import schema from "../support/instant.schema";
+import { schema } from "../support/zenstack/client/schema";
 import { User } from "../support/entities/User";
 import { withTestTransaction } from "../../src/testing";
 

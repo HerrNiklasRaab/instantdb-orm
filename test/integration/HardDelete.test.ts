@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Temporal } from "../../src/object-graph";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import { Post } from "../support/entities/Post";
 import { User } from "../support/entities/User";
 import {
   assertDefined,
-  setupTestDatabase,
+  connectTestClient,
   waitFor,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  type TestClient,
+  type TestStore,
+} from "./support/clients";
 
 type RowState = "absent" | "present" | "softDeleted";
 
@@ -26,16 +26,16 @@ function rowDeletedAt(row: object): string | undefined {
 }
 
 describe("Hard Delete (Integration)", () => {
-  let db: TestInstantDBClient;
-  let store: RootStore<AppSchema>;
+  let client: TestClient;
+  let store: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    store = new RootStore<AppSchema>({ db });
+    client = connectTestClient();
+    store = new RootStore({ client: connectTestClient() });
   });
 
   async function userRowState(id: string): Promise<RowState> {
-    const result = await db.query({ users: { $: { where: { id } } } });
+    const result = await client.query({ users: { where: { id } } });
     const rows = userRows(result);
     if (rows.length === 0) return "absent";
     const [row] = rows;
@@ -46,17 +46,19 @@ describe("Hard Delete (Integration)", () => {
   it("soft-deletes before physically deleting the row", async () => {
     const user = await store.transaction(() => new User("Test User"));
     const states: RowState[] = [];
-    const originalTransact = store.db.transact.bind(store.db);
+    const originalSubmit = store.client.submit.bind(store.client);
 
-    store.db.transact = async (chunks) => {
-      await originalTransact(chunks);
+    store.client.submit = async (batch) => {
+      await originalSubmit(batch);
+      await store.client.verdict(batch.id);
       states.push(await userRowState(user.id));
     };
 
     try {
-      await store.transaction(() => { user.delete(); });
+      await store.transaction(() => { user.delete(); }).settled();
+      await waitFor(() => states.length === 2);
     } finally {
-      store.db.transact = originalTransact;
+      store.client.submit = originalSubmit;
     }
 
     expect(states).toEqual(["softDeleted", "absent"]);
@@ -65,21 +67,21 @@ describe("Hard Delete (Integration)", () => {
 
   it("leaves a soft-deleted row when the physical delete fails", async () => {
     const user = await store.transaction(() => new User("Test User"));
-    const originalTransact = store.db.transact.bind(store.db);
+    const originalSubmit = store.client.submit.bind(store.client);
     let calls = 0;
 
-    store.db.transact = async (chunks) => {
+    store.client.submit = async (batch) => {
       calls += 1;
       if (calls === 2) throw new Error("physical delete failed");
-      await originalTransact(chunks);
+      await originalSubmit(batch);
     };
 
     try {
-      await expect(store.transaction(() => { user.delete(); })).rejects.toThrow(
-        "physical delete failed"
-      );
+      const { outcome } = await store.transaction(() => { user.delete(); }).settled();
+      expect(outcome.status).toBe("committed");
+      await waitFor(() => calls === 2);
     } finally {
-      store.db.transact = originalTransact;
+      store.client.submit = originalSubmit;
     }
 
     expect(await userRowState(user.id)).toBe("softDeleted");
@@ -113,7 +115,7 @@ describe("Hard Delete (Integration)", () => {
 
     expect(store.getById(User, user.id)).toBe(user);
     expect(user.deletedAt).toBeNull();
-    const verificationStore = new RootStore<AppSchema>({ db });
+    const verificationStore = new RootStore({ client: connectTestClient() });
     await verificationStore.queryModel(User);
     expect(verificationStore.getById(User, user.id)).toBeDefined();
   });
@@ -126,7 +128,7 @@ describe("Hard Delete (Integration)", () => {
       post.delete();
     });
 
-    const verificationStore = new RootStore<AppSchema>({ db });
+    const verificationStore = new RootStore({ client: connectTestClient() });
     await verificationStore.queryModel(Post);
     expect(verificationStore.getById(Post, post.id)).toBeUndefined();
   });
@@ -138,8 +140,8 @@ describe("Hard Delete (Integration)", () => {
   // only guaranteed while the tombstone IS the final state.
   it("drops a soft-deleted row from a live subscriber when its tombstone arrives", async () => {
     const user = await store.transaction(() => new User("Test User"));
-    const storeA = new RootStore<AppSchema>({ db });
-    const storeB = new RootStore<AppSchema>({ db });
+    const storeA = new RootStore({ client: connectTestClient() });
+    const storeB = new RootStore({ client: connectTestClient() });
     const subscription = await storeA.subscribeModel(User, () => {});
 
     await waitFor(() => storeA.getById(User, user.id) !== undefined);

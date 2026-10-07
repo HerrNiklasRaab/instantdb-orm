@@ -1,27 +1,24 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   assertDefined,
-  setupTestDatabase,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestStore,
+} from "./support/clients";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import { Temporal } from "../../src/object-graph";
-import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 import { Tag } from "../support/entities/Tag";
 
 describe("Transaction (Integration)", () => {
-  let db: TestInstantDBClient;
-  let store: RootStore<AppSchema>;
+  let store: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    store = new RootStore<AppSchema>({ db });
+    store = new RootStore({ client: connectTestClient() });
   });
 
-  function createVerificationStore(): RootStore<AppSchema> {
-    return new RootStore<AppSchema>({ db });
+  function createVerificationStore(): TestStore {
+    return new RootStore({ client: connectTestClient() });
   }
 
   function createUser(name = "Test User"): User {
@@ -588,14 +585,14 @@ describe("Transaction (Integration)", () => {
         user.name = "Changed";
       });
 
-      const originalTransact = store.db.transact.bind(store.db);
-      store.db.transact = () =>
+      const originalSubmit = store.client.submit.bind(store.client);
+      store.client.submit = () =>
         Promise.reject(new Error("Simulated DB error"));
 
       try {
         await expect(tx.commit()).rejects.toThrow("Simulated DB error");
       } finally {
-        store.db.transact = originalTransact;
+        store.client.submit = originalSubmit;
       }
     });
 

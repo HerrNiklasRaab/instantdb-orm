@@ -8,7 +8,7 @@ import {
   field,
 } from "../../src/object-graph";
 import { withTestTransaction } from "../../src/testing";
-import schema from "../support/instant.schema";
+import { schema } from "../support/zenstack/client/schema";
 import {
   Money,
   LocalTime,

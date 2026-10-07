@@ -1,10 +1,10 @@
-# A Linear-like sync API on top of InstantDB
+# A Linear-like sync API on top of Postgres
 
 Since installing Linear for the first time, I was in awe of their sync engine. Not even necessarily for the user-facing benefits — real-time sync, everything loading instantly — but for the insane simplification on the developer experience side. No API juggling, no model mapping between the view, the business logic, and the data layer.
 
-I dug through countless libraries and products and finally landed on [InstantDB](https://instantdb.com), probably the best backend of this new era of sync.
+I dug through countless libraries and products, and none of them provided the API I'd want as someone familiar with Domain Driven Design.
 
-What they built is amazing, and a real step up. But it didn't provide the API I'd want as someone familiar with Domain Driven Design.
+Postgres holds the data, a [ZenStack](https://zenstack.dev) schema describes it and who may read and write each row, and a small sync engine keeps a local copy on every device in step with the server.
 
 So I built it:
 
@@ -46,7 +46,7 @@ So I built it:
 
 **📮 Built-in event pipeline.** Write an event in the same transaction as the change that caused it, and a handler picks it up and runs it — dispatched by event type, retried on restart. The transactional outbox pattern with no broker, no queue, no extra infrastructure.
 
-**🔍 Fully typed.** Queries, relationships, and attributes are checked against your InstantDB schema. Rename a column and TypeScript tells you what broke.
+**🔍 Fully typed.** Queries, relationships, and attributes are checked against your ZenStack schema. Rename a column and TypeScript tells you what broke.
 
 **🛡️ Permission-aware.** Property-level permissions are modeled honestly: a restricted field is `undefined`, distinct from a genuinely absent `null`.
 
@@ -58,14 +58,14 @@ So I built it:
 
 ### 🌍 One codebase for server and client
 
-Construct a different adapter; everything above it is identical.
+Every store is a sync client with a local replica; only how it reaches the server and where the replica lives differ.
 
 ```ts
-// server
-const store = new RootStore({ db: new InstantDBAdminAdapter(adminDb) });
+// server: the service connection, which may read every row
+const store = new RootStore({ client: new SyncClient(schema, connectAsService, LocalReplica.open(schema, memoryDialect)) });
 
-// client
-const store = new RootStore({ db: new InstantDBClientAdapter(db) });
+// device: the signed-in user's connection, replica on disk
+const store = new RootStore({ client: new SyncClient(schema, connectAsUser, LocalReplica.open(schema, sqliteDialect)) });
 
 // same call, both places
 await store.transaction(() => { invitation.accept(); });
@@ -75,9 +75,8 @@ await store.transaction(() => { invitation.accept(); });
 
 ```ts
 const store = new RootStore<AppSchema>({
-  db: new InMemoryInstantDBSyncClient<AppSchema>({ schema }),
+  client: new SyncClient<AppSchema>(schema, noServer, LocalReplica.open(schema, inMemorySqliteDialect())),
 });
-store.subscribeAll();
 ```
 
 That's the whole setup — no test app to provision, no credentials, no teardown. And it isn't a mock: change tracking, hydration, relationship wiring, and the transaction lifecycle are the real implementations, with only storage swapped.

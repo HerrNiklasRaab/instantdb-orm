@@ -1,0 +1,200 @@
+// The test entities shared by every generation root.
+
+type Auth {
+    id String @id
+    @@auth
+}
+
+model users {
+    id                 String         @id @default(uuid())
+    name               String
+    secretField        String?        @allow('read', auth().id == id)
+    testDate           DateTime? @db.Timestamptz(6)
+    status             String?
+    role               String?
+    createdAt          DateTime @db.Timestamptz(6)
+    updatedAt          DateTime @db.Timestamptz(6)
+    deletedAt          DateTime? @db.Timestamptz(6)
+    profile            profiles?      @relation("usersProfile", fields: [profileId], references: [id], onDelete: SetNull)
+    profileId          String?        @unique
+    referredBy         users?         @relation("usersReferredBy", fields: [referredById], references: [id], onDelete: SetNull)
+    referredById       String?
+    referrals          users[]        @relation("usersReferredBy")
+    posts              posts[]        @relation("postsAuthor")
+    invitations        invitations[]  @relation("invitationsInviter")
+    opponentInvitation invitations?   @relation("invitationsOpponent")
+    chessMatchs        chessMatchs[]  @relation("chessMatchsInviter")
+    skiMatchs          skiMatchs[]    @relation("skiMatchsInviter")
+
+    @@allow('read,create,delete', true)
+    @@allow('update', auth().id == id)
+}
+
+model profiles {
+    id        String    @id @default(uuid())
+    bio       String?
+    avatarUrl String?
+    createdAt DateTime @db.Timestamptz(6)
+    updatedAt DateTime @db.Timestamptz(6)
+    deletedAt DateTime? @db.Timestamptz(6)
+    user      users?    @relation("usersProfile")
+
+    @@allow('all', true)
+}
+
+model posts {
+    id        String    @id @default(uuid())
+    title     String
+    content   String?
+    createdAt DateTime @db.Timestamptz(6)
+    updatedAt DateTime @db.Timestamptz(6)
+    deletedAt DateTime? @db.Timestamptz(6)
+    author    users?    @relation("postsAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+    authorId  String?
+    tags      tags[]    @relation("postsTags")
+
+    @@allow('all', true)
+}
+
+model invitations {
+    id          String    @id @default(uuid())
+    modelType   String
+    status      String?
+    timeControl String?
+    rated       Boolean?
+    resort      String?
+    skillLevel  String?
+    createdAt   DateTime @db.Timestamptz(6)
+    updatedAt   DateTime @db.Timestamptz(6)
+    deletedAt   DateTime? @db.Timestamptz(6)
+    inviter     users?    @relation("invitationsInviter", fields: [inviterId], references: [id], onDelete: SetNull)
+    inviterId   String?
+    opponent    users?    @relation("invitationsOpponent", fields: [opponentId], references: [id], onDelete: SetNull)
+    opponentId  String?   @unique
+
+    @@allow('all', true)
+}
+
+model chessMatchs {
+    id          String    @id @default(uuid())
+    timeControl String
+    rated       Boolean
+    createdAt   DateTime @db.Timestamptz(6)
+    updatedAt   DateTime @db.Timestamptz(6)
+    deletedAt   DateTime? @db.Timestamptz(6)
+    inviter     users?    @relation("chessMatchsInviter", fields: [inviterId], references: [id], onDelete: SetNull)
+    inviterId   String?
+
+    @@allow('all', true)
+}
+
+model skiMatchs {
+    id         String    @id @default(uuid())
+    resort     String
+    skillLevel String
+    createdAt  DateTime @db.Timestamptz(6)
+    updatedAt  DateTime @db.Timestamptz(6)
+    deletedAt  DateTime? @db.Timestamptz(6)
+    inviter    users?    @relation("skiMatchsInviter", fields: [inviterId], references: [id], onDelete: SetNull)
+    inviterId  String?
+
+    @@allow('all', true)
+}
+
+model tags {
+    id        String    @id @default(uuid())
+    name      String
+    createdAt DateTime @db.Timestamptz(6)
+    updatedAt DateTime @db.Timestamptz(6)
+    deletedAt DateTime? @db.Timestamptz(6)
+    posts     posts[]   @relation("postsTags")
+
+    @@allow('all', true)
+}
+
+model containers {
+    id        String    @id @default(uuid())
+    name      String
+    createdAt DateTime @db.Timestamptz(6)
+    updatedAt DateTime @db.Timestamptz(6)
+    deletedAt DateTime? @db.Timestamptz(6)
+    items     items[]   @relation("containersItems")
+
+    @@allow('all', true)
+}
+
+model items {
+    id          String      @id @default(uuid())
+    name        String
+    createdAt   DateTime @db.Timestamptz(6)
+    updatedAt   DateTime @db.Timestamptz(6)
+    deletedAt   DateTime? @db.Timestamptz(6)
+    container   containers? @relation("containersItems", fields: [containerId], references: [id], onDelete: SetNull)
+    containerId String?
+
+    @@allow('all', true)
+}
+
+model listings {
+    id                String    @id @default(uuid())
+    priceAmount       Float?
+    priceCurrency     String?
+    minBidAmount      Float?
+    minBidCurrency    String?
+    slotStartHour     Float?
+    slotStartMinute   Float?
+    slotEndHour       Float?
+    slotEndMinute     Float?
+    flexPriceAmount   Float?
+    flexPriceDiscount Float?
+    tags              Json?
+    schedule          Json?
+    slug              String?
+    createdAt         DateTime @db.Timestamptz(6)
+    updatedAt         DateTime @db.Timestamptz(6)
+    deletedAt         DateTime? @db.Timestamptz(6)
+    @@allow('all', true)
+}
+
+model validatingListings {
+    id              String    @id @default(uuid())
+    priceAmount     Float?
+    priceCurrency   String?
+    slotStartHour   Float?
+    slotStartMinute Float?
+    slotEndHour     Float?
+    slotEndMinute   Float?
+    createdAt       DateTime @db.Timestamptz(6)
+    updatedAt       DateTime @db.Timestamptz(6)
+    deletedAt       DateTime? @db.Timestamptz(6)
+    @@allow('all', true)
+}
+
+model remappedListings {
+    id            String    @id @default(uuid())
+    priceCents    Float
+    priceCurrency String
+    createdAt     DateTime @db.Timestamptz(6)
+    updatedAt     DateTime @db.Timestamptz(6)
+    deletedAt     DateTime? @db.Timestamptz(6)
+    @@allow('all', true)
+}
+
+model appointments {
+    id                String    @id @default(uuid())
+    scheduledFor      DateTime @db.Timestamptz(6)
+    day               DateTime? @db.Timestamptz(6)
+    startTime         DateTime? @db.Timestamptz(6)
+    localStart        DateTime? @db.Timestamptz(6)
+    billingMonth      DateTime? @db.Timestamptz(6)
+    anniversary       DateTime? @db.Timestamptz(6)
+    zonedStartInstant DateTime? @db.Timestamptz(6)
+    zonedStartZone    String?
+    duration          String?
+    vacationFrom      DateTime? @db.Timestamptz(6)
+    vacationTo        DateTime? @db.Timestamptz(6)
+    createdAt         DateTime @db.Timestamptz(6)
+    updatedAt         DateTime @db.Timestamptz(6)
+    deletedAt         DateTime? @db.Timestamptz(6)
+    @@allow('all', true)
+}

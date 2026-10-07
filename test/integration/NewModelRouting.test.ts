@@ -1,23 +1,19 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   assertDefined,
-  setupTestDatabase,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+} from "./support/clients";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 
 describe("New model routing (Plan A)", () => {
-  let db: TestInstantDBClient;
 
   beforeEach(() => {
-    db = setupTestDatabase();
   });
 
   it("isolates new models between concurrent transactions on different stores", async () => {
-    const storeA = new RootStore<AppSchema>({ db });
-    const storeB = new RootStore<AppSchema>({ db });
+    const storeA = new RootStore({ client: connectTestClient() });
+    const storeB = new RootStore({ client: connectTestClient() });
 
     let userA: User | undefined;
     let userB: User | undefined;

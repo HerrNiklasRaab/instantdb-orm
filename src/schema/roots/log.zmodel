@@ -1,0 +1,10 @@
+import "../log"
+
+// Generation root for the package's typed view of the shared log models.
+datasource db {
+    provider = 'postgresql'
+}
+
+plugin policy {
+    provider = '@zenstackhq/plugin-policy'
+}

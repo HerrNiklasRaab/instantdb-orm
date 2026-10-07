@@ -1,27 +1,27 @@
+import { Transaction } from "../../src/transactions";
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
   firstOrFail,
-  setupTestDatabase,
-  txFor,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestClient,
+  type TestStore,
+} from "./support/clients";
 import { User } from "../support/entities/User";
 import { Invitation } from "../support/entities/Invitation";
 import { ChessInvitation } from "../support/entities/ChessInvitation";
 import { SkiInvitation } from "../support/entities/SkiInvitation";
 
 describe("Single Table Inheritance (Integration)", () => {
-  let db: TestInstantDBClient;
-  let storeA: RootStore<AppSchema>; // "Device A" - creates data
-  let storeB: RootStore<AppSchema>; // "Device B" - hydrates data
+  let client: TestClient;
+  let storeA: TestStore; // "Device A" - creates data
+  let storeB: TestStore; // "Device B" - hydrates data
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    storeA = new RootStore<AppSchema>({ db });
-    storeB = new RootStore<AppSchema>({ db });
+    client = connectTestClient();
+    storeA = new RootStore({ client: connectTestClient() });
+    storeB = new RootStore({ client: connectTestClient() });
   });
 
   // Helper to create user through Store A
@@ -105,7 +105,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Store B hydrates
-      await storeB.query({ invitations: { inviter: {} } });
+      await storeB.query({ invitations: { include: { inviter: true } } });
 
       const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       const hydratedUser = storeB.getById(User, user.id);
@@ -135,7 +135,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Store B hydrates
-      await storeB.query({ users: { invitations: {} } });
+      await storeB.query({ users: { include: { invitations: true } } });
 
       const hydratedUser = storeB.getById(User, user.id);
 
@@ -154,14 +154,12 @@ describe("Single Table Inheritance (Integration)", () => {
   describe("soft delete", () => {
     // Helper to mark entity as deleted directly in database
     async function markAsDeletedInDb(
-      entityType: keyof AppSchema["entities"],
+      entityType: string,
       entityId: string,
     ) {
-      await db.transact([
-        txFor(db.tx, entityType, entityId).update({
+      await client.commit(new Transaction().update(entityType, entityId, {
           deletedAt: new Date().toISOString(),
-        }),
-      ]);
+        }));
     }
 
     it("removes deleted STI entity from identity map", async () => {
@@ -189,7 +187,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Hydrate in store B
-      await storeB.query({ invitations: { inviter: {} } });
+      await storeB.query({ invitations: { include: { inviter: true } } });
       const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       assertDefined(hydratedChess);
       expect(hydratedChess.inviter).toBeDefined();
@@ -216,7 +214,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Hydrate
-      await storeB.query({ users: { invitations: {} } });
+      await storeB.query({ users: { include: { invitations: true } } });
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.invitations.length).toBe(2);
@@ -245,7 +243,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Hydrate
-      await storeB.query({ users: { invitations: {} } });
+      await storeB.query({ users: { include: { invitations: true } } });
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.invitations.length).toBe(2);
@@ -275,7 +273,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Verify in store B
-      await storeB.query({ invitations: { inviter: {} } });
+      await storeB.query({ invitations: { include: { inviter: true } } });
       const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       assertDefined(hydratedChess);
       expect(hydratedChess.inviter).toBeNull();
@@ -290,7 +288,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Hydrate and verify relationship
-      await storeB.query({ users: { invitations: {} } });
+      await storeB.query({ users: { include: { invitations: true } } });
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.invitations.length).toBe(1);
@@ -301,7 +299,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Re-hydrate from user side to refresh reverse relationships
-      await storeB.query({ users: { invitations: {} } });
+      await storeB.query({ users: { include: { invitations: true } } });
       expect(hydratedUser.invitations.length).toBe(0);
     });
   });
@@ -347,7 +345,7 @@ describe("Single Table Inheritance (Integration)", () => {
         chess.opponent = opponent;
       });
 
-      await storeB.query({ invitations: { opponent: {} } });
+      await storeB.query({ invitations: { include: { opponent: true } } });
 
       const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       const hydratedOpponent = storeB.getById(User, opponent.id);
@@ -360,7 +358,7 @@ describe("Single Table Inheritance (Integration)", () => {
     it("assigns the schema relationship onto every concrete subclass, even ones that don't declare it", async () => {
       const ski = await createSkiInvitationInStoreA({ resort: "Vail" });
 
-      await storeB.query({ invitations: { opponent: {} } });
+      await storeB.query({ invitations: { include: { opponent: true } } });
 
       const hydratedSki = storeB.getById(SkiInvitation, ski.id);
       assertDefined(hydratedSki);

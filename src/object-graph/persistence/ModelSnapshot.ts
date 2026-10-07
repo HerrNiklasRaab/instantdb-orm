@@ -2,9 +2,10 @@ import { Model, isModel } from "../Model";
 import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
 import { fieldsForModel } from "../store/fieldsForEntity";
 import type { RawEntityData } from "../store/types";
+import type { ColumnValue } from "../columns/types";
 
 export class ModelSnapshot {
-  readonly scalars = new Map<string, unknown>();
+  readonly scalars = new Map<string, ColumnValue>();
   readonly relationships = new Map<string, string | string[] | null>();
 
   constructor(model: Model | null = null) {
@@ -17,14 +18,15 @@ export class ModelSnapshot {
     // The STI discriminator is a read-only getter, not a writable Field, so it
     // is excluded from the field set — but it must still be written to its
     // column. Capture it directly when the entity has a `modelType` attr.
-    if ("modelType" in getEntityAttrs(entityName)) {
-      this.scalars.set("modelType", readField(model, "modelType"));
+    const discriminator = readField(model, "modelType");
+    if ("modelType" in getEntityAttrs(entityName) && typeof discriminator === "string") {
+      this.scalars.set("modelType", discriminator);
     }
 
     for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(entityName))) {
       const value = readField(model, fieldName);
 
-      if (linkAttr.cardinality === "one") {
+      if (!linkAttr.array) {
         const id = isModel(value) ? value.id : null;
         this.relationships.set(fieldName, id);
       } else {

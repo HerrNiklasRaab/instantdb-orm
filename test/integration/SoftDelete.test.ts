@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import { Temporal } from "../../src/object-graph";
-import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 import { UserProfile } from "../support/entities/Profile";
 import {
-  setupTestDatabase,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestClient,
+  type TestStore,
+} from "./support/clients";
 
 function usersWithDeletedAt(
   result: unknown
@@ -25,12 +25,12 @@ function usersWithDeletedAt(
 }
 
 describe("Soft Delete (Integration)", () => {
-  let db: TestInstantDBClient;
-  let store: RootStore<AppSchema>;
+  let client: TestClient;
+  let store: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    store = new RootStore<AppSchema>({ db });
+    client = connectTestClient();
+    store = new RootStore({ client: connectTestClient() });
   });
 
   describe("model.softDelete()", () => {
@@ -38,7 +38,7 @@ describe("Soft Delete (Integration)", () => {
       const user = await store.transaction(() => new User("Test User"));
 
       // Hydrate in storeB FIRST (entity in identity map)
-      const storeB = new RootStore<AppSchema>({ db });
+      const storeB = new RootStore({ client: connectTestClient() });
       await storeB.queryModel(User);
       expect(storeB.getById(User, user.id)).toBeDefined();
 
@@ -46,7 +46,7 @@ describe("Soft Delete (Integration)", () => {
       await store.transaction(() => { user.softDelete(); });
       expect(user.deletedAt).toBeInstanceOf(Temporal.Instant);
 
-      const result = await db.query({ users: { $: { where: { id: user.id } } } });
+      const result = await client.query({ users: { where: { id: user.id } } });
       const users = usersWithDeletedAt(result);
       expect(users).toHaveLength(1);
       expect(users[0]?.deletedAt).toBeDefined();
@@ -61,7 +61,7 @@ describe("Soft Delete (Integration)", () => {
       const user2 = await store.transaction(() => new User("User 2"));
       await store.transaction(() => { user2.softDelete(); });
 
-      const storeB = new RootStore<AppSchema>({ db });
+      const storeB = new RootStore({ client: connectTestClient() });
       const users = await storeB.queryModel(User);
 
       expect(users.find((u) => u.id === user1.id)).toBeDefined();
@@ -81,7 +81,7 @@ describe("Soft Delete (Integration)", () => {
       });
 
       // Hydrate in storeB FIRST (entity in identity map)
-      const storeB = new RootStore<AppSchema>({ db });
+      const storeB = new RootStore({ client: connectTestClient() });
       await storeB.queryModel(User);
       await storeB.queryModel(Post);
       const hydratedPost = storeB.getById(Post, post.id);
@@ -105,7 +105,7 @@ describe("Soft Delete (Integration)", () => {
         return [p1, p2] as const;
       });
 
-      const storeB = new RootStore<AppSchema>({ db });
+      const storeB = new RootStore({ client: connectTestClient() });
       await storeB.queryModel(User);
       await storeB.queryModel(Post);
       const hydratedUser = storeB.getById(User, user.id);
@@ -130,7 +130,7 @@ describe("Soft Delete (Integration)", () => {
         return p;
       });
 
-      const storeB = new RootStore<AppSchema>({ db });
+      const storeB = new RootStore({ client: connectTestClient() });
       await storeB.queryModel(User);
       await storeB.queryModel(UserProfile);
       const hydratedUser = storeB.getById(User, user.id);

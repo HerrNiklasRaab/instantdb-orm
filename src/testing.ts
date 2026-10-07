@@ -2,7 +2,6 @@ import {
   ScopedTransaction,
   TransactionContext,
 } from "./object-graph";
-import type { AnySchema } from "./instantdb";
 import type { TransactionStoreAccess } from "./object-graph/persistence/ScopedTransaction";
 
 /**
@@ -14,12 +13,10 @@ import type { TransactionStoreAccess } from "./object-graph/persistence/ScopedTr
  * Use only in low-level unit tests that don't have a RootStore. Integration
  * tests should drive mutations through `store.transaction(...)`.
  */
-const emptyTx: TransactionStoreAccess<AnySchema>["db"]["tx"] = {};
-
-const stubStore: TransactionStoreAccess<AnySchema> = {
-  db: {
-    tx: emptyTx,
-    transact: () => Promise.resolve(),
+const stubStore: TransactionStoreAccess = {
+  client: {
+    submit: () => Promise.resolve(),
+    verdict: (transactionId) => Promise.resolve({ transactionId, tick: 0, status: "committed", reason: null }),
   },
   getIdentityMapByName: () => ({
     has: () => false,
@@ -33,7 +30,7 @@ const stubStore: TransactionStoreAccess<AnySchema> = {
 export function withTestTransaction<T>(fn: () => Promise<T>): Promise<T>;
 export function withTestTransaction<T>(fn: () => T): T;
 export function withTestTransaction<T>(fn: () => T | Promise<T>): T | Promise<T> {
-  const tx = new ScopedTransaction<AnySchema>(stubStore);
+  const tx = new ScopedTransaction(stubStore);
   let result: T | Promise<T>;
   try {
     result = TransactionContext.run(tx, fn);

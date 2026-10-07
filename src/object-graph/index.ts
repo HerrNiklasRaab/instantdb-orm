@@ -22,14 +22,12 @@ export {
   type RootStoreConfig,
   type ModelConstructor,
   type GetIdentityMap,
+  type Settled,
+  type TransactionHandle,
 } from "./store";
-export {
-  ScopedTransaction,
-  TransactionContext,
-  InstantDBClient,
-  type Unsubscribe,
-} from "./persistence";
-export type { AnySchema, QuerySubscriptionState, SubscriptionError } from "../instantdb";
+export { ScopedTransaction, TransactionContext } from "./persistence";
+export * from "../transactions";
+export * from "../queries";
 export {
   ResilientSubscription,
   SubscriptionRetryPolicy,
@@ -40,4 +38,7 @@ export {
   type SubscriptionOutage,
   type SubscriptionRecovery,
   type SubscriptionHandlerFailure,
+  type SubscriptionError,
+  type QuerySubscriptionState,
+  type Unsubscribe,
 } from "../subscriptions";

@@ -3,14 +3,13 @@ const MAX_DELAY_MS = 15_000;
 const STABLE_RESET_MS = 300_000;
 
 /**
- * InstantDB's own reconnect cadence, lifted from the supervisor they wrote in
- * their Python SDK (`_async/subscribe.py`): linear 0.5s steps capped at 15s,
- * attempt counter reset once a connection has held for five minutes. The first
- * retry is therefore immediate — a dropped stream is usually just a drop.
+ * Linear 0.5s steps capped at 15s, attempt counter reset once a connection
+ * has held for five minutes. The first retry is therefore immediate — a
+ * dropped stream is usually just a drop.
  *
- * The jitter is ours, not theirs: seven reactors share one process and one
- * upstream, so an upstream fault takes them out together and an unjittered
- * common backoff would have all seven reconnect in lockstep.
+ * The jitter matters: seven reactors share one process and one upstream, so
+ * an upstream fault takes them out together and an unjittered common backoff
+ * would have all seven reconnect in lockstep.
  */
 export class SubscriptionRetryPolicy {
   private attempts = 0;

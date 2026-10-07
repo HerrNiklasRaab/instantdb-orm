@@ -1,1 +1,0 @@
-export { InstantDBClientAdapter } from "./InstantDBClientAdapter";

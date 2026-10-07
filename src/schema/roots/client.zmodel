@@ -1,0 +1,6 @@
+import "../client"
+
+// Generation root for the package's typed view of the client-only models.
+datasource db {
+    provider = 'sqlite'
+}

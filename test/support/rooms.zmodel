@@ -1,0 +1,43 @@
+// Membership-shaped models for the bucket tests: a room is visible to its
+// members, and so is everything in it.
+
+model rooms {
+    id        String         @id @default(uuid())
+    name      String
+    creatorId String?
+    // Required, and withheld from everyone but the creator.
+    inviteCode String    @allow('read', auth().id == creatorId)
+    createdAt DateTime @db.Timestamptz(6)
+    updatedAt DateTime @db.Timestamptz(6)
+    deletedAt DateTime? @db.Timestamptz(6)
+    members   roomMembers[]  @relation("roomMembers")
+    messages  roomMessages[] @relation("roomMessages")
+
+    @@allow('read', members?[userId == auth().id])
+    @@allow('update', members?[userId == auth().id])
+}
+
+model roomMembers {
+    id        String    @id @default(uuid())
+    userId    String
+    createdAt DateTime @db.Timestamptz(6)
+    updatedAt DateTime @db.Timestamptz(6)
+    deletedAt DateTime? @db.Timestamptz(6)
+    room      rooms?    @relation("roomMembers", fields: [roomId], references: [id], onDelete: SetNull)
+    roomId    String?
+
+    @@allow('read', auth().id == userId)
+}
+
+model roomMessages {
+    id        String    @id @default(uuid())
+    text      String
+    createdAt DateTime @db.Timestamptz(6)
+    updatedAt DateTime @db.Timestamptz(6)
+    deletedAt DateTime? @db.Timestamptz(6)
+    room      rooms?    @relation("roomMessages", fields: [roomId], references: [id], onDelete: SetNull)
+    roomId    String?
+
+    @@allow('read', check(room))
+    @@allow('create,update', room.members?[userId == auth().id])
+}

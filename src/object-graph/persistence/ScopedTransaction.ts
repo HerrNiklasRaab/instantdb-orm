@@ -1,29 +1,24 @@
+import type { ColumnValue } from "../columns/types";
+import type { RawEntityData } from "../store/types";
 import { runInAction } from "mobx";
-import type { LinkParams, TransactionChunk, TxChunk, UpdateParams } from "@instantdb/core";
-import { writeDroppedByIdentityChange, type AnySchema } from "../../instantdb";
+import type { SyncClient } from "../../client";
+import { Transaction } from "../../transactions";
 import { Model, isModel } from "../Model";
 import { ModelSnapshot } from "./ModelSnapshot";
 import { ModelSnapshotDiff } from "./ModelSnapshotDiff";
 import { TransactionContext } from "./TransactionContext";
+import { TransactionDraft } from "./TransactionDraft";
 import { getEntityAttrs, getEntityLinks, readField } from "../store/EntityMeta";
 import { fieldsForModel } from "../store/fieldsForEntity";
 
-type SchemaChunk<Schema extends AnySchema> = TransactionChunk<
-  Schema,
-  keyof Schema["entities"] & string
->;
-
-export interface TransactionStoreAccess<Schema extends AnySchema> {
-  readonly db: {
-    tx: TxChunk<Schema>;
-    transact(chunks: SchemaChunk<Schema>[]): Promise<unknown>;
-  };
+export interface TransactionStoreAccess {
+  readonly client: Pick<SyncClient, "submit" | "verdict">;
   getIdentityMapByName(entityName: string): {
     has(id: string): boolean;
     set(model: Model): void;
     delete(id: string): boolean;
   };
-  rehydrateModel(model: Model, rawData: { id: string; [key: string]: unknown }): void;
+  rehydrateModel(model: Model, rawData: RawEntityData): void;
   evictModel(model: Model): void;
 }
 
@@ -44,13 +39,7 @@ interface NewModelRecord {
   readonly data: ModelSnapshot;
 }
 
-/**
- * Members are all Schema-free in signature and the typed store is held in
- * closures bound at construction. That makes the class structurally
- * identical across Schema instantiations, so `TransactionContext` can hold
- * any `ScopedTransaction<S>` without a non-generic supertype interface.
- */
-export class ScopedTransaction<Schema extends AnySchema> {
+export class ScopedTransaction {
   readonly claim: (model: Model, fieldName: string) => void;
   readonly shield: (model: Model, fieldName: string) => void;
   readonly registerNew: (model: Model) => void;
@@ -58,11 +47,16 @@ export class ScopedTransaction<Schema extends AnySchema> {
   readonly deleteModel: (model: Model) => void;
   readonly has: (model: Model) => boolean;
   readonly run: <T>(fn: () => T) => T;
-  readonly commit: () => Promise<void>;
+  /**
+   * Applies the transaction locally and sends it; resolves with its id once
+   * applied, or `null` when there was nothing to write. The verdict arrives
+   * later, through the client.
+   */
+  readonly commit: () => Promise<string | null>;
   readonly rollback: () => void;
   readonly dispose: () => void;
 
-  constructor(store: TransactionStoreAccess<Schema>) {
+  constructor(store: TransactionStoreAccess) {
     const claimedModels = new Map<Model, ClaimRecord>();
     const shieldedFields = new Map<Model, Set<string>>();
     const newModels = new Map<Model, NewModelRecord>();
@@ -105,7 +99,7 @@ export class ScopedTransaction<Schema extends AnySchema> {
       const result: Model[] = [];
       for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(model.entityName))) {
         const value = readField(model, fieldName);
-        if (linkAttr.cardinality === "one") {
+        if (!linkAttr.array) {
           if (isModel(value)) result.push(value);
         } else if (Array.isArray(value)) {
           for (const item of value) {
@@ -143,46 +137,13 @@ export class ScopedTransaction<Schema extends AnySchema> {
       claim.touched.clear();
 
       const fullRaw = claim.data.toRawEntityData(model.id);
-      const filtered: { id: string; [key: string]: unknown } = { id: model.id };
+      const filtered: RawEntityData = { id: model.id };
       for (const fieldName of fields) {
         if (fieldName in fullRaw) {
           filtered[fieldName] = fullRaw[fieldName];
         }
       }
       store.rehydrateModel(model, filtered);
-    };
-
-    const appendLink = (
-      target: LinkParams<Schema, keyof Schema["entities"] & string>,
-      label: string,
-      id: string
-    ): boolean => {
-      const existing: unknown = Reflect.get(target, label);
-      if (existing === undefined) {
-        Reflect.set(target, label, id);
-        return true;
-      }
-      if (typeof existing === "string") {
-        Reflect.set(target, label, [existing, id]);
-        return true;
-      }
-      if (Array.isArray(existing)) {
-        existing.push(id);
-        return true;
-      }
-      return false;
-    };
-
-    const txFor = (model: Model): SchemaChunk<Schema> => {
-      const entityTx = store.db.tx[model.entityName];
-      if (!entityTx) {
-        throw new Error(`Unknown entity type: ${model.entityName}`);
-      }
-      const tx = entityTx[model.id];
-      if (!tx) {
-        throw new Error(`Missing tx chunk for ${model.entityName}:${model.id}`);
-      }
-      return tx;
     };
 
     const expandTouchedToColumns = (model: Model, touched: Set<string>): Set<string> => {
@@ -221,10 +182,11 @@ export class ScopedTransaction<Schema extends AnySchema> {
       return false;
     };
 
-    const buildChunkFromTouched = (
+    const appendTouchedWrites = (
       model: Model,
-      claim: ClaimRecord
-    ): SchemaChunk<Schema> | null => {
+      claim: ClaimRecord,
+      batch: TransactionDraft
+    ): void => {
       const entityName = model.entityName;
       const attrs = getEntityAttrs(entityName);
       const links_ = getEntityLinks(entityName);
@@ -232,19 +194,15 @@ export class ScopedTransaction<Schema extends AnySchema> {
       const diff = new ModelSnapshotDiff(claim.data, currentSnapshot, entityName, false);
       const expandedColumns = expandTouchedToColumns(model, claim.touched);
 
-      const updateData: UpdateParams<Schema, keyof Schema["entities"] & string> = {};
-      const links: LinkParams<Schema, keyof Schema["entities"] & string> = {};
-      const unlinks: LinkParams<Schema, keyof Schema["entities"] & string> = {};
+      const updateData: Record<string, ColumnValue> = {};
       let hasUpdates = false;
-      let hasLinks = false;
-      let hasUnlinks = false;
-
       for (const [columnName, value] of diff.scalars) {
         if (columnName === "id") continue;
         if (!expandedColumns.has(columnName)) continue;
-        Reflect.set(updateData, columnName, value);
+        updateData[columnName] = value;
         hasUpdates = true;
       }
+      if (hasUpdates) batch.update(entityName, model.id, updateData);
 
       for (const fieldName of claim.touched) {
         if (fieldName === "id") continue;
@@ -254,104 +212,52 @@ export class ScopedTransaction<Schema extends AnySchema> {
         if (!linkAttr) continue;
         const value = readField(model, fieldName);
 
-        if (linkAttr.cardinality === "one") {
+        if (!linkAttr.array) {
           const currentId = isModel(value) ? value.id : null;
           const original = claim.data.relationships.get(fieldName);
           const originalId = typeof original === "string" ? original : null;
-          if (currentId !== originalId) {
-            if (originalId) {
-              hasUnlinks = appendLink(unlinks, fieldName, originalId) || hasUnlinks;
-            }
-            if (currentId) {
-              hasLinks = appendLink(links, fieldName, currentId) || hasLinks;
-            }
-          }
+          if (currentId === originalId) continue;
+          batch.relink(entityName, model.id, fieldName, currentId ? [currentId] : [], originalId ? [originalId] : []);
         } else {
-          const currentIds: string[] = [];
+          const currentIds = new Set<string>();
           if (Array.isArray(value)) {
             for (const item of value) {
-              if (isModel(item)) currentIds.push(item.id);
+              if (isModel(item)) currentIds.add(item.id);
             }
           }
           const original = claim.data.relationships.get(fieldName);
-          const originalIds = Array.isArray(original) ? original : [];
-          const origSet = new Set(originalIds);
-          const currSet = new Set(currentIds);
-          for (const id of currSet) {
-            if (!origSet.has(id)) {
-              hasLinks = appendLink(links, fieldName, id) || hasLinks;
-            }
-          }
-          for (const id of origSet) {
-            if (!currSet.has(id)) {
-              hasUnlinks = appendLink(unlinks, fieldName, id) || hasUnlinks;
-            }
-          }
+          const originalIds = new Set(Array.isArray(original) ? original : []);
+          batch.relink(
+            entityName,
+            model.id,
+            fieldName,
+            [...currentIds].filter((id) => !originalIds.has(id)),
+            [...originalIds].filter((id) => !currentIds.has(id)),
+          );
         }
       }
-
-      if (!hasUpdates && !hasLinks && !hasUnlinks) {
-        return null;
-      }
-
-      let tx = txFor(model);
-      if (hasUpdates) {
-        tx = tx.update(updateData);
-      }
-      if (hasLinks) {
-        tx = tx.link(links);
-      }
-      if (hasUnlinks) {
-        tx = tx.unlink(unlinks);
-      }
-      return tx;
     };
 
-    const buildSoftDeleteChunk = (model: Model): SchemaChunk<Schema> | null => {
+    const appendSoftDelete = (model: Model, batch: TransactionDraft): void => {
       model.setUpdatedAt();
       const snapshot = new ModelSnapshot(model);
       const deletedAt = snapshot.scalars.get("deletedAt");
-      if (deletedAt === null || deletedAt === undefined) return null;
+      if (deletedAt === null || deletedAt === undefined) return;
 
-      const updateData: UpdateParams<Schema, keyof Schema["entities"] & string> = {};
-      Reflect.set(updateData, "deletedAt", deletedAt);
+      const updateData: Record<string, ColumnValue> = { deletedAt };
       const updatedAt = snapshot.scalars.get("updatedAt");
-      if (updatedAt !== undefined) {
-        Reflect.set(updateData, "updatedAt", updatedAt);
-      }
-      return txFor(model).update(updateData);
+      if (updatedAt !== undefined) updateData.updatedAt = updatedAt;
+      batch.update(model.entityName, model.id, updateData);
     };
 
-    const buildPhysicalDeleteChunk = (model: Model): SchemaChunk<Schema> =>
-      txFor(model).delete();
-
-    const buildTxChunkFromDiff = (
-      model: Model,
-      diff: ModelSnapshotDiff
-    ): SchemaChunk<Schema> => {
-      let tx = txFor(model);
-
-      if (diff.scalars.size > 0) {
-        const updateData: UpdateParams<Schema, keyof Schema["entities"] & string> = {};
-        for (const [field, value] of diff.scalars) {
-          Reflect.set(updateData, field, value);
-        }
-        tx = tx.update(updateData);
-      }
-
+    const appendCreate = (model: Model, diff: ModelSnapshotDiff, batch: TransactionDraft): void => {
+      batch.create(model.entityName, model.id, Object.fromEntries(diff.scalars));
       for (const [fieldName, ids] of diff.links) {
-        const linkData: LinkParams<Schema, keyof Schema["entities"] & string> = {};
-        Reflect.set(linkData, fieldName, ids.length === 1 ? ids[0] : ids);
-        tx = tx.link(linkData);
+        batch.relink(model.entityName, model.id, fieldName, ids, []);
       }
-
       for (const [fieldName, ids] of diff.unlinks) {
-        const unlinkData: LinkParams<Schema, keyof Schema["entities"] & string> = {};
-        Reflect.set(unlinkData, fieldName, ids.length === 1 ? ids[0] : ids);
-        tx = tx.unlink(unlinkData);
+        batch.relink(model.entityName, model.id, fieldName, [], ids);
       }
-
-      return tx;
     };
 
     const diffNew = (model: Model): ModelSnapshotDiff =>
@@ -412,19 +318,52 @@ export class ScopedTransaction<Schema extends AnySchema> {
       return TransactionContext.run(this, fn);
     };
 
-    this.commit = async (): Promise<void> => {
-      assertActive();
-      let firstCommitSucceeded = false;
+    // The row goes for good only once the server has accepted the soft
+    // delete; if either never lands, the row stays soft-deleted.
+    const hardDeleteOnceSoftDeleted = async (softDeleteId: string, models: Model[]): Promise<void> => {
       try {
-        const chunks = TransactionContext.run(this, () => {
-          const built: SchemaChunk<Schema>[] = [];
+        if (!(await isCommitted(softDeleteId))) return;
+        const physicalDeletes = new Transaction();
+        for (const model of models) physicalDeletes.delete(model.entityName, model.id);
+        await store.client.submit(physicalDeletes);
+        if (!(await isCommitted(physicalDeletes.id))) return;
+        for (const model of models) model._markHardDeleted();
+      } catch {
+        // The client went away before answering; the row stays soft-deleted.
+      }
+    };
+
+    const isCommitted = async (transactionId: string): Promise<boolean> =>
+      (await store.client.verdict(transactionId)).status === "committed";
+
+    // Nothing of a transaction that did not land exists anywhere else, so
+    // the local models must not keep it either.
+    const undoUnlanded = (): void => {
+      releaseShields();
+      runInAction(() => {
+        for (const [model, claim] of claimedModels) {
+          restoreTouchedFields(model, claim);
+        }
+        for (const model of newModels.keys()) {
+          const identityMap = store.getIdentityMapByName(model.entityName);
+          identityMap.delete(model.id);
+          model._discardPendingNew();
+        }
+      });
+    };
+
+    this.commit = async (): Promise<string | null> => {
+      assertActive();
+      let submitted = false;
+      try {
+        const batch = TransactionContext.run(this, () => {
+          const built = new TransactionDraft();
           for (const [model, claim] of claimedModels) {
             if (deletedModels.has(model)) continue;
             if (claim.touched.size === 0) continue;
             if (!touchedFieldsHaveChanges(model, claim)) continue;
             model.setUpdatedAt();
-            const chunk = buildChunkFromTouched(model, claim);
-            if (chunk) built.push(chunk);
+            appendTouchedWrites(model, claim, built);
           }
           for (const model of newModels.keys()) {
             // Bump updatedAt BEFORE snapshotting so the diff carries the
@@ -432,19 +371,17 @@ export class ScopedTransaction<Schema extends AnySchema> {
             model.setUpdatedAt();
             const diff = diffNew(model);
             if (!diff.hasChanges()) continue;
-            built.push(buildTxChunkFromDiff(model, diff));
+            appendCreate(model, diff, built);
           }
           for (const model of deletedModels) {
-            const chunk = buildSoftDeleteChunk(model);
-            if (chunk) built.push(chunk);
+            appendSoftDelete(model, built);
           }
-          return built;
+          return built.build();
         });
 
-        if (chunks.length > 0) {
-          await store.db.transact(chunks);
-        }
-        firstCommitSucceeded = true;
+        // A denial arrives later, as an effect the store takes back.
+        await store.client.submit(batch);
+        submitted = true;
         for (const model of newModels.keys()) {
           model._persistPendingNew();
         }
@@ -452,24 +389,11 @@ export class ScopedTransaction<Schema extends AnySchema> {
           for (const model of deletedModels) {
             store.evictModel(model);
           }
-          await store.db.transact([...deletedModels].map(buildPhysicalDeleteChunk));
-          for (const model of deletedModels) {
-            model._markHardDeleted();
-          }
+          void hardDeleteOnceSoftDeleted(batch.id, [...deletedModels]);
         }
+        return batch.isEmpty ? null : batch.id;
       } catch (error) {
-        if (!firstCommitSucceeded) {
-          for (const model of newModels.keys()) {
-            const identityMap = store.getIdentityMapByName(model.entityName);
-            identityMap.delete(model.id);
-            model._discardPendingNew();
-          }
-        }
-        // A write the departed identity authored can never land, and no caller
-        // outlives the identity to act on it — every consumer is unmounting
-        // with the authenticated tree. Raising it would only surface as an
-        // unobserved rejection.
-        if (writeDroppedByIdentityChange(error)) return;
+        if (!submitted) undoUnlanded();
         throw error;
       } finally {
         releaseAll();

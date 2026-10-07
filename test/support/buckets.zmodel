@@ -1,0 +1,269 @@
+// One model per policy shape the bucket compiler must handle. Generated into
+// zenstack/buckets; read by the BucketCompiler unit tests only.
+
+datasource db {
+    provider = 'postgresql'
+}
+
+plugin policy {
+    provider = '@zenstackhq/plugin-policy'
+}
+
+model users {
+    id       String        @id
+    teamId   String?
+    rank     Int?
+    team     teams?        @relation("usersTeam", fields: [teamId], references: [id])
+    authored authoredRows[] @relation("authoredRowsAuthor")
+    memberships teamMembers[] @relation("teamMembersUser")
+    @@auth
+    @@allow('read', true)
+}
+
+model publicRows {
+    id String @id
+    @@allow('read', true)
+}
+
+model ownedRows {
+    id      String @id
+    ownerId String
+    @@allow('read', auth().id == ownerId)
+}
+
+model teams {
+    id      String        @id
+    members teamMembers[] @relation("teamMembers")
+    posts   teamPosts[]   @relation("teamPosts")
+    users   users[]       @relation("usersTeam")
+    checked checkedRows[] @relation("checkedRowsTeam")
+    scoped  innerHopRows[] @relation("innerHopRowsTeam")
+    @@allow('read', members?[userId == auth().id])
+}
+
+model teamMembers {
+    id     String @id
+    teamId String
+    userId String
+    team   teams  @relation("teamMembers", fields: [teamId], references: [id])
+    user   users  @relation("teamMembersUser", fields: [userId], references: [id])
+    allQuantId  String?
+    allQuant    allQuantRows?  @relation("allQuantMembers", fields: [allQuantId], references: [id])
+    noneQuantId String?
+    noneQuant   noneQuantRows? @relation("noneQuantMembers", fields: [noneQuantId], references: [id])
+    @@allow('read', auth().id == userId)
+}
+
+model teamPosts {
+    id       String      @id
+    teamId   String
+    team     teams       @relation("teamPosts", fields: [teamId], references: [id])
+    comments comments[]  @relation("postComments")
+    @@allow('read', team.members?[userId == auth().id])
+}
+
+model comments {
+    id     String    @id
+    postId String
+    post   teamPosts @relation("postComments", fields: [postId], references: [id])
+    @@allow('read', post.team.members?[userId == auth().id])
+}
+
+model hostedRooms {
+    id     String      @id
+    hostId String
+    posts  roomPosts[] @relation("roomPosts")
+    @@allow('read', auth().id == hostId)
+}
+
+model roomPosts {
+    id     String      @id
+    roomId String
+    room   hostedRooms @relation("roomPosts", fields: [roomId], references: [id])
+    @@allow('read', room.hostId == auth().id)
+}
+
+model eitherRows {
+    id       String @id
+    ownerId  String
+    editorId String
+    @@allow('read', auth().id == ownerId || auth().id == editorId)
+}
+
+model splitRules {
+    id       String @id
+    ownerId  String
+    editorId String
+    @@allow('read', auth().id == ownerId)
+    @@allow('read', auth().id == editorId)
+}
+
+model filteredRows {
+    id      String @id
+    ownerId String
+    status  String
+    @@allow('read', auth().id == ownerId && status == 'active')
+}
+
+model pairedRows {
+    id      String @id
+    ownerId String
+    teamId  String
+    @@allow('read', auth().id == ownerId && auth().teamId == teamId)
+}
+
+model unequalRows {
+    id      String @id
+    ownerId String
+    @@allow('read', auth().id != ownerId)
+}
+
+model rankedRows {
+    id      String @id
+    minRank Int
+    @@allow('read', auth().rank > minRank)
+}
+
+model guardedRows {
+    id      String @id
+    ownerId String
+    secret  String @allow('read', auth().id == ownerId)
+    @@allow('read', true)
+}
+
+model writeRuledRows {
+    id      String @id
+    ownerId String
+    @@allow('read', true)
+    @@allow('create,update,delete', auth().id == ownerId)
+}
+
+model unreadableRows {
+    id String @id
+    @@allow('create', true)
+}
+
+// --- the rest of the language ---
+
+model authoredRows {
+    id       String @id
+    authorId String
+    author   users  @relation("authoredRowsAuthor", fields: [authorId], references: [id])
+    @@allow('read', author == auth())
+}
+
+model authTeamRows {
+    id     String @id
+    teamId String
+    @@allow('read', auth().team.id == teamId)
+}
+
+model allRuleRows {
+    id      String @id
+    ownerId String
+    @@allow('all', auth().id == ownerId)
+}
+
+model checkedRows {
+    id     String @id
+    teamId String
+    team   teams  @relation("checkedRowsTeam", fields: [teamId], references: [id])
+    @@allow('read', check(team))
+}
+
+type Owned {
+    ownerId String
+    @@allow('read', auth().id == ownerId)
+}
+
+model inheritedRows with Owned {
+    id String @id
+}
+
+model delegatedRows {
+    id      String @id
+    ownerId String
+    kind    String
+    @@delegate(kind)
+    @@allow('read', auth().id == ownerId)
+}
+
+model delegatedSubRows extends delegatedRows {
+    extra String
+}
+
+model authRequiredRows {
+    id      String @id
+    ownerId String
+    @@allow('read', auth() != null && auth().id == ownerId)
+}
+
+model thisRows {
+    id      String @id
+    ownerId String
+    @@allow('read', this.ownerId == auth().id)
+}
+
+model inListRows {
+    id      String @id
+    ownerId String
+    status  String
+    @@allow('read', status in ['draft', 'live'] && auth().id == ownerId)
+}
+
+model containsRows {
+    id      String @id
+    ownerId String
+    title   String
+    @@allow('read', contains(title, 'public') && auth().id == ownerId)
+}
+
+model nowRows {
+    id          String   @id
+    publishedAt DateTime
+    @@allow('read', publishedAt < now())
+}
+
+model anonymousRows {
+    id String @id
+    @@allow('read', auth() == null)
+}
+
+model negatedRows {
+    id      String @id
+    ownerId String
+    @@allow('read', !(auth().id == ownerId))
+}
+
+model allQuantRows {
+    id      String        @id
+    members teamMembers[] @relation("allQuantMembers")
+    @@allow('read', members![userId == auth().id])
+}
+
+model noneQuantRows {
+    id      String        @id
+    members teamMembers[] @relation("noneQuantMembers")
+    @@allow('read', members^[userId == auth().id])
+}
+
+model innerHopRows {
+    id     String @id
+    teamId String
+    team   teams  @relation("innerHopRowsTeam", fields: [teamId], references: [id])
+    @@allow('read', team.members?[user.teamId == auth().teamId])
+}
+
+model listRows {
+    id       String   @id
+    ownerIds String[]
+    @@allow('read', auth().id in ownerIds)
+}
+
+model deniedRows {
+    id      String @id
+    ownerId String
+    status  String
+    @@allow('read', auth().id == ownerId)
+    @@deny('read', status == 'hidden')
+}

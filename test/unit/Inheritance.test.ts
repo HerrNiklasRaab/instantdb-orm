@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import { Model } from "../../src/object-graph/Model";
 import { model } from "../../src/object-graph/decorators/model";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import { InMemoryInstantDBSyncClient } from "../../src/test";
-import schema, { type AppSchema } from "../support/instant.schema";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+import { LocalReplica, SyncClient } from "../../src/client";
+import { inProcessSocketPair } from "../../src/protocol";
+import { InMemoryPostgres, inMemorySqliteDialect } from "../../src/test";
+import { schema, type SchemaType } from "../support/zenstack/client/schema";
+import { schema as serverSchema } from "../support/zenstack/server/schema";
 import { Invitation } from "../support/entities/Invitation";
 import { ChessInvitation } from "../support/entities/ChessInvitation";
 import { SkiInvitation } from "../support/entities/SkiInvitation";
@@ -57,14 +62,22 @@ class SkiInvitationFromOtherBundle extends Invitation {
   }
 }
 
-function bootStores(): { writer: RootStore<AppSchema>; reader: RootStore<AppSchema> } {
-  const db = new InMemoryInstantDBSyncClient<AppSchema>({ schema });
-  return { writer: new RootStore<AppSchema>({ db }), reader: new RootStore<AppSchema>({ db }) };
+const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), "../support/zenstack/server/migrations");
+
+async function bootStores(): Promise<{ writer: RootStore<SchemaType>; reader: RootStore<SchemaType> }> {
+  const postgres = await InMemoryPostgres.start(migrationsDir);
+  const server = await postgres.server(serverSchema);
+  const connect = (): SyncClient<SchemaType> => {
+    const [clientEnd, serverEnd] = inProcessSocketPair();
+    server.accept(serverEnd, server.unrestricted());
+    return new SyncClient(schema, () => clientEnd, LocalReplica.open(schema, inMemorySqliteDialect()));
+  };
+  return { writer: new RootStore({ client: connect() }), reader: new RootStore({ client: connect() }) };
 }
 
 describe("Single-table inheritance in a production bundle", () => {
   it("hydrates each row into the subclass its discriminator names", async () => {
-    const { writer, reader } = bootStores();
+    const { writer, reader } = await bootStores();
     const hike = await writer.transaction(() => new HikeTrip());
     const sail = await writer.transaction(() => new SailTrip());
 
@@ -75,7 +88,7 @@ describe("Single-table inheritance in a production bundle", () => {
   });
 
   it("finds a hydrated subclass through the caller's copy of its class", async () => {
-    const { writer, reader } = bootStores();
+    const { writer, reader } = await bootStores();
     const written = await writer.transaction(() => new SkiInvitation("Zermatt", "advanced"));
 
     await reader.query({ invitations: {} });
@@ -84,7 +97,7 @@ describe("Single-table inheritance in a production bundle", () => {
   });
 
   it("finds the same row through either copy of the class", async () => {
-    const { writer, reader } = bootStores();
+    const { writer, reader } = await bootStores();
     const written = await writer.transaction(() => new SkiInvitation("Zermatt", "advanced"));
 
     await reader.query({ invitations: {} });
@@ -94,7 +107,7 @@ describe("Single-table inheritance in a production bundle", () => {
   });
 
   it("keeps sibling subclasses of the same table apart", async () => {
-    const { writer, reader } = bootStores();
+    const { writer, reader } = await bootStores();
     const ski = await writer.transaction(() => new SkiInvitation("Zermatt", "advanced"));
     const chess = await writer.transaction(() => new ChessInvitation("5+0", true));
 

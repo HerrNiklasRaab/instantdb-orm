@@ -1,5 +1,4 @@
 import { runInAction } from "mobx";
-import type { AnySchema } from "../../instantdb";
 import type { IdentityMap } from "../IdentityMap";
 import { Model, ModelLifecycle } from "../Model";
 import {
@@ -11,7 +10,6 @@ import type { EntityName } from "./EntityMeta";
 import type { ModelInstanceFor } from "./types";
 import { findReverseSide, getEntityLinks, readField, writeField } from "./EntityMeta";
 import type { RawEntityData } from "./types";
-import { RootStore } from "./RootStore";
 import { withHydration } from "./hydrationContext";
 import { fieldsForModel } from "./fieldsForEntity";
 
@@ -45,8 +43,12 @@ function hasExactPrototype<K extends EntityName>(
   return value !== null && typeof value === "object" && Reflect.getPrototypeOf(value) === proto;
 }
 
-export class ModelHydrator<Schema extends AnySchema> {
-  constructor(private store: RootStore<Schema>) { }
+export interface RelationshipCleaner {
+  cleanupRelationships(entityName: string, model: Model): void;
+}
+
+export class ModelHydrator {
+  constructor(private store: RelationshipCleaner) { }
 
   hydrate<K extends EntityName>(
     entityName: K,
@@ -81,7 +83,7 @@ export class ModelHydrator<Schema extends AnySchema> {
       }
 
       for (const [fieldName, linkAttr] of Object.entries(links)) {
-        writeField(instance, fieldName, linkAttr.cardinality === "many" ? [] : null);
+        writeField(instance, fieldName, linkAttr.array === true ? [] : null);
       }
 
       instance.initTracking(ModelLifecycle.Persisted);
@@ -176,10 +178,10 @@ export class ModelHydrator<Schema extends AnySchema> {
         ? nestedData
         : [nestedData];
 
-      const targetEntity = linkAttr.entityName;
+      const targetEntity = linkAttr.type;
       const targetMap = getIdentityMap(targetEntity);
 
-      if (linkAttr.cardinality === "one") {
+      if (!linkAttr.array) {
         const firstItem = toRawEntityData(nestedArray[0]);
         if (firstItem?.id) {
           let targetModel: Model | null = null;

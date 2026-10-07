@@ -1,26 +1,23 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import { Temporal } from "../../src/object-graph";
-import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
-  setupTestDatabase,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestStore,
+} from "./support/clients";
 import { Appointment } from "../support/entities/Appointment";
 import { DateRange } from "../support/entities/temporalValueObjects";
 
 const INSTANT = Temporal.Instant.from("2026-06-01T08:30:00Z");
 
 describe("Temporal persistence (Integration)", () => {
-  let db: TestInstantDBClient;
-  let storeA: RootStore<AppSchema>;
-  let storeB: RootStore<AppSchema>;
+  let storeA: TestStore;
+  let storeB: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    storeA = new RootStore<AppSchema>({ db });
-    storeB = new RootStore<AppSchema>({ db });
+    storeA = new RootStore({ client: connectTestClient() });
+    storeB = new RootStore({ client: connectTestClient() });
   });
 
   it("round-trips every Temporal scalar type through save and reload", async () => {
@@ -119,7 +116,7 @@ describe("Temporal persistence (Integration)", () => {
       saved.day = null;
     });
 
-    reloaded = (await new RootStore<AppSchema>({ db }).queryModel(Appointment)).find(
+    reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Appointment)).find(
       (a) => a.id === saved.id
     );
     assertDefined(reloaded);

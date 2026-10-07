@@ -1,3 +1,5 @@
+export type { SubscriptionError, QuerySubscriptionState, Unsubscribe } from "./Subscription";
+export { LiveSubscription } from "./LiveSubscription";
 export { ResilientSubscription, type ResilientSubscriptionDeps } from "./ResilientSubscription";
 export { SubscriptionRetryPolicy } from "./SubscriptionRetryPolicy";
 export {

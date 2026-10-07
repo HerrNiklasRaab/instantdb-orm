@@ -45,7 +45,7 @@ export function temporalCodecForValue(value: object): ColumnCodec<StorableValue>
 
 const INSTANT_CODEC = new InstantCodec();
 
-/** The default codec for an un-annotated `i.date()` column: Temporal.Instant. */
+/** The default codec for an un-annotated `DateTime` column: Temporal.Instant. */
 export function instantCodec(): ColumnCodec<StorableValue> {
   return INSTANT_CODEC;
 }

@@ -1,20 +1,17 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   assertDefined,
-  setupTestDatabase,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestStore,
+} from "./support/clients";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import { User, UserRole, type UserStatus } from "../support/entities/User";
 
 describe("Enum field support (Integration)", () => {
-  let db: TestInstantDBClient;
-  let store: RootStore<AppSchema>;
+  let store: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    store = new RootStore<AppSchema>({ db });
+    store = new RootStore({ client: connectTestClient() });
   });
 
   describe("string literal union enum", () => {
@@ -27,7 +24,7 @@ describe("Enum field support (Integration)", () => {
           return u;
         });
 
-        const freshStore = new RootStore<AppSchema>({ db });
+        const freshStore = new RootStore({ client: connectTestClient() });
         const users = await freshStore.queryModel(User);
         const hydrated = users.find((u) => u.id === user.id);
 
@@ -39,7 +36,7 @@ describe("Enum field support (Integration)", () => {
     it("persists null when status is unset", async () => {
       const user = await store.transaction(() => new User("No Status"));
 
-      const freshStore = new RootStore<AppSchema>({ db });
+      const freshStore = new RootStore({ client: connectTestClient() });
       const users = await freshStore.queryModel(User);
       const hydrated = users.find((u) => u.id === user.id);
 
@@ -61,7 +58,7 @@ describe("Enum field support (Integration)", () => {
         user.status = "inactive";
       });
 
-      const freshStore = new RootStore<AppSchema>({ db });
+      const freshStore = new RootStore({ client: connectTestClient() });
       const users = await freshStore.queryModel(User);
       const hydrated = users.find((u) => u.id === user.id);
 
@@ -84,7 +81,7 @@ describe("Enum field support (Integration)", () => {
           return u;
         });
 
-        const freshStore = new RootStore<AppSchema>({ db });
+        const freshStore = new RootStore({ client: connectTestClient() });
         const users = await freshStore.queryModel(User);
         const hydrated = users.find((u) => u.id === user.id);
 
@@ -100,7 +97,7 @@ describe("Enum field support (Integration)", () => {
         return u;
       });
 
-      const freshStore = new RootStore<AppSchema>({ db });
+      const freshStore = new RootStore({ client: connectTestClient() });
       const users = await freshStore.queryModel(User);
       const hydrated = users.find((u) => u.id === user.id);
 

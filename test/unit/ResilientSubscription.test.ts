@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { SubscriptionError, Unsubscribe } from "../../src/instantdb";
+import type { SubscriptionError, Unsubscribe } from "../../src/subscriptions";
 import { ResilientSubscription } from "../../src/subscriptions/ResilientSubscription";
 import { SubscriptionRetryPolicy } from "../../src/subscriptions/SubscriptionRetryPolicy";
 import type {

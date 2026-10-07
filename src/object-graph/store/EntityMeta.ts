@@ -1,32 +1,19 @@
-import type {
-  AttrsDefs,
-  CardinalityKind,
-  EntitiesDef,
-  EntityDef,
-  InstantSchemaDef,
-  LinkAttrDef,
-  LinksDef,
-  RoomsDef,
-} from "@instantdb/core";
+import type { FieldDef, ModelDef, SchemaDef } from "@zenstackhq/schema";
+import type { ModelLinks } from "../../schema/ModelLinks";
+import { SyncSchema } from "../../schema/SyncSchema";
 import { getBackingFieldName } from "../decorators/field";
 import { syncGlobalState } from "../globalState";
 
 export type EntityName = string;
 
-type SchemaConfig = InstantSchemaDef<
-  Record<string, EntityDef<AttrsDefs, Record<string, LinkAttrDef<CardinalityKind, string>>, void>>,
-  LinksDef<EntitiesDef>,
-  RoomsDef
->;
+export type Cardinality = "one" | "many";
 
-type EntityLinksMap = Record<string, LinkAttrDef<CardinalityKind, string>>;
-
-type SchemaLink = SchemaConfig["links"][string];
+type EntityFieldMap = Readonly<Record<string, FieldDef>>;
 
 export type ReverseSide = readonly [
   entity: string,
   fieldName: string,
-  cardinality: CardinalityKind
+  cardinality: Cardinality
 ];
 
 export function getFieldNameOnModel(entity: object, fieldName: string): string {
@@ -45,24 +32,39 @@ export function writeField(entity: object, fieldName: string, value: unknown): v
 const TIMESTAMP_FIELDS = ["createdAt", "updatedAt", "deletedAt"] as const;
 const CREATED_UPDATED = ["createdAt", "updatedAt"] as const;
 
+function cardinalityOf(field: FieldDef): Cardinality {
+  return field.array === true ? "many" : "one";
+}
+
 class EntityDescriptor {
+  readonly attrs: EntityFieldMap;
+  readonly links: EntityFieldMap;
+
   constructor(
     readonly name: EntityName,
-    readonly attrs: AttrsDefs,
-    readonly links: EntityLinksMap,
-    private readonly schemaLinks: readonly SchemaLink[]
-  ) {}
-
-  findReverseLink(fieldName: string): ReverseSide | undefined {
-    for (const link of this.schemaLinks) {
-      if (link.forward.on === this.name && link.forward.label === fieldName) {
-        return [link.reverse.on, link.reverse.label, link.reverse.has] as const;
-      }
-      if (link.reverse.on === this.name && link.reverse.label === fieldName) {
-        return [link.forward.on, link.forward.label, link.forward.has] as const;
-      }
+    private readonly model: ModelDef
+  ) {
+    const foreignKeys = new Set<string>();
+    for (const field of Object.values(model.fields)) {
+      for (const column of field.relation?.fields ?? []) foreignKeys.add(column);
     }
-    return undefined;
+    const attrs: Record<string, FieldDef> = {};
+    const links: Record<string, FieldDef> = {};
+    for (const [fieldName, field] of Object.entries(model.fields)) {
+      if (field.relation) links[fieldName] = field;
+      else if (!field.id && !foreignKeys.has(fieldName) && !field.computed) attrs[fieldName] = field;
+    }
+    this.attrs = attrs;
+    this.links = links;
+  }
+
+  findReverseLink(fieldName: string, models: SchemaDef["models"]): ReverseSide | undefined {
+    const field = this.model.fields[fieldName];
+    const opposite = field?.relation?.opposite;
+    if (!field || !opposite) return undefined;
+    const oppositeField = models[field.type]?.fields[opposite];
+    if (!oppositeField) return undefined;
+    return [field.type, opposite, cardinalityOf(oppositeField)] as const;
   }
 
   validateTimestamps(): void {
@@ -81,7 +83,7 @@ class EntityDescriptor {
     for (const field of CREATED_UPDATED) {
       const attr = this.attrs[field];
       if (!attr) continue;
-      const isOptional = attr.required === false;
+      const isOptional = attr.optional === true;
       if (isSystemEntity && !isOptional) {
         throw new Error(
           `Entity "${this.name}": "${field}" must be optional for system entities (starting with $).`
@@ -95,7 +97,7 @@ class EntityDescriptor {
     }
 
     const deletedAt = this.attrs["deletedAt"];
-    if (deletedAt && deletedAt.required !== false) {
+    if (deletedAt && deletedAt.optional !== true) {
       throw new Error(`Entity "${this.name}": "deletedAt" must be optional.`);
     }
   }
@@ -104,21 +106,25 @@ class EntityDescriptor {
 export class EntityRegistry {
   private readonly descriptors: Map<EntityName, EntityDescriptor>;
   readonly names: readonly EntityName[];
+  readonly sync: SyncSchema;
 
-  constructor(schema: SchemaConfig) {
-    const schemaLinks = Object.values(schema.links);
+  constructor(private readonly schema: SchemaDef) {
     this.descriptors = new Map();
-    for (const [entityName, entity] of Object.entries(schema.entities)) {
-      const descriptor = new EntityDescriptor(
-        entityName,
-        entity.attrs,
-        entity.links,
-        schemaLinks
-      );
+    this.sync = SyncSchema.of(schema);
+    for (const [entityName, model] of Object.entries(this.sync.models)) {
+      const descriptor = new EntityDescriptor(entityName, model);
       descriptor.validateTimestamps();
       this.descriptors.set(entityName, descriptor);
     }
     this.names = Array.from(this.descriptors.keys());
+  }
+
+  describes(schema: SchemaDef): boolean {
+    return this.schema === schema;
+  }
+
+  findReverseSide(entityName: EntityName, fieldName: string): ReverseSide | undefined {
+    return this.require(entityName).findReverseLink(fieldName, this.schema.models);
   }
 
   require(entityName: EntityName): EntityDescriptor {
@@ -146,15 +152,22 @@ function requireRegistry(): EntityRegistry {
   return registry;
 }
 
-export function configureEntityMeta(schema: SchemaConfig): void {
-  syncGlobalState().entityRegistry = new EntityRegistry(schema);
+export function configureEntityMeta(schema: SchemaDef): void {
+  const state = syncGlobalState();
+  if (state.entityRegistry?.describes(schema)) return;
+  state.entityRegistry = new EntityRegistry(schema);
 }
 
-export function getEntityAttrs(entityName: EntityName): AttrsDefs {
+/** How an entity's links are stored, as the configured schema says. */
+export function getEntityLinkStorage(entityName: EntityName): ModelLinks {
+  return requireRegistry().sync.links(entityName);
+}
+
+export function getEntityAttrs(entityName: EntityName): EntityFieldMap {
   return requireRegistry().require(entityName).attrs;
 }
 
-export function getEntityLinks(entityName: EntityName): EntityLinksMap {
+export function getEntityLinks(entityName: EntityName): EntityFieldMap {
   return requireRegistry().require(entityName).links;
 }
 
@@ -162,7 +175,7 @@ export function findReverseSide(
   entityName: EntityName,
   fieldName: string
 ): ReverseSide | undefined {
-  return requireRegistry().require(entityName).findReverseLink(fieldName);
+  return requireRegistry().findReverseSide(entityName, fieldName);
 }
 
 export function getEntityNames(): readonly EntityName[] {

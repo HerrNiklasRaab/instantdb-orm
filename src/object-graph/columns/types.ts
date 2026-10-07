@@ -7,13 +7,13 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue };
 
 /**
- * A value as written to a single InstantDB column. Always a JSON primitive —
- * Temporal values are serialized to ISO strings by their codec before reaching
- * a column, so no JS `Date` ever appears here.
+ * A value as stored in one column: always JSON. Model fields are encoded by
+ * their codecs (a Temporal value becomes an ISO string) before they reach a
+ * column, so no `Date` or class instance ever appears here.
  */
 export type ColumnValue = JsonValue;
 
-/** The InstantDB attribute type backing a single column. */
+/** How a column is stored: a plain value, a date (an ISO string on the wire), or JSON. */
 export type ColumnType = "scalar" | "date" | "json";
 
 /**

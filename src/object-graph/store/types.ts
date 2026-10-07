@@ -1,17 +1,14 @@
-import type { AnySchema } from "../../instantdb";
 import type { Model } from "../Model";
 import type { SubscriptionObserver } from "../../subscriptions/SubscriptionObserver";
-import { InstantDBClient } from "../persistence/types";
+import type { SchemaDef } from "@zenstackhq/schema";
+import type { SyncClient } from "../../client";
+import type { Row } from "../../queries";
+import type { TransactionOutcome } from "../../transactions";
 
-export interface RawEntityData {
-  id: string;
-  [key: string]: unknown;
-}
+export type RawEntityData = Row;
 
-export { InstantDBClient };
-
-export interface RootStoreConfig<Schema extends AnySchema> {
-  db: InstantDBClient<Schema>;
+export interface RootStoreConfig<Schema extends SchemaDef> {
+  client: SyncClient<Schema>;
   /**
    * Maintain a plain-JS `debugView` snapshot on every Model instance,
    * auto-updated via a MobX reaction. Workaround for debuggers that don't
@@ -27,6 +24,13 @@ export interface RootStoreConfig<Schema extends AnySchema> {
    * where it went for as long as nobody was listening.
    */
   subscriptionObserver?: SubscriptionObserver;
+  /**
+   * Told when the server denies one of this client's transactions, however
+   * late the verdict arrives. By then the transaction has been undone
+   * locally; the outcome carries the server's reason. Without a listener the
+   * client logs a console warning.
+   */
+  onTransactionDenied?: (outcome: TransactionOutcome) => void;
 }
 
 export type Constructor<T = unknown> = { prototype: T; readonly name: string };

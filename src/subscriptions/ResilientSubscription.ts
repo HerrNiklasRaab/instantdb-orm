@@ -1,4 +1,4 @@
-import type { SubscriptionError, Unsubscribe } from "../instantdb";
+import type { SubscriptionError, Unsubscribe } from "../subscriptions";
 import type { SubscriptionObserver } from "./SubscriptionObserver";
 import { SubscriptionRetryPolicy } from "./SubscriptionRetryPolicy";
 
@@ -13,17 +13,15 @@ export interface ResilientSubscriptionDeps<T> {
 /**
  * Keeps one live query alive across transport death.
  *
- * The admin SSE transport ends two ways. A dropped socket is transient — the
- * EventSource underneath is already retrying, and re-opening on top of it would
- * only race it. A non-200 on its reconnect is terminal: the spec's "fail the
- * connection" runs, `readyState` latches CLOSED, and no further payload will
- * ever arrive. Only `isClosed` separates the two, and only the caller can
- * re-open past the second one.
+ * A transport fails two ways. A transient failure means the transport is
+ * already retrying underneath, and re-opening on top of it would only race
+ * it. A terminal one means no further payload will ever arrive. Only
+ * `isClosed` separates the two, and only the caller can re-open past the
+ * second one.
  *
  * A failure before the first payload is left terminal on purpose: it means the
  * query or the credentials are wrong, not that the network blinked, and callers
- * rely on it to fail fast at boot. This mirrors the `_has_connected` split in
- * InstantDB's own Python supervisor.
+ * rely on it to fail fast at boot.
  *
  * The transport is injected rather than a client, so the recovery logic is
  * testable with a stub and no database.

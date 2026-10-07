@@ -1,0 +1,14 @@
+import "./entities"
+import "./roomsTightened"
+import "../../src/schema/log"
+import "../../src/schema/server"
+
+// Server root for the policy-change test: the domain after a deploy that
+// tightened one read rule. Same tables, so the same migration applies.
+datasource db {
+    provider = 'postgresql'
+}
+
+plugin policy {
+    provider = '@zenstackhq/plugin-policy'
+}

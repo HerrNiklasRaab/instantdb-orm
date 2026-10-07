@@ -1,0 +1,11 @@
+import "./domain"
+import "../../src/schema/log"
+import "../../src/schema/client"
+
+datasource db {
+    provider = 'sqlite'
+}
+
+plugin policy {
+    provider = '@zenstackhq/plugin-policy'
+}

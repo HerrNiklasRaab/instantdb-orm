@@ -1,0 +1,17 @@
+import "./domain"
+import "../../src/schema/log"
+import "../../src/schema/server"
+
+datasource db {
+    provider = 'postgresql'
+    url      = env('DATABASE_URL')
+}
+
+plugin prisma {
+    provider = '@core/prisma'
+    output = './schema.prisma'
+}
+
+plugin policy {
+    provider = '@zenstackhq/plugin-policy'
+}

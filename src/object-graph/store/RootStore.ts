@@ -1,6 +1,10 @@
-import type { AnySchema, QuerySubscriptionState } from "../../instantdb";
-import type { InstaQLParams, InstaQLResponse, ValidQuery } from "@instantdb/core";
 import { observable, runInAction } from "mobx";
+import type { Settled, TransactionHandle } from "./TransactionHandle";
+import type { SchemaDef } from "@zenstackhq/schema";
+import type { PresenceRoom, SyncClient } from "../../client";
+import { type QueryResult, type SyncQuery, type UntypedQuery, isRecord, untypedQuery } from "../../queries";
+import { type QuerySubscriptionState } from "../../subscriptions";
+import { type TransactionEffect, type TransactionOutcome } from "../../transactions";
 
 import { ResilientSubscription } from "../../subscriptions/ResilientSubscription";
 import {
@@ -10,13 +14,12 @@ import {
 
 import { IdentityMap } from "../IdentityMap";
 import { setDebugViewEnabled, Model } from "../Model";
-import { getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
+import { configureEntityMeta, getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
 import { getModelClass, getModelClassForDiscriminator, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
 import { TransactionContext } from "../persistence/TransactionContext";
-import { InstantDBClient } from "./types";
 import { withHydration } from "./hydrationContext";
 import type {
   ModelConstructor,
@@ -34,7 +37,7 @@ function isInstanceOf<T extends Model>(
   // Cross-bundle fallback: EntityClass may be a duplicate class identity from
   // another bundle. Re-resolve through the shared registry. For STI concrete
   // classes, discriminate by modelType so we don't falsely accept siblings.
-  const expectedDiscriminator = Reflect.get(EntityClass.prototype, "modelType") as unknown;
+  const expectedDiscriminator: unknown = Reflect.get(EntityClass.prototype, "modelType");
   const subclasses = getSubclasses(EntityClass);
   const candidates: ModelClass[] = subclasses.length > 0 ? subclasses : [EntityClass];
   for (const cls of candidates) {
@@ -49,7 +52,7 @@ function isInstanceOf<T extends Model>(
       if (!canonical) continue;
       if (!Object.prototype.isPrototypeOf.call(canonical.prototype, value)) continue;
       if (typeof expectedDiscriminator === "string") {
-        const actualDiscriminator = Reflect.get(value, "modelType") as unknown;
+        const actualDiscriminator: unknown = Reflect.get(value, "modelType");
         if (actualDiscriminator !== expectedDiscriminator) continue;
       }
       return true;
@@ -73,26 +76,41 @@ function toRawEntityArray(v: unknown): RawEntityData[] {
   return Array.isArray(v) ? v.filter(isRawEntityData) : [];
 }
 
-export class RootStore<Schema extends AnySchema>
-  implements TransactionStoreAccess<Schema> {
+// One listener per configured callback, however many stores share the
+// config: isolated callback stores must not multiply reports.
+const reporters = new WeakMap<(outcome: TransactionOutcome) => void, (denial: TransactionEffect) => void>();
+
+function reporterFor(report: (outcome: TransactionOutcome) => void): (denial: TransactionEffect) => void {
+  let reporter = reporters.get(report);
+  if (!reporter) {
+    reporter = (denial) => { report(denial); };
+    reporters.set(report, reporter);
+  }
+  return reporter;
+}
+
+export class RootStore<Schema extends SchemaDef> implements TransactionStoreAccess {
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private subscriptions = new Map<string, { close(): void }>();
-  private hydrator: ModelHydrator<Schema>;
+  private hydrator: ModelHydrator;
   private _initialSyncComplete = observable.box(false);
-  readonly db: InstantDBClient<Schema>;
+  readonly client: SyncClient<Schema>;
   readonly subscriptionObserver: SubscriptionObserver;
   // Retained whole: the per-callback stores of `subscribeQueryIsolated` are
-  // built from it, and rebuilding a `{ db }` literal there would silently drop
+  // built from it, and rebuilding a `{ client }` literal there would silently drop
   // every other setting on the way in.
   private readonly config: RootStoreConfig<Schema>;
 
   constructor(config: RootStoreConfig<Schema>) {
-    this.db = config.db;
+    configureEntityMeta(config.client.schema);
+    this.client = config.client;
     this.config = config;
     this.subscriptionObserver = config.subscriptionObserver ?? new ConsoleSubscriptionObserver();
     setDebugViewEnabled(config.debugView ?? false);
-    this.hydrator = new ModelHydrator<Schema>(this);
+    this.hydrator = new ModelHydrator(this);
     this.initializeIdentityMaps();
+    config.client.onTransactionDenied((denial) => { this.takeBack(denial); });
+    if (config.onTransactionDenied) config.client.onTransactionDenied(reporterFor(config.onTransactionDenied));
   }
 
   dispose(): void {
@@ -107,16 +125,28 @@ export class RootStore<Schema extends AnySchema>
    * Create a long-lived transaction for manual commit/rollback.
    * Use tx.run(() => { ... }) to make mutations within its scope.
    */
-  createTransaction(): ScopedTransaction<Schema> {
-    return new ScopedTransaction<Schema>(this);
+  createTransaction(): ScopedTransaction {
+    return new ScopedTransaction(this);
   }
 
   /**
-   * Run a callback within a short-lived transaction.
-   * Auto-commits on success, auto-rollback on error.
-   * Returns whatever the callback returns.
+   * Runs `fn` as one transaction: auto-rollback if it throws, otherwise
+   * applied locally and sent. See `TransactionHandle` for what the returned
+   * promise and its `settled()` mean.
    */
-  async transaction<T>(fn: () => T | Promise<T>): Promise<T> {
+  transaction<T>(fn: () => T | Promise<T>): TransactionHandle<T> {
+    const applied = this.applyTransaction(fn);
+    const settled = async (options: { signal?: AbortSignal } = {}): Promise<Settled<T>> => {
+      const { result, transactionId } = await applied;
+      const outcome = transactionId === null
+        ? { transactionId: "", tick: null, status: "committed" as const, reason: null }
+        : await this.client.verdict(transactionId, options);
+      return { result, outcome };
+    };
+    return Object.assign(applied.then(({ result }) => result), { settled });
+  }
+
+  private async applyTransaction<T>(fn: () => T | Promise<T>): Promise<{ result: T; transactionId: string | null }> {
     const tx = this.createTransaction();
     let result: T;
     try {
@@ -125,15 +155,14 @@ export class RootStore<Schema extends AnySchema>
       tx.rollback();
       throw e;
     }
-    await tx.commit();
-    return result;
+    return { result, transactionId: await tx.commit() };
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TransactionStoreAccess implementation
   // ─────────────────────────────────────────────────────────────────────────────
 
-  private entityNameOf(EntityClass: ModelClass): keyof Schema["entities"] & string {
+  private entityNameOf(EntityClass: ModelClass): string {
     return getEntityNameFromClass(EntityClass);
   }
 
@@ -160,12 +189,12 @@ export class RootStore<Schema extends AnySchema>
       const identityMap = this.getIdentityMapByName(entityName);
 
       for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(entityName))) {
-        if (linkAttr.entityName !== deletedEntityType) continue;
+        if (linkAttr.type !== deletedEntityType) continue;
 
         for (const model of identityMap.values()) {
           const fieldValue = readField(model, fieldName);
 
-          if (linkAttr.cardinality === "one") {
+          if (!linkAttr.array) {
             if (fieldValue === deletedModel) {
               writeField(model, fieldName, null);
             }
@@ -176,6 +205,19 @@ export class RootStore<Schema extends AnySchema>
             }
           }
         }
+      }
+    }
+  }
+
+  /** A denied transaction's rows, back from the server: the models follow the replica. */
+  private takeBack(denial: TransactionEffect): void {
+    this.hydrateResult(denial.rows);
+    for (const [entityName, ids] of Object.entries(denial.removed)) {
+      if (!isValidEntityName(entityName)) continue;
+      const identityMap = this.getIdentityMapByName(entityName);
+      for (const id of ids) {
+        const model = identityMap.get(id);
+        if (model) this.evictModel(model);
       }
     }
   }
@@ -244,28 +286,44 @@ export class RootStore<Schema extends AnySchema>
   }
 
   /** One-time query and hydrate all entities of a class */
+  /** This device's place in the presence room of one row of `EntityClass`: who else is there, and in what state. */
+  presence(EntityClass: ModelClass, id: string): PresenceRoom {
+    return this.client.presence(this.entityNameOf(EntityClass), id);
+  }
+
   async queryModel<T extends Model>(
     EntityClass: ModelClass<T>
   ): Promise<T[]> {
     const entityName = this.entityNameOf(EntityClass);
-    const queryInput: InstaQLParams<Schema> = {};
-    queryInput[entityName] = {};
-    const query = this.buildQueryWithRelationships(queryInput);
-    const raw = await this.db.unsafeQuery(query);
-    const rawDataArray = toRawEntityArray(Reflect.get(raw, entityName));
+    const query = this.buildQueryWithRelationships({ [entityName]: {} });
+    const raw = await this.client.query(query);
+    const rawDataArray = toRawEntityArray(raw[entityName]);
 
     const hydrated = this.hydrator.hydrateMany(
       entityName,
       rawDataArray,
       this.getIdentityMapByName.bind(this)
     );
+    this.evictAbsent(entityName, rawDataArray);
     return hydrated.filter((m): m is T => isInstanceOf(m, EntityClass));
   }
 
-  private createSubscription<Q extends InstaQLParams<Schema>, T>(
+  // A whole-table answer is authoritative: a persisted model it no longer
+  // lists was removed, or hidden, while this store was not looking — a
+  // tombstone may never have been shown. Models the server has not confirmed
+  // yet are this store's own business and stay.
+  private evictAbsent(entityName: string, rows: RawEntityData[]): void {
+    const present = new Set(rows.map((row) => row.id));
+    for (const model of [...this.getIdentityMapByName(entityName).values()]) {
+      if (present.has(model.id) || !model.isPersisted) continue;
+      this.evictModel(model);
+    }
+  }
+
+  private createSubscription<T>(
     subscriptionKey: string,
-    query: Q,
-    onData: (data: InstaQLResponse<Schema, Q>) => T,
+    query: UntypedQuery,
+    onData: (data: QueryResult) => T,
     callback?: (result: T) => void
   ): Promise<{ result: T; close: () => void }> {
     this.subscriptions.get(subscriptionKey)?.close();
@@ -273,13 +331,12 @@ export class RootStore<Schema extends AnySchema>
     return new Promise((resolve, reject) => {
       let isFirstCallback = true;
 
-      const unsubscribe = this.db.unsafeSubscribeQuery(
+      const unsubscribe = this.client.subscribe(
         query,
         ({ error, data }) => {
           if (error) {
-            // No reconnect here: this path is the websocket client, whose own
-            // Reactor already supervises reconnection. Only the reporting was
-            // missing.
+            // No reconnect here: the transport supervises its own
+            // reconnection. Only the reporting was missing.
             this.subscriptionObserver.degraded({
               label: subscriptionKey,
               message: error.message,
@@ -317,20 +374,19 @@ export class RootStore<Schema extends AnySchema>
     callback: (entities: T[]) => void
   ): Promise<{ entities: T[]; close(): void }> {
     const entityName = this.entityNameOf(EntityClass);
-    const queryInput: InstaQLParams<Schema> = {};
-    queryInput[entityName] = {};
-    const query = this.buildQueryWithRelationships(queryInput);
+    const query = this.buildQueryWithRelationships({ [entityName]: {} });
 
     const { result: entities, close } = await this.createSubscription(
       entityName,
       query,
       (data): T[] => {
-        const rawDataArray = toRawEntityArray(Reflect.get(data, entityName));
+        const rawDataArray = toRawEntityArray(data[entityName]);
         const hydrated = this.hydrator.hydrateMany(
           entityName,
           rawDataArray,
           this.getIdentityMapByName.bind(this)
         );
+        this.evictAbsent(entityName, rawDataArray);
         return hydrated.filter((m): m is T => isInstanceOf(m, EntityClass));
       },
       callback
@@ -339,35 +395,33 @@ export class RootStore<Schema extends AnySchema>
     return { entities, close };
   }
 
-  // Recursion is bounded by the caller's query tree: only explicitly
-  // requested link subtrees recurse, and the id-only stubs injected for
-  // unrequested links are terminal. An entity may therefore legitimately
-  // appear on several roots or several times along one path.
-  private buildQueryWithRelationships<Q extends InstaQLParams<Schema>>(
-    queryObj: Q
-  ): Q {
-    const expanded = { ...queryObj };
-    for (const key of Object.keys(expanded)) {
-      if (key === "$" || !isValidEntityName(key)) continue;
-
-      const value: unknown = Reflect.get(expanded, key);
-      const subquery: InstaQLParams<Schema> =
-        typeof value === "object" && value !== null ? { ...value } : {};
-      Reflect.set(expanded, key, subquery);
-
-      for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(key))) {
-        if (!Reflect.has(subquery, fieldName)) {
-          Reflect.set(subquery, fieldName, { $: { fields: ["id"] } });
-          continue;
-        }
-        const existing: unknown = Reflect.get(subquery, fieldName);
-        const wrapper: InstaQLParams<Schema> = {};
-        Reflect.set(wrapper, linkAttr.entityName, existing);
-        const expandedWrapper = this.buildQueryWithRelationships(wrapper);
-        Reflect.set(subquery, fieldName, Reflect.get(expandedWrapper, linkAttr.entityName));
-      }
+  private buildQueryWithRelationships(query: UntypedQuery): UntypedQuery {
+    const expanded: UntypedQuery = {};
+    for (const [entityName, args] of Object.entries(query)) {
+      expanded[entityName] = isValidEntityName(entityName)
+        ? this.expandFindArgs(entityName, args)
+        : args;
     }
     return expanded;
+  }
+
+  // Hydration wires every link, so each one is fetched at least as ids;
+  // links the caller asked for are expanded the same way, recursively.
+  private expandFindArgs(entityName: string, args: Record<string, unknown>): Record<string, unknown> {
+    const select = isRecord(args.select) ? args.select : undefined;
+    const include = isRecord(args.include) ? args.include : undefined;
+    const requested = select ?? include ?? {};
+    const relations: Record<string, unknown> = {};
+    for (const [fieldName, link] of Object.entries(getEntityLinks(entityName))) {
+      const asked = requested[fieldName];
+      relations[fieldName] = asked === undefined || asked === false
+        ? { select: { id: true } }
+        : this.expandFindArgs(link.type, isRecord(asked) ? asked : {});
+    }
+    if (select) {
+      return { ...args, select: { ...select, id: true, ...relations } };
+    }
+    return { ...args, include: { ...include, ...relations } };
   }
 
   /** One-time query and hydrate all registered entity classes */
@@ -421,11 +475,9 @@ export class RootStore<Schema extends AnySchema>
     this.subscriptions.clear();
   }
 
-  async query<Q extends InstaQLParams<Schema>>(
-    queryObj: Q & ValidQuery<Q, Schema>
-  ): Promise<void> {
-    const expandedQuery = this.buildQueryWithRelationships(queryObj);
-    const raw = await this.db.unsafeQuery(expandedQuery);
+  async query(queryObj: SyncQuery<Schema>): Promise<void> {
+    const expandedQuery = this.buildQueryWithRelationships(untypedQuery(queryObj));
+    const raw = await this.client.query(expandedQuery);
     this.hydrateResult(raw);
   }
 
@@ -445,11 +497,11 @@ export class RootStore<Schema extends AnySchema>
    * Subscribe to a query with live updates.
    * Automatically hydrates results on each update.
    */
-  async subscribeQuery<Q extends InstaQLParams<Schema>>(
-    queryObj: Q & ValidQuery<Q, Schema>,
+  async subscribeQuery(
+    queryObj: SyncQuery<Schema>,
     callback?: () => void
   ): Promise<{ close(): void }> {
-    const expandedQuery = this.buildQueryWithRelationships(queryObj);
+    const expandedQuery = this.buildQueryWithRelationships(untypedQuery(queryObj));
     const queryKey = JSON.stringify(queryObj);
 
     const { close } = await this.createSubscription(
@@ -473,12 +525,12 @@ export class RootStore<Schema extends AnySchema>
    * Overlapping updates are serialized — handler N+1 starts only after handler N
    * finishes (or rejects). The outer store is not mutated.
    */
-  async subscribeQueryIsolated<Q extends InstaQLParams<Schema>>(
-    queryObj: Q & ValidQuery<Q, Schema>,
+  async subscribeQueryIsolated(
+    queryObj: SyncQuery<Schema>,
     handler: (store: RootStore<Schema>, prev: RootStore<Schema> | null) => Promise<void> | void,
     options: { label?: string } = {}
   ): Promise<{ close(): void }> {
-    const expandedQuery = this.buildQueryWithRelationships(queryObj);
+    const expandedQuery = this.buildQueryWithRelationships(untypedQuery(queryObj));
     const label = options.label ?? "subscribeQueryIsolated";
     const config = this.config;
 
@@ -502,11 +554,9 @@ export class RootStore<Schema extends AnySchema>
         queue = queue.then(cleanup, cleanup);
       };
 
-      const subscription = new ResilientSubscription<
-        QuerySubscriptionState<Schema, Q & ValidQuery<Q, Schema>>
-      >({
+      const subscription = new ResilientSubscription<QuerySubscriptionState>({
         label,
-        subscribe: (onPayload) => this.db.unsafeSubscribeQuery(expandedQuery, onPayload),
+        subscribe: (onPayload) => this.client.subscribe(expandedQuery, onPayload),
         readError: (payload) => payload.error,
         observer: this.subscriptionObserver,
       });

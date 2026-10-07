@@ -1,4 +1,4 @@
-import type { CardinalityKind } from "@instantdb/core";
+import type { Cardinality } from "./EntityMeta";
 import { Model } from "../Model";
 import { TransactionContext } from "../persistence/TransactionContext";
 import { findReverseSide, readField, writeField } from "./EntityMeta";
@@ -12,7 +12,7 @@ import { isHydrationInProgress } from "./hydrationContext";
  *     wirer's own array push/splice or scalar set must NOT claim the
  *     affected model into the active transaction. Those mutations are
  *     bookkeeping; the *forward* side of the link is what the user
- *     mutated, and that's the row InstantDB persists with a `link` op.
+ *     mutated, and the transaction carries the link on the row holding it.
  *     Without this guard, `post.author = otherUser` would also claim
  *     `otherUser`'s row and emit a stray `update` chunk against it,
  *     failing the wired side's `update` perm when the actor isn't
@@ -48,7 +48,7 @@ function applyReverseChange(
   owner: Model,
   value: Model,
   reverseFieldName: string,
-  reverseCardinality: CardinalityKind,
+  reverseCardinality: Cardinality,
   add: boolean
 ): void {
   if (owner._disposers == null && sweep.isActive()) return;

@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   assertDefined,
-  setupTestDatabase,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestClient,
+  type TestStore,
+} from "./support/clients";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import { Temporal } from "../../src/object-graph";
-import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 import { UserProfile } from "../support/entities/Profile";
@@ -26,12 +26,12 @@ function firstUserWithTestDate(
 }
 
 describe("Entity persistence via transaction (Integration)", () => {
-  let db: TestInstantDBClient;
-  let store: RootStore<AppSchema>;
+  let client: TestClient;
+  let store: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    store = new RootStore<AppSchema>({ db });
+    client = connectTestClient();
+    store = new RootStore({ client: connectTestClient() });
   });
 
   function createUser(name = "Test User"): User {
@@ -53,7 +53,7 @@ describe("Entity persistence via transaction (Integration)", () => {
       const post = await store.transaction(() => new Post("Test Post", user));
 
       // Verify via fresh store (query User first to populate identity map)
-      const freshStore = new RootStore<AppSchema>({ db });
+      const freshStore = new RootStore({ client: connectTestClient() });
       await freshStore.queryModel(User);
       const posts = await freshStore.queryModel(Post);
       const hydratedPost = posts.find((p) => p.id === post.id);
@@ -65,7 +65,7 @@ describe("Entity persistence via transaction (Integration)", () => {
     it("persists scalar changes to database", async () => {
       const user = await store.transaction(() => createUser("New Name"));
 
-      const freshStore = new RootStore<AppSchema>({ db });
+      const freshStore = new RootStore({ client: connectTestClient() });
       const users = await freshStore.queryModel(User);
       const hydratedUser = users.find((u) => u.id === user.id);
 
@@ -81,7 +81,7 @@ describe("Entity persistence via transaction (Integration)", () => {
         return u;
       });
 
-      const result = await db.query({ users: { $: { where: { id: user.id } } } });
+      const result = await client.query({ users: { where: { id: user.id } } });
       const savedUser = firstUserWithTestDate(result);
       expect(savedUser?.testDate).toBe(testDate.toString());
     });
@@ -103,7 +103,7 @@ describe("Entity persistence via transaction (Integration)", () => {
       expect(user.profile).toBe(profile);
       expect(profile.user).toBe(user);
 
-      let freshStore = new RootStore<AppSchema>({ db });
+      let freshStore = new RootStore({ client: connectTestClient() });
       let users = await freshStore.queryModel(User);
       let profiles = await freshStore.queryModel(UserProfile);
       let hydratedUser = users.find((u) => u.id === user.id);
@@ -123,7 +123,7 @@ describe("Entity persistence via transaction (Integration)", () => {
       expect(user.profile).toBeNull();
       expect(profile.user).toBeNull();
 
-      freshStore = new RootStore<AppSchema>({ db });
+      freshStore = new RootStore({ client: connectTestClient() });
       users = await freshStore.queryModel(User);
       profiles = await freshStore.queryModel(UserProfile);
       hydratedUser = users.find((u) => u.id === user.id);
@@ -151,7 +151,7 @@ describe("Entity persistence via transaction (Integration)", () => {
       expect(user.posts[0]).toBe(post);
       expect(post.author).toBe(user);
 
-      let freshStore = new RootStore<AppSchema>({ db });
+      let freshStore = new RootStore({ client: connectTestClient() });
       let posts = await freshStore.queryModel(Post);
       let users = await freshStore.queryModel(User);
       let hydratedUser = users.find((u) => u.id === user.id);
@@ -172,7 +172,7 @@ describe("Entity persistence via transaction (Integration)", () => {
       expect(user.posts.length).toBe(0);
       expect(post.author).toBeNull();
 
-      freshStore = new RootStore<AppSchema>({ db });
+      freshStore = new RootStore({ client: connectTestClient() });
       posts = await freshStore.queryModel(Post);
       users = await freshStore.queryModel(User);
       hydratedUser = users.find((u) => u.id === user.id);
@@ -198,7 +198,7 @@ describe("Entity persistence via transaction (Integration)", () => {
       expect(user.posts.length).toBe(1);
       expect(user.posts[0]).toBe(post);
 
-      let freshStore = new RootStore<AppSchema>({ db });
+      let freshStore = new RootStore({ client: connectTestClient() });
       let users = await freshStore.queryModel(User);
       let posts = await freshStore.queryModel(Post);
       let hydratedPost = posts.find((p) => p.id === post.id);
@@ -219,7 +219,7 @@ describe("Entity persistence via transaction (Integration)", () => {
       expect(post.author).toBeNull();
       expect(user.posts.length).toBe(0);
 
-      freshStore = new RootStore<AppSchema>({ db });
+      freshStore = new RootStore({ client: connectTestClient() });
       users = await freshStore.queryModel(User);
       posts = await freshStore.queryModel(Post);
       hydratedPost = posts.find((p) => p.id === post.id);
@@ -262,7 +262,7 @@ describe("Entity persistence via transaction (Integration)", () => {
       const savedCreatedAt = user.createdAt;
       const savedUpdatedAt = user.updatedAt;
 
-      const freshStore = new RootStore<AppSchema>({ db });
+      const freshStore = new RootStore({ client: connectTestClient() });
       const users = await freshStore.queryModel(User);
       const hydratedUser = users.find((u) => u.id === user.id);
 

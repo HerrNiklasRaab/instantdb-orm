@@ -1,4 +1,5 @@
 export { RootStore } from "./RootStore";
+export type { Settled, TransactionHandle } from "./TransactionHandle";
 export {
   ModelRegistry,
   modelRegistry,
@@ -20,7 +21,6 @@ export {
   type EntityName,
 } from "./EntityMeta";
 export { ModelHydrator, type GetIdentityMap } from "./ModelHydrator";
-export { InstantDBClient } from "./types";
 export type {
   RawEntityData,
   RootStoreConfig,

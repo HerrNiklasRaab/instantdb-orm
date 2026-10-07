@@ -1,27 +1,27 @@
+import { Transaction } from "../../src/transactions";
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
   firstOrFail,
-  setupTestDatabase,
-  txFor,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestClient,
+  type TestStore,
+} from "./support/clients";
 import { User } from "../support/entities/User";
 import { Match } from "../support/entities/Match";
 import { ChessMatch } from "../support/entities/ChessMatch";
 import { SkiMatch } from "../support/entities/SkiMatch";
 
 describe("Multi-Table Inheritance (Integration)", () => {
-  let db: TestInstantDBClient;
-  let storeA: RootStore<AppSchema>;
-  let storeB: RootStore<AppSchema>;
+  let client: TestClient;
+  let storeA: TestStore;
+  let storeB: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    storeA = new RootStore<AppSchema>({ db });
-    storeB = new RootStore<AppSchema>({ db });
+    client = connectTestClient();
+    storeA = new RootStore({ client: connectTestClient() });
+    storeB = new RootStore({ client: connectTestClient() });
   });
 
   // Helper functions
@@ -112,7 +112,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
         chess.inviter = user;
       });
 
-      await storeB.query({ chessMatchs: { inviter: {} } });
+      await storeB.query({ chessMatchs: { include: { inviter: true } } });
 
       const hydratedChess = storeB.getById(ChessMatch, chess.id);
       const hydratedUser = storeB.getById(User, user.id);
@@ -138,7 +138,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
         chess2.inviter = user;
       });
 
-      await storeB.query({ users: { chessMatchs: {} } });
+      await storeB.query({ users: { include: { chessMatchs: true } } });
 
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
@@ -162,7 +162,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       await storeB.query({
-        users: { chessMatchs: {}, skiMatchs: {} },
+        users: { include: { chessMatchs: true, skiMatchs: true } },
       });
 
       const hydratedUser = storeB.getById(User, user.id);
@@ -177,14 +177,12 @@ describe("Multi-Table Inheritance (Integration)", () => {
   describe("soft delete", () => {
     // Helper to mark entity as deleted directly in database
     async function markAsDeletedInDb(
-      entityType: keyof AppSchema["entities"],
+      entityType: string,
       entityId: string,
     ) {
-      await db.transact([
-        txFor(db.tx, entityType, entityId).update({
+      await client.commit(new Transaction().update(entityType, entityId, {
           deletedAt: new Date().toISOString(),
-        }),
-      ]);
+        }));
     }
 
     it("removes deleted MTI entity from identity map (ChessMatch)", async () => {
@@ -228,7 +226,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Hydrate in store B
-      await storeB.query({ chessMatchs: { inviter: {} } });
+      await storeB.query({ chessMatchs: { include: { inviter: true } } });
       const hydratedChess = storeB.getById(ChessMatch, chess.id);
       assertDefined(hydratedChess);
       expect(hydratedChess.inviter).toBeDefined();
@@ -255,7 +253,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Hydrate
-      await storeB.query({ users: { chessMatchs: {} } });
+      await storeB.query({ users: { include: { chessMatchs: true } } });
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.chessMatchs.length).toBe(2);
@@ -283,7 +281,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Hydrate
-      await storeB.query({ users: { skiMatchs: {} } });
+      await storeB.query({ users: { include: { skiMatchs: true } } });
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.skiMatchs.length).toBe(2);
@@ -312,7 +310,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Hydrate
-      await storeB.query({ users: { chessMatchs: {}, skiMatchs: {} } });
+      await storeB.query({ users: { include: { chessMatchs: true, skiMatchs: true } } });
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.chessMatchs.length).toBe(1);
@@ -345,7 +343,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Verify in store B
-      await storeB.query({ chessMatchs: { inviter: {} } });
+      await storeB.query({ chessMatchs: { include: { inviter: true } } });
       const hydratedChess = storeB.getById(ChessMatch, chess.id);
       assertDefined(hydratedChess);
       expect(hydratedChess.inviter).toBeNull();
@@ -360,7 +358,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Hydrate and verify relationship
-      await storeB.query({ users: { chessMatchs: {} } });
+      await storeB.query({ users: { include: { chessMatchs: true } } });
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.chessMatchs.length).toBe(1);
@@ -371,7 +369,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Re-hydrate from user side to refresh reverse relationships
-      await storeB.query({ users: { chessMatchs: {} } });
+      await storeB.query({ users: { include: { chessMatchs: true } } });
       expect(hydratedUser.chessMatchs.length).toBe(0);
     });
 
@@ -389,7 +387,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Verify in store B
-      await storeB.query({ skiMatchs: { inviter: {} } });
+      await storeB.query({ skiMatchs: { include: { inviter: true } } });
       const hydratedSki = storeB.getById(SkiMatch, ski.id);
       assertDefined(hydratedSki);
       expect(hydratedSki.inviter).toBeNull();
@@ -404,7 +402,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Hydrate and verify relationship
-      await storeB.query({ users: { skiMatchs: {} } });
+      await storeB.query({ users: { include: { skiMatchs: true } } });
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.skiMatchs.length).toBe(1);
@@ -415,7 +413,7 @@ describe("Multi-Table Inheritance (Integration)", () => {
       });
 
       // Re-hydrate from user side to refresh reverse relationships
-      await storeB.query({ users: { skiMatchs: {} } });
+      await storeB.query({ users: { include: { skiMatchs: true } } });
       expect(hydratedUser.skiMatchs.length).toBe(0);
     });
   });

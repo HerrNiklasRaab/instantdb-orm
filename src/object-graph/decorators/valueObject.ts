@@ -116,7 +116,7 @@ export class Field {
     return this.codec.fromJson(raw, this.optional);
   }
 
-  captureSnapshot(holder: object, parentPrefix: string, scalars: Map<string, unknown>): void {
+  captureSnapshot(holder: object, parentPrefix: string, scalars: Map<string, ColumnValue>): void {
     const value = this.narrow(this.readValue(holder));
     const out: OutColumn[] = [];
     this.codec.decompose(camelJoin(parentPrefix, this.attributeName), value, this.optional, out);
@@ -279,7 +279,7 @@ export class ValueObjectClass<T extends ValueObject = ValueObject> {
   }
 
   equals(a: T, b: unknown): boolean {
-    if ((a as unknown) === b) return true;
+    if (a === b) return true;
     if (b === null || typeof b !== "object") return false;
     if (Object.getPrototypeOf(b) !== Object.getPrototypeOf(a)) return false;
     for (const f of this.fields()) {
@@ -341,7 +341,7 @@ class SingleColumnCodec extends LeafCodec<ValueObject> {
   }
 }
 
-/** Serializes the whole VO to one `i.json()` column. For variable-arity VOs. */
+/** Serializes the whole VO to one `Json` column. For variable-arity VOs. */
 class JsonObjectCodec extends LeafCodec<ValueObject> {
   readonly columnType: ColumnType = "json";
   constructor(private readonly voClass: ValueObjectClass) {
@@ -530,7 +530,7 @@ function collectComposedFields(ModelClass: object): Field[] {
 
 const ALL_FIELDS_CACHE = new WeakMap<object, Map<string, Field>>();
 
-/** The scalar/date/json valueType InstantDB reports for a column. */
+/** A column and its ZenStack field type (`String`, `DateTime`, `Json`, …). */
 export interface AttrValueType {
   readonly column: string;
   readonly valueType: string;
@@ -538,8 +538,8 @@ export interface AttrValueType {
 
 /**
  * One `Field` per schema column: a declared composed field (VO/Temporal) where
- * present, otherwise a default-codec field by `valueType` (`date` →
- * Temporal.Instant, `json`/scalar → passthrough). This is the single field set
+ * present, otherwise a default-codec field by `valueType` (`DateTime` →
+ * Temporal.Instant, `Json`/scalar → passthrough). This is the single field set
  * the persistence layer iterates — there is no separate "raw column" path, so
  * every column's read/write goes through a codec.
  *
@@ -571,6 +571,6 @@ export function collectAllFields(ModelClass: object, attrs: readonly AttrValueTy
 }
 
 function defaultCodecForValueType(valueType: string): ColumnCodec<StorableValue> {
-  if (valueType === "date") return instantCodec();
-  return new ScalarCodec(valueType === "json" ? "json" : "scalar");
+  if (valueType === "DateTime") return instantCodec();
+  return new ScalarCodec(valueType === "Json" ? "json" : "scalar");
 }

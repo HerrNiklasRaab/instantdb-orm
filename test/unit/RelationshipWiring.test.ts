@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it as vitIt } from "vitest";
 import { configureEntityMeta } from "../../src/object-graph";
-import schema from "../support/instant.schema";
+import { schema } from "../support/zenstack/client/schema";
 import { User } from "../support/entities/User";
 import { UserProfile } from "../support/entities/Profile";
 import { Post } from "../support/entities/Post";

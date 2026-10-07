@@ -1,4 +1,3 @@
-import type { AnySchema } from "../../instantdb";
 import type { ScopedTransaction } from "./ScopedTransaction";
 import { syncGlobalState, type AsyncLocalStorageLike } from "../globalState";
 
@@ -8,7 +7,7 @@ function isRequire(value: unknown): value is (id: string) => unknown {
 
 function isAsyncLocalStorageLike(
   value: unknown
-): value is AsyncLocalStorageLike<ScopedTransaction<AnySchema>> {
+): value is AsyncLocalStorageLike<ScopedTransaction> {
   if (value === null || typeof value !== "object") return false;
   const getStore: unknown = Reflect.get(value, "getStore");
   const run: unknown = Reflect.get(value, "run");
@@ -36,7 +35,7 @@ function loadAsyncHooksModule(): unknown {
   }
 }
 
-function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction<AnySchema>> | null {
+function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction> | null {
   const mod = loadAsyncHooksModule();
   if (mod === null || typeof mod !== "object") return null;
   const ctor: unknown = Reflect.get(mod, "AsyncLocalStorage");
@@ -45,7 +44,7 @@ function tryLoadAsyncHooks(): AsyncLocalStorageLike<ScopedTransaction<AnySchema>
   return isAsyncLocalStorageLike(instance) ? instance : null;
 }
 
-function transactionAls(): AsyncLocalStorageLike<ScopedTransaction<AnySchema>> | null {
+function transactionAls(): AsyncLocalStorageLike<ScopedTransaction> | null {
   const state = syncGlobalState();
   if (state.transactionAls === undefined) {
     state.transactionAls = tryLoadAsyncHooks();
@@ -54,7 +53,7 @@ function transactionAls(): AsyncLocalStorageLike<ScopedTransaction<AnySchema>> |
 }
 
 export const TransactionContext = {
-  get current(): ScopedTransaction<AnySchema> | null {
+  get current(): ScopedTransaction | null {
     const als = transactionAls();
     if (als) {
       return als.getStore() ?? null;
@@ -62,7 +61,7 @@ export const TransactionContext = {
     return syncGlobalState().transactionCurrent ?? null;
   },
 
-  run<T>(tx: ScopedTransaction<AnySchema>, fn: () => T): T {
+  run<T>(tx: ScopedTransaction, fn: () => T): T {
     const als = transactionAls();
     if (als) {
       return als.run(tx, fn);

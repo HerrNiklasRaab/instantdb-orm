@@ -1,12 +1,12 @@
+import { Transaction } from "../../src/transactions";
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
-  setupTestDatabase,
-  txFor,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestClient,
+  type TestStore,
+} from "./support/clients";
 import {
   Money,
   LocalTime,
@@ -41,20 +41,20 @@ function firstRow(result: unknown, entity: string): Record<string, unknown> {
 }
 
 describe("ValueObject (Integration)", () => {
-  let db: TestInstantDBClient;
-  let storeA: RootStore<AppSchema>;
-  let storeB: RootStore<AppSchema>;
+  let client: TestClient;
+  let storeA: TestStore;
+  let storeB: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    storeA = new RootStore<AppSchema>({ db });
-    storeB = new RootStore<AppSchema>({ db });
+    client = connectTestClient();
+    storeA = new RootStore({ client: connectTestClient() });
+    storeB = new RootStore({ client: connectTestClient() });
   });
 
   describe("spread column naming", () => {
     it("maps `price: Money` to columns priceAmount + priceCurrency", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(row.priceAmount).toBe(50);
       expect(row.priceCurrency).toBe("EUR");
@@ -66,7 +66,7 @@ describe("ValueObject (Integration)", () => {
         l.minBid = new Money(10, "EUR");
         return l;
       });
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(row.priceAmount).toBe(50);
       expect(row.minBidAmount).toBe(10);
@@ -78,7 +78,7 @@ describe("ValueObject (Integration)", () => {
         l.slot = new TimeRange(new LocalTime(9, 0), new LocalTime(17, 30));
         return l;
       });
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(row.slotStartHour).toBe(9);
       expect(row.slotStartMinute).toBe(0);
@@ -88,7 +88,7 @@ describe("ValueObject (Integration)", () => {
 
     it("overrides a single field suffix via @field({ attributeName })", async () => {
       const saved = await storeA.transaction(() => new RemappedListing(new RemappedMoney(5000, "EUR")));
-      const result = await db.query({ remappedListings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ remappedListings: { where: { id: saved.id } } });
       const row = firstRow(result, "remappedListings");
       expect(row.priceCents).toBe(5000);
       expect(row.priceCurrency).toBe("EUR");
@@ -99,7 +99,7 @@ describe("ValueObject (Integration)", () => {
   describe("embedded JSON", () => {
     it("stores an embedded VO as a single JSON column named after the field", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags(["a", "b"])));
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(row.tags).toEqual({ items: ["a", "b"] });
       expect("tagsItems" in row).toBe(false);
@@ -113,7 +113,7 @@ describe("ValueObject (Integration)", () => {
         l.slug = new Slug("my-listing");
         return l;
       });
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(row.slug).toBe("my-listing");
       expect("slugValue" in row).toBe(false);
@@ -125,7 +125,7 @@ describe("ValueObject (Integration)", () => {
         l.slug = new Slug("plain-string");
         return l;
       });
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(typeof row.slug).toBe("string");
     });
@@ -153,7 +153,7 @@ describe("ValueObject (Integration)", () => {
       await storeA.transaction(() => {
         saved.slug = null;
       });
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(row.slug).toBeNull();
     });
@@ -168,7 +168,7 @@ describe("ValueObject (Integration)", () => {
 
   describe("change tracking", () => {
     async function reloadUpdatedAt(id: string): Promise<number> {
-      const reloaded = (await new RootStore<AppSchema>({ db }).queryModel(Listing)).find(l => l.id === id);
+      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === id);
       assertDefined(reloaded);
       return reloaded.updatedAt.epochMilliseconds;
     }
@@ -191,7 +191,7 @@ describe("ValueObject (Integration)", () => {
       });
       const after = await reloadUpdatedAt(saved.id);
       expect(after).not.toBe(before);
-      const reloaded = (await new RootStore<AppSchema>({ db }).queryModel(Listing)).find(l => l.id === saved.id);
+      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.amount).toBe(60);
     });
@@ -201,7 +201,7 @@ describe("ValueObject (Integration)", () => {
       await storeA.transaction(() => {
         saved.price = new Money(60, "USD");
       });
-      const reloaded = (await new RootStore<AppSchema>({ db }).queryModel(Listing)).find(l => l.id === saved.id);
+      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.amount).toBe(60);
       expect(reloaded.price.currency).toBe("USD");
@@ -225,7 +225,7 @@ describe("ValueObject (Integration)", () => {
       });
       const after = await reloadUpdatedAt(saved.id);
       expect(after).not.toBe(before);
-      const reloaded = (await new RootStore<AppSchema>({ db }).queryModel(Listing)).find(l => l.id === saved.id);
+      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.tags.equals(new Tags(["a", "c"]))).toBe(true);
     });
@@ -241,7 +241,7 @@ describe("ValueObject (Integration)", () => {
       await storeA.transaction(() => {
         saved.minBid = null;
       });
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(row.minBidAmount).toBeNull();
       expect(row.minBidCurrency).toBeNull();
@@ -332,7 +332,7 @@ describe("ValueObject (Integration)", () => {
         l.schedule = new Schedule(weekday);
         return l;
       });
-      const result = await db.query({ listings: { $: { where: { id: saved.id } } } });
+      const result = await client.query({ listings: { where: { id: saved.id } } });
       const row = firstRow(result, "listings");
       expect(row.schedule).toEqual({
         weekday: {
@@ -377,18 +377,14 @@ describe("ValueObject (Integration)", () => {
         l.minBid = new Money(10, "EUR");
         return l;
       });
-      await db.transact([
-        txFor(db.__adminDb.tx, "listings", saved.id).update({ minBidCurrency: null }),
-      ]);
-      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).resolves.toBeDefined();
+      await client.commit(new Transaction().update("listings", saved.id, { minBidCurrency: null }));
+      await expect(new RootStore({ client: connectTestClient() }).queryModel(Listing)).resolves.toBeDefined();
     });
 
     it("tolerates all required spread columns being null on a non-nullable field", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
-      await db.transact([
-        txFor(db.__adminDb.tx, "listings", saved.id).update({ priceAmount: null, priceCurrency: null }),
-      ]);
-      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).resolves.toBeDefined();
+      await client.commit(new Transaction().update("listings", saved.id, { priceAmount: null, priceCurrency: null }));
+      await expect(new RootStore({ client: connectTestClient() }).queryModel(Listing)).resolves.toBeDefined();
     });
 
     it("tolerates a required field being null while an optional sibling is set", async () => {
@@ -397,26 +393,20 @@ describe("ValueObject (Integration)", () => {
         l.flexPrice = new Price(100, null);
         return l;
       });
-      await db.transact([
-        txFor(db.__adminDb.tx, "listings", saved.id).update({ flexPriceAmount: null, flexPriceDiscount: 5 }),
-      ]);
-      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).resolves.toBeDefined();
+      await client.commit(new Transaction().update("listings", saved.id, { flexPriceAmount: null, flexPriceDiscount: 5 }));
+      await expect(new RootStore({ client: connectTestClient() }).queryModel(Listing)).resolves.toBeDefined();
     });
 
     it("tolerates a null JSON column on a non-nullable embedded field", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags(["a"])));
-      await db.transact([
-        txFor(db.__adminDb.tx, "listings", saved.id).update({ tags: null }),
-      ]);
-      await expect(new RootStore<AppSchema>({ db }).queryModel(Listing)).resolves.toBeDefined();
+      await client.commit(new Transaction().update("listings", saved.id, { tags: null }));
+      await expect(new RootStore({ client: connectTestClient() }).queryModel(Listing)).resolves.toBeDefined();
     });
 
-    it.skip("does not re-run constructor validation on hydration of out-of-range stored data", async () => {
+    it("does not re-run constructor validation on hydration of out-of-range stored data", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(0, "EUR"), new Tags([])));
-      await db.transact([
-        txFor(db.__adminDb.tx, "listings", saved.id).update({ priceAmount: -5 }),
-      ]);
-      const reloaded = (await new RootStore<AppSchema>({ db }).queryModel(Listing)).find(l => l.id === saved.id);
+      await client.commit(new Transaction().update("listings", saved.id, { priceAmount: -5 }));
+      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.amount).toBe(-5);
     });

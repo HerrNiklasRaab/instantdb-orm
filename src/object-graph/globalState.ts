@@ -1,4 +1,3 @@
-import type { AnySchema } from "../instantdb";
 import type { EntityRegistry } from "./store/EntityMeta";
 import type { ModelRegistry } from "./store/ModelRegistry";
 import type { ScopedTransaction } from "./persistence/ScopedTransaction";
@@ -45,8 +44,8 @@ export interface AsyncDepthSlot {
 interface SyncGlobalState {
   entityRegistry?: EntityRegistry;
   modelRegistry?: ModelRegistry;
-  transactionAls?: AsyncLocalStorageLike<ScopedTransaction<AnySchema>> | null;
-  transactionCurrent?: ScopedTransaction<AnySchema> | null;
+  transactionAls?: AsyncLocalStorageLike<ScopedTransaction> | null;
+  transactionCurrent?: ScopedTransaction | null;
   asyncDepths?: Map<string, AsyncDepthSlot>;
   valueObjectRegistry?: Map<object, ValueObjectClass>;
 }

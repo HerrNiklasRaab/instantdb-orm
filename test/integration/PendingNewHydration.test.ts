@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  setupTestDatabase,
+  connectTestClient,
   waitFor,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  type TestStore,
+} from "./support/clients";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import { Post } from "../support/entities/Post";
 import { Tag } from "../support/entities/Tag";
 import { User } from "../support/entities/User";
@@ -19,16 +18,14 @@ import { UserProfile } from "../support/entities/Profile";
 // See ./PendingNewHydration.md for the production incident and design record
 // behind this suite.
 describe("subscription snapshots during a pending-new commit", () => {
-  let db: TestInstantDBClient;
 
   beforeEach(() => {
-    db = setupTestDatabase();
   });
 
-  function makeStores(): { store: RootStore<AppSchema>; writer: RootStore<AppSchema> } {
+  function makeStores(): { store: TestStore; writer: TestStore } {
     return {
-      store: new RootStore<AppSchema>({ db }),
-      writer: new RootStore<AppSchema>({ db }),
+      store: new RootStore({ client: connectTestClient() }),
+      writer: new RootStore({ client: connectTestClient() }),
     };
   }
 

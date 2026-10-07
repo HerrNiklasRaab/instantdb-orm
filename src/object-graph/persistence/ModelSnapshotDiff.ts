@@ -1,14 +1,15 @@
 import type { EntityName } from "../store/EntityMeta";
 import { getEntityAttrs, getEntityLinks } from "../store/EntityMeta";
 import type { ModelSnapshot } from "./ModelSnapshot";
-import type { AttrsDefs } from "@instantdb/core";
+import type { FieldDef } from "@zenstackhq/schema";
+import type { ColumnValue } from "../columns/types";
 
 /**
  * Computes the difference between two ModelSnapshots.
  * Used by ScopedTransaction to determine what needs to be persisted.
  */
 export class ModelSnapshotDiff {
-  readonly scalars = new Map<string, unknown>();
+  readonly scalars = new Map<string, ColumnValue>();
   readonly links = new Map<string, string[]>();
   readonly unlinks = new Map<string, string[]>();
 
@@ -32,15 +33,16 @@ export class ModelSnapshotDiff {
     const attrs = getEntityAttrs(entityName);
     if (this.isNew) {
       for (const fieldName of Object.keys(attrs)) {
-        if (fieldName === "id") continue;
-        this.scalars.set(fieldName, this.current.scalars.get(fieldName));
+        const value = this.current.scalars.get(fieldName);
+        if (fieldName === "id" || value === undefined) continue;
+        this.scalars.set(fieldName, value);
       }
     } else {
       for (const fieldName of Object.keys(attrs)) {
         if (fieldName === "id") continue;
         const originalValue = this.original.scalars.get(fieldName);
         const currentValue = this.current.scalars.get(fieldName);
-        if (!attrValuesEqual(attrs, fieldName, originalValue, currentValue)) {
+        if (currentValue !== undefined && !attrValuesEqual(attrs, fieldName, originalValue, currentValue)) {
           this.scalars.set(fieldName, currentValue);
         }
       }
@@ -49,7 +51,7 @@ export class ModelSnapshotDiff {
 
   private computeRelationshipDiff(entityName: EntityName): void {
     for (const [fieldName, linkAttr] of Object.entries(getEntityLinks(entityName))) {
-      if (linkAttr.cardinality === "one") {
+      if (!linkAttr.array) {
         this.computeToOneDiff(fieldName);
       } else {
         this.computeToManyDiff(fieldName);
@@ -106,38 +108,36 @@ export class ModelSnapshotDiff {
 }
 
 function attrValuesEqual(
-  attrs: AttrsDefs,
+  attrs: Readonly<Record<string, FieldDef>>,
   fieldName: string,
-  a: unknown,
-  b: unknown
+  a: ColumnValue | undefined,
+  b: ColumnValue
 ): boolean {
   // Snapshot scalars are already codec-serialized column values (Temporal →
   // ISO string), so scalar columns compare by `===`. Only json columns need a
   // structural compare.
   if (a === b) return true;
   const attr = attrs[fieldName];
-  if (attr && attr.valueType === "json") return jsonValuesEqual(a, b);
+  if (attr && attr.type === "Json") return jsonValuesEqual(a, b);
   return false;
 }
 
-function jsonValuesEqual(a: unknown, b: unknown): boolean {
+function isJsonArray(value: ColumnValue | undefined): value is readonly ColumnValue[] {
+  return Array.isArray(value);
+}
+
+function isJsonObject(value: ColumnValue | undefined): value is { readonly [key: string]: ColumnValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function jsonValuesEqual(a: ColumnValue | undefined, b: ColumnValue | undefined): boolean {
   if (a === b) return true;
-  if (a == null || b == null) return false;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (!jsonValuesEqual(a[i], b[i])) return false;
-    }
-    return true;
+  if (isJsonArray(a) && isJsonArray(b)) {
+    return a.length === b.length && a.every((item, index) => jsonValuesEqual(item, b[index]));
   }
-  if (typeof a === "object" && typeof b === "object") {
-    const aKeys = Object.keys(a);
-    const bKeys = Object.keys(b);
-    if (aKeys.length !== bKeys.length) return false;
-    for (const k of aKeys) {
-      if (!jsonValuesEqual(Reflect.get(a, k), Reflect.get(b, k))) return false;
-    }
-    return true;
+  if (isJsonObject(a) && isJsonObject(b)) {
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every((key) => jsonValuesEqual(a[key], b[key]));
   }
   return false;
 }

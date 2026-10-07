@@ -1,15 +1,15 @@
+import { Transaction } from "../../src/transactions";
 import { describe, it, expect, beforeEach } from "vitest";
 import { RootStore } from "../../src/object-graph/store/RootStore";
 import { Temporal } from "../../src/object-graph";
-import type { AppSchema } from "../support/instant.schema";
 import {
   assertDefined,
-  setupTestDatabase,
+  connectTestClient,
   id,
-  txFor,
   waitFor,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  type TestClient,
+  type TestStore,
+} from "./support/clients";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 import { UserProfile } from "../support/entities/Profile";
@@ -18,14 +18,14 @@ import "../support/entities/ChessMatch";
 import "../support/entities/SkiMatch";
 
 describe("RootStore hydration (Integration)", () => {
-  let db: TestInstantDBClient;
-  let storeA: RootStore<AppSchema>; // "Device A" - creates data
-  let storeB: RootStore<AppSchema>; // "Device B" - hydrates data
+  let client: TestClient;
+  let storeA: TestStore; // "Device A" - creates data
+  let storeB: TestStore; // "Device B" - hydrates data
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    storeA = new RootStore<AppSchema>({ db });
-    storeB = new RootStore<AppSchema>({ db });
+    client = connectTestClient();
+    storeA = new RootStore({ client: connectTestClient() });
+    storeB = new RootStore({ client: connectTestClient() });
   });
 
   // Helper to create user through Store A (simulates another device creating data)
@@ -104,15 +104,14 @@ describe("RootStore hydration (Integration)", () => {
     entityId: string,
     fakeUserId: string
   ) {
-    await db.transact([
-      txFor(db.__adminDb.tx, "posts", entityId)
-        .update({
+    await client.commit(
+      new Transaction()
+        .create("posts", entityId, {
           title: "Test Post",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        })
-        .link({ author: fakeUserId }),
-    ]);
+        }, { author: fakeUserId }),
+    );
   }
 
   describe("basic hydration", () => {
@@ -320,9 +319,9 @@ describe("RootStore hydration (Integration)", () => {
       // Query 3 levels deep: Post → author (User) → profile (Profile)
       await storeB.query({
         posts: {
-          $: { where: { id: post1.id } },
-          author: {
-            profile: {},
+          where: { id: post1.id },
+          include: {
+            author: { include: { profile: true } },
           },
         },
       });
@@ -358,18 +357,15 @@ describe("RootStore hydration (Integration)", () => {
       await storeA.subscribeModel(User, () => { });
       await storeA.subscribeModel(Post, () => { });
 
-      // Wait for InstantDB eventual consistency
       await waitFor(() => user.posts.includes(post), 3000);
 
       expect(post.author).toBe(user);
       expect(user.posts).toContain(post);
 
       // Mark user as deleted directly in DB (simulates another device)
-      await db.transact([
-        txFor(db.__adminDb.tx, "users", user.id).update({
+      await client.commit(new Transaction().update("users", user.id, {
           deletedAt: new Date().toISOString(),
-        }),
-      ]);
+        }));
 
       // Wait for reactive sync to process
       await waitFor(() => storeA.getById(User, user.id) === undefined, 3000);
@@ -404,8 +400,8 @@ describe("RootStore hydration (Integration)", () => {
       const post = await storeA.transaction(() => new Post("Hello", new User("Bob")));
 
       await storeB.query({
-        users: { $: { where: { id: alice.id } } },
-        posts: { author: {} },
+        users: { where: { id: alice.id } },
+        posts: { include: { author: true } },
       });
 
       const hydrated = storeB.getById(Post, post.id);

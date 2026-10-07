@@ -1,0 +1,24 @@
+// A client's own bookkeeping, kept only in its SQLite replica. Imported by
+// the app's client generation root, never by the server's.
+
+model hiddenFields {
+    entity String
+    id     String
+    field  String
+
+    @@id([entity, id, field])
+    @@meta('sync', 'internal')
+}
+
+// One row per bucket this replica holds: how far it has caught up, the
+// filter that finds the bucket's rows locally, and the policy generation
+// the rows were downloaded under.
+model bucketCursors {
+    bucket     String @id
+    model      String
+    filter     Json
+    tick    Int
+    generation String
+
+    @@meta('sync', 'internal')
+}

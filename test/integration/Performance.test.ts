@@ -3,11 +3,10 @@ import { reaction } from "mobx";
 import {
   assertDefined,
   firstOrFail,
-  setupTestDatabase,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestStore,
+} from "./support/clients";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 
@@ -74,7 +73,7 @@ function isRootStoreInternals(value: object): value is object & RootStoreInterna
   );
 }
 
-function openInternals(store: RootStore<AppSchema>): RootStoreInternals {
+function openInternals(store: TestStore): RootStoreInternals {
   if (!isRootStoreInternals(store)) {
     throw new Error("RootStore is missing expected internal members");
   }
@@ -82,10 +81,8 @@ function openInternals(store: RootStore<AppSchema>): RootStoreInternals {
 }
 
 describe("performance", () => {
-  let db: TestInstantDBClient;
 
   beforeEach(() => {
-    db = setupTestDatabase();
   });
 
   afterEach(() => {});
@@ -93,7 +90,7 @@ describe("performance", () => {
   it("hydrating a user with many posts does not scan arrays per row", () => {
     const N = 20;
 
-    const store = new RootStore<AppSchema>({ db });
+    const store = new RootStore({ client: connectTestClient() });
     const internals = openInternals(store);
     const getMap = internals.getIdentityMapByName.bind(internals);
 
@@ -136,7 +133,7 @@ describe("performance", () => {
     const N = 20;
 
     let userId = "";
-    const seed = new RootStore<AppSchema>({ db });
+    const seed = new RootStore({ client: connectTestClient() });
     await seed.transaction(() => {
       const u = new User("Owner");
       userId = u.id;
@@ -146,7 +143,7 @@ describe("performance", () => {
       }
     });
 
-    const fresh = new RootStore<AppSchema>({ db });
+    const fresh = new RootStore({ client: connectTestClient() });
     await fresh.queryModel(User);
     const user = fresh.getById(User, userId);
     assertDefined(user);
@@ -174,7 +171,7 @@ describe("performance", () => {
     const N = 20;
 
     const postIds: string[] = [];
-    const seed = new RootStore<AppSchema>({ db });
+    const seed = new RootStore({ client: connectTestClient() });
     await seed.transaction(() => {
       const u = new User("Owner");
       for (let i = 0; i < N; i++) {
@@ -184,7 +181,7 @@ describe("performance", () => {
       }
     });
 
-    const fresh = new RootStore<AppSchema>({ db });
+    const fresh = new RootStore({ client: connectTestClient() });
     await fresh.queryAll();
 
     const targetId = firstOrFail(postIds);
@@ -199,7 +196,7 @@ describe("performance", () => {
     const d1 = reaction(() => targetPost.title, () => { targetFires++; });
     const d2 = reaction(() => untouchedPost.title, () => { untouchedFires++; });
 
-    const remote = new RootStore<AppSchema>({ db });
+    const remote = new RootStore({ client: connectTestClient() });
     await remote.queryAll();
     await remote.transaction(() => {
       const remotePost = remote.getById(Post, targetId);
@@ -225,7 +222,7 @@ describe("performance", () => {
     let userAId = "";
     let userBId = "";
     const postIds: string[] = [];
-    const seed = new RootStore<AppSchema>({ db });
+    const seed = new RootStore({ client: connectTestClient() });
     await seed.transaction(() => {
       const a = new User("Alice");
       const b = new User("Bob");
@@ -238,7 +235,7 @@ describe("performance", () => {
       }
     });
 
-    const fresh = new RootStore<AppSchema>({ db });
+    const fresh = new RootStore({ client: connectTestClient() });
     await fresh.queryAll();
 
     const firstPostId = firstOrFail(postIds);
@@ -257,7 +254,7 @@ describe("performance", () => {
     const d2 = reaction(() => userB.posts.length, () => { bLengthFires++; });
     const d3 = reaction(() => untouchedPost.title, () => { untouchedTitleFires++; });
 
-    const remote = new RootStore<AppSchema>({ db });
+    const remote = new RootStore({ client: connectTestClient() });
     await remote.queryAll();
     await remote.transaction(() => {
       const remotePost = remote.getById(Post, firstPostId);

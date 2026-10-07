@@ -1,0 +1,31 @@
+// The server's own bookkeeping. Imported by the app's server generation root,
+// never by the client's.
+
+// Which bucket each change of each row was filed under, at which tick:
+// the index that tells who to notify and what a returning client missed.
+model bucketLog {
+    bucket   String
+    // Joins `transactions.tick`. Not a declared relation: ZModel needs the
+    // opposite field on `transactions`, which the client schema shares and
+    // where `bucketLog` does not exist.
+    tick     Int
+    entity   String
+    entityId String
+    removed  Boolean
+
+    @@id([bucket, tick, entity, entityId])
+    @@index([entity, tick])
+    @@meta('sync', 'internal')
+    @@allow('create', true)
+}
+
+// How far the change feed has filed the WAL: the commit position of the last
+// transaction it filed, written in the same database transaction as the
+// filing, so a feed restarted between filing and advancing its slot does not
+// file a transaction twice.
+model changeFeedPosition {
+    slot String @id
+    lsn  String
+
+    @@meta('sync', 'internal')
+}

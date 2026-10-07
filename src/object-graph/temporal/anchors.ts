@@ -1,16 +1,33 @@
 import { Temporal } from "./index";
 
 /**
- * `PlainTime` / `PlainYearMonth` / `PlainMonthDay` have no instant, and their
- * honest ISO forms ("18:30:00", "2026-06", "--06-01") are rejected by
- * InstantDB's `i.date()` (verified). To keep them in a queryable/orderable
- * `i.date()` column we anchor them to a real instant string — built purely with
- * Temporal (no JS `Date`). These are SENTINELS: code reading the column outside
- * the codec must not compare them against real timestamps.
+ * The plain (zone-less) Temporal types have no instant, but a `timestamptz`
+ * column stores nothing else, so each is anchored to an instant at UTC — built
+ * purely with Temporal (no JS `Date`). Time-only and month-day values use
+ * SENTINEL dates: code reading those columns outside the codec must not
+ * compare them against real timestamps.
  */
 
 const TIME_ANCHOR_DATE = Temporal.PlainDate.from("1970-01-01");
 const MONTH_DAY_ANCHOR_YEAR = 1972; // leap year, so --02-29 round-trips
+
+/** `2026-06-01` → instant ISO at UTC midnight. */
+export function dateToAnchorIso(value: Temporal.PlainDate): string {
+  return value.toZonedDateTime("UTC").toInstant().toString();
+}
+
+export function dateFromAnchorIso(iso: string): Temporal.PlainDate {
+  return Temporal.Instant.from(iso).toZonedDateTimeISO("UTC").toPlainDate();
+}
+
+/** `2026-06-01T10:30` → instant ISO reading the wall clock as UTC. */
+export function dateTimeToAnchorIso(value: Temporal.PlainDateTime): string {
+  return value.toZonedDateTime("UTC").toInstant().toString();
+}
+
+export function dateTimeFromAnchorIso(iso: string): Temporal.PlainDateTime {
+  return Temporal.Instant.from(iso).toZonedDateTimeISO("UTC").toPlainDateTime();
+}
 
 /** `2026-06` → instant ISO at the first of the month, UTC midnight. */
 export function yearMonthToAnchorIso(value: Temporal.PlainYearMonth): string {

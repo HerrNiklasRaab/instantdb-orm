@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   assertDefined,
-  setupTestDatabase,
-  type TestInstantDBClient,
-} from "./support/instantdb-test-utils";
+  connectTestClient,
+  type TestClient,
+  type TestStore,
+} from "./support/clients";
 import { RootStore } from "../../src/object-graph/store/RootStore";
-import type { AppSchema } from "../support/instant.schema";
 import { User } from "../support/entities/User";
 import { Post } from "../support/entities/Post";
 import { Tag } from "../support/entities/Tag";
@@ -55,9 +55,6 @@ import { Tag } from "../support/entities/Tag";
  *   the user's commit. The touched set is what makes "user intent"
  *   first-class.
  *
- * These tests currently fail (or pass for the wrong reason — the
- * hydrator stomps your edits) because the field-level decisions above
- * aren't implemented yet. Flip `describe.skip` → `describe` when ready.
  */
 function firstPostWithTitleAndDeletedAt(
   result: unknown
@@ -75,25 +72,25 @@ function firstPostWithTitleAndDeletedAt(
 }
 
 describe("Linear-style optimistic merge", () => {
-  let db: TestInstantDBClient;
-  let store: RootStore<AppSchema>;
+  let client: TestClient;
+  let store: TestStore;
 
   beforeEach(() => {
-    db = setupTestDatabase();
-    store = new RootStore<AppSchema>({ db });
+    client = connectTestClient();
+    store = new RootStore({ client: connectTestClient() });
   });
 
-  function freshStore(): RootStore<AppSchema> {
-    return new RootStore<AppSchema>({ db });
+  function freshStore(): TestStore {
+    return new RootStore({ client: connectTestClient() });
   }
 
   /**
    * Apply a change "from another client" by committing through a separate
-   * RootStore against the same DB. After this returns, the DB has the
+   * TestStore against the same DB. After this returns, the DB has the
    * remote change; the user's `store` won't see it until it next hydrates.
    */
-  async function applyRemote(fn: (remote: RootStore<AppSchema>) => void | Promise<void>): Promise<void> {
-    const remote = new RootStore<AppSchema>({ db });
+  async function applyRemote(fn: (remote: TestStore) => void | Promise<void>): Promise<void> {
+    const remote = new RootStore({ client: connectTestClient() });
     await remote.queryAll();
     await remote.transaction(async () => {
       await fn(remote);
@@ -344,15 +341,8 @@ describe("Linear-style optimistic merge", () => {
 
   // ---------------------------------------------------------------------------
   // To-one cleared by user, reassigned by teammate — user wins (null in DB)
-  //
-  // Known limitation: InstantDB has no "unconditionally clear this to-one"
-  // primitive. Our commit emits `unlink({author: alice})` (the baseline
-  // we knew), but the teammate has since pointed author at Charlie, so
-  // the unlink is a no-op against the DB's current state and the clear
-  // silently loses. Reliable clearing under concurrent reassign would
-  // need refetching DB state at commit time (race-prone) or a new op.
   // ---------------------------------------------------------------------------
-  it.skip("user clears assignee, teammate reassigns to Charlie — DB ends unassigned", async () => {
+  it("user clears assignee, teammate reassigns to Charlie — DB ends unassigned", async () => {
     const alice = await store.transaction(() => new User("Alice"));
     const charlie = await store.transaction(() => new User("Charlie"));
     const issue = await store.transaction(() => {
@@ -531,7 +521,7 @@ describe("Linear-style optimistic merge", () => {
     expect(verify.getById(Post, issue.id)).toBeUndefined();
 
     // But the row IS in the DB with the user's title edit on top of the tombstone.
-    const raw = await db.query({ posts: { $: { where: { id: issue.id } } } });
+    const raw = await client.query({ posts: { where: { id: issue.id } } });
     const row = firstPostWithTitleAndDeletedAt(raw);
     expect(row?.title).toBe("Fix login bug");
     expect(row?.deletedAt).toBeTruthy();

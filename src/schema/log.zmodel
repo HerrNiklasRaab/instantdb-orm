@@ -1,0 +1,42 @@
+// The sync log, shared by server and client. Both generation roots import
+// this file: `import "<path to @upfor/sync>/src/schema/log"`.
+//
+// `@@meta('sync', 'internal')`: sync bookkeeping, not an entity — never
+// queried through a store, never replicated.
+
+model transactions {
+    id        String    @id
+    // The server's logical clock: one tick per logged transaction, in commit
+    // order. Set by the change feed as it reads the commit from the WAL, not
+    // on insert: an insert-time sequence hands out numbers in insert order,
+    // and two transactions can commit the other way round.
+    tick      Int?      @unique
+    authorId  String?
+    status    String
+    reason    String?
+    loggedAt  DateTime  @default(now()) @db.Timestamptz(6)
+    changes   changes[]
+
+    @@meta('sync', 'internal')
+    @@allow('create', true)
+}
+
+model changes {
+    transactionId String
+    position      Int
+    kind          String
+    entity        String
+    entityId      String
+    field         String?
+    values        Json?
+    // A create's or update's own to-one links, by relation field.
+    links         Json?
+    // A many-to-many link's or unlink's other rows.
+    targetIds     Json?
+    transaction   transactions @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+    @@id([transactionId, position])
+    @@index([entity, entityId])
+    @@meta('sync', 'internal')
+    @@allow('create', true)
+}

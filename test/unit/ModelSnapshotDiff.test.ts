@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { configureEntityMeta, Temporal } from "../../src/object-graph";
 import { ModelSnapshot } from "../../src/object-graph/persistence/ModelSnapshot";
 import { ModelSnapshotDiff } from "../../src/object-graph/persistence/ModelSnapshotDiff";
-import schema from "../support/instant.schema";
+import { schema } from "../support/zenstack/client/schema";
 import { User } from "../support/entities/User";
 import { withTestTransaction } from "../../src/testing";
 

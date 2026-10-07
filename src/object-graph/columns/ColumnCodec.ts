@@ -15,14 +15,14 @@ export type TemporalValue =
 /** Anything a stored property can hold; the widened element type for codecs. */
 export type StorableValue = JsonValue | Date | ValueObject | TemporalValue;
 
-/** One concrete column owned by a codec, with its InstantDB storage type. */
+/** One concrete column owned by a codec, with how it is stored. */
 export interface ColumnInfo {
   readonly name: string;
   readonly type: ColumnType;
 }
 
 /**
- * Maps a typed value to/from InstantDB column(s). Knows nothing about the
+ * Maps a typed value to/from its column(s). Knows nothing about the
  * property holding the value — that is `Field`'s job. This is the **storage**
  * concern; **cardinality** is the subclass split: `LeafCodec` for the
  * single-column case; multi-column codecs implement the surface directly. The

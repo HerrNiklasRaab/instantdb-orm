@@ -6,39 +6,37 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./admin": "./src/admin/index.ts",
-    "./react": "./src/react/index.ts",
+    "./server": "./src/server/index.ts",
     "./test": "./src/test/index.ts",
+    "./test/postgres": "./src/test/PostgresServer.ts",
+    "./test/timing": "./src/test/timing.ts",
     "./testing": "./src/testing.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit",
+    "db:generate": "zen generate --schema src/schema/roots/log.zmodel --output src/schema/generated/log --generate-input false --generate-models false --no-tips && zen generate --schema src/schema/roots/client.zmodel --output src/schema/generated/client --generate-input false --generate-models false --no-tips && zen generate --schema src/schema/roots/server.zmodel --output src/schema/generated/server --generate-input false --generate-models false --no-tips && zen generate --schema test/support/server.zmodel --output test/support/zenstack/server --generate-input false --generate-models false --no-tips && zen generate --schema test/support/client.zmodel --output test/support/zenstack/client --generate-input false --generate-models false --no-tips && zen generate --schema test/support/buckets.zmodel --output test/support/zenstack/buckets --generate-input false --generate-models false --no-tips && zen generate --schema test/support/tightened.zmodel --output test/support/zenstack/tightened --generate-input false --generate-models false --no-tips",
+    "db:migration": "prisma migrate diff --from-empty --to-schema-datamodel test/support/zenstack/server/schema.prisma --script"
   },
   "dependencies": {
-    "@instantdb/platform": "^1.0.35",
     "@js-temporal/polyfill": "^0.5.1",
+    "@zenstackhq/orm": "3.9.6",
+    "@zenstackhq/plugin-policy": "3.9.6",
+    "@zenstackhq/schema": "3.9.6",
+    "embedded-postgres": "18.4.0-beta.17",
     "mobx": "^6.15.3",
-    "uuid": "^14.0.0"
-  },
-  "peerDependencies": {
-    "@instantdb/admin": ">=1.0.0",
-    "@instantdb/core": ">=1.0.0",
-    "@instantdb/react": ">=1.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@instantdb/admin": {
-      "optional": true
-    },
-    "@instantdb/react": {
-      "optional": true
-    }
+    "uuid": "^14.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@instantdb/admin": "^1.0.35",
-    "@instantdb/core": "^1.0.35",
-    "@instantdb/react": "^1.0.35",
+    "@electric-sql/pglite": "file:vendor/pglite-0.5.8-logical.tgz",
     "@swc/core": "^1.15.40",
-    "dotenv": "^17.4.2",
-    "unplugin-swc": "^1.5.9"
+    "@types/sql.js": "^1.4.11",
+    "@types/ws": "^8.18.2",
+    "@zenstackhq/cli": "3.9.6",
+    "kysely-pglite-dialect": "1.3.1",
+    "prisma": "6.19.3",
+    "sql.js": "^1.13.0",
+    "unplugin-swc": "^1.5.9",
+    "ws": "^8"
   }
 }

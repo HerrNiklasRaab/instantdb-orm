@@ -1,3 +1,4 @@
+import type { ColumnValue } from "./columns/types";
 import { v4 as uuidv4 } from "uuid";
 import {
   type EntityName,
@@ -15,7 +16,7 @@ import {
   reaction,
 } from "mobx";
 import { field, inMemory, applyInMemoryDefaults } from "./decorators";
-import { Temporal } from "./temporal";
+import { Temporal, now } from "./temporal";
 import { fieldsForModel } from "./store/fieldsForEntity";
 import { TransactionContext } from "./persistence/TransactionContext";
 import type { ClaimRecord } from "./persistence/ScopedTransaction";
@@ -101,8 +102,8 @@ export abstract class Model {
 
   constructor(id?: string) {
     this.id = id ?? uuidv4();
-    this._createdAt = Temporal.Now.instant();
-    this._updatedAt = Temporal.Now.instant();
+    this._createdAt = now();
+    this._updatedAt = now();
   }
 
   get createdAt(): Temporal.Instant {
@@ -115,7 +116,7 @@ export abstract class Model {
 
   /** Sets updatedAt timestamp to now. Called by ScopedTransaction.commit before flushing. */
   setUpdatedAt(): void {
-    this._updatedAt = Temporal.Now.instant();
+    this._updatedAt = now();
   }
 
   get deletedAt(): Temporal.Instant | null {
@@ -123,7 +124,7 @@ export abstract class Model {
   }
 
   softDelete(): void {
-    this._deletedAt = Temporal.Now.instant();
+    this._deletedAt = now();
   }
 
   delete(): void {
@@ -133,7 +134,7 @@ export abstract class Model {
       throw new Error(`Cannot delete ${this.entityName} ${this.id}; model is ${this._lifecycle}.`);
     }
     if (this._deletedAt === null) {
-      this._deletedAt = Temporal.Now.instant();
+      this._deletedAt = now();
     }
     tx.deleteModel(this);
   }
@@ -157,6 +158,11 @@ export abstract class Model {
    * observers. Public so hydrator can call it after creating instance via
    * createForHydration().
    */
+  /** True once the server holds this row and nothing local is still ahead of it. */
+  get isPersisted(): boolean {
+    return this._lifecycle === ModelLifecycle.Persisted;
+  }
+
   initTracking(lifecycle: ModelLifecycle = ModelLifecycle.Transient): void {
     applyInMemoryDefaults(this);
     this.makeObservable();
@@ -249,7 +255,7 @@ export abstract class Model {
       const propName = getFieldNameOnModel(this, fieldName);
       propToFieldName.set(propName, fieldName);
       relationshipPropToFieldName.set(propName, fieldName);
-      if (linkAttr.cardinality === "one") {
+      if (!linkAttr.array) {
         toOneRelByProp.set(propName, fieldName);
       }
     }
@@ -297,7 +303,7 @@ export abstract class Model {
 
     for (const [fieldName, linkAttr] of Object.entries(links)) {
       if (fieldName === "id") continue;
-      if (linkAttr.cardinality !== "many") continue;
+      if (!linkAttr.array) continue;
       const relFieldName = fieldName;
       const rawArray: unknown = readField(this, fieldName);
       if (!Array.isArray(rawArray)) continue;
@@ -370,8 +376,8 @@ export abstract class Model {
 
   private currentMutationTransaction(): typeof TransactionContext.current {
     // Skip claims that originate from reverse-link wiring. The wirer's
-    // mutation on the wired side is bookkeeping (the forward-side row's
-    // `link` op is what InstantDB persists), so the wired side should not
+    // mutation on the wired side is bookkeeping (the transaction carries
+    // the link on the row that holds it), so the wired side should not
     // be drawn into the active transaction's commit.
     if (isWiringInProgress()) return null;
     // Hydration writes scalars and relationships through MobX-observed
@@ -431,7 +437,7 @@ export abstract class Model {
       const links = getEntityLinks(this.entityName);
       for (const [fieldName, linkAttr] of Object.entries(links)) {
         const value = readField(this, fieldName);
-        if (linkAttr.cardinality === "one") {
+        if (!linkAttr.array) {
           if (isModel(value)) wireReverseLink(this, value, fieldName, true);
         } else if (Array.isArray(value)) {
           for (const child of value) {
@@ -472,7 +478,7 @@ export abstract class Model {
     // Columns through the same codec path persistence uses, so values come out
     // already serialized (Temporal → readable ISO string) — no separate
     // display conversion.
-    const scalars = new Map<string, unknown>();
+    const scalars = new Map<string, ColumnValue>();
     for (const field of fieldsForModel(this.constructor, this.entityName)) {
       field.captureSnapshot(this, "", scalars);
     }
