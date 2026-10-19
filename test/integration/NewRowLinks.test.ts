@@ -16,7 +16,7 @@ describe("New rows linking to new rows", () => {
 
     const reader = new RootStore({ client: connectTestClient() });
     await waitFor(async () => {
-      await reader.query({ posts: { where: { id: post.id }, include: { author: true } } });
+      await reader.caughtUp();
       return reader.getById(Post, post.id) !== undefined;
     });
     expect(reader.getById(Post, post.id)?.author?.id).toBe(author.id);
@@ -33,7 +33,7 @@ describe("New rows linking to new rows", () => {
     });
 
     const reader = new RootStore({ client: connectTestClient() });
-    await waitFor(async () => (await reader.queryModel(User)).filter((stored) => stored.id === lena.id || stored.id === max.id).length === 2);
+    await waitFor(() => reader.getAll(User).filter((stored) => stored.id === lena.id || stored.id === max.id).length === 2);
     expect(reader.getById(User, lena.id)?.referredBy?.id).toBe(max.id);
     expect(reader.getById(User, max.id)?.referredBy?.id).toBe(lena.id);
   });

@@ -82,6 +82,8 @@ const clientMessage = z.discriminatedUnion("type", [
   // Enters the room, or updates the sender's state in it; null is present without a state.
   z.object({ type: z.literal("presence"), room: presenceRoom, state: jsonValue.nullable() }),
   z.object({ type: z.literal("leavePresence"), room: presenceRoom }),
+  // Asks for a pong once everything the server had received by then has been sent to this client.
+  z.object({ type: z.literal("ping"), requestId: z.string() }),
 ]);
 
 const serverMessage = z.discriminatedUnion("type", [
@@ -111,6 +113,8 @@ const serverMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("presence"), room: presenceRoom, peers: z.array(presencePeer) }),
   // The receiver may not, or may no longer, read the room's row; it is out.
   z.object({ type: z.literal("presenceRefused"), room: presenceRoom }),
+  // Everything written before the ping arrived has been sent ahead of this.
+  z.object({ type: z.literal("pong"), requestId: z.string() }),
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessage>;

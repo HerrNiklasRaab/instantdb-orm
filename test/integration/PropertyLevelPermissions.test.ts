@@ -46,7 +46,8 @@ describe("Property-level permissions (Integration)", () => {
       // 3. Query as owner using TestStore with user-scoped client
       const ownerClient = connectTestClientAs(email);
       const ownerStore = new RootStore({ client: ownerClient });
-      const users = await ownerStore.queryModel(User);
+      await ownerStore.caughtUp();
+      const users = ownerStore.getAll(User);
       const user = users.find((u) => u.id === authUserId);
 
       // Owner should be able to see all fields including secretField
@@ -73,7 +74,8 @@ describe("Property-level permissions (Integration)", () => {
       // Query as viewer (not the owner)
       const viewerClient = connectTestClientAs(viewerEmail);
       const viewerStore = new RootStore({ client: viewerClient });
-      const users = await viewerStore.queryModel(User);
+      await viewerStore.caughtUp();
+      const users = viewerStore.getAll(User);
       const user = users.find((u) => u.id === ownerId);
 
       // Viewer should see the user but NOT the secretField

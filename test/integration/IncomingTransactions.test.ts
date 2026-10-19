@@ -42,7 +42,7 @@ describe("An incoming transaction", () => {
     const sqlite = new PausableSqlite();
     const device = await Device.open(undefined, { sqlite });
     const reader = device.store();
-    await reader.queryModel(Post);
+    await reader.caughtUp();
     const writer = new RootStore({ client: connectTestClient() });
     const halfway = sqlite.pauseAfterFirstWriteTo("posts");
 

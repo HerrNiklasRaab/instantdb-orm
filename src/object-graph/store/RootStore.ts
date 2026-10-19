@@ -1,4 +1,4 @@
-import { observable, runInAction } from "mobx";
+import { runInAction } from "mobx";
 import type { Settled, TransactionHandle } from "./TransactionHandle";
 import type { SchemaDef } from "@zenstackhq/schema";
 import type { PresenceRoom, SyncClient } from "../../client";
@@ -17,6 +17,7 @@ import { setDebugViewEnabled, Model } from "../Model";
 import { configureEntityMeta, getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
 import { getModelClass, getModelClassForDiscriminator, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
+import { ReplicaFollower } from "./ReplicaFollower";
 import { getEntityNameFromClass } from "../decorators";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
 import { TransactionContext } from "../persistence/TransactionContext";
@@ -93,7 +94,7 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private subscriptions = new Map<string, { close(): void }>();
   private hydrator: ModelHydrator;
-  private _initialSyncComplete = observable.box(false);
+  private readonly follower: ReplicaFollower | null;
   readonly client: SyncClient<Schema>;
   readonly subscriptionObserver: SubscriptionObserver;
   // Retained whole: the per-callback stores of `subscribeQueryIsolated` are
@@ -111,10 +112,51 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
     this.initializeIdentityMaps();
     config.client.onTransactionDenied((denial) => { this.takeBack(denial); });
     if (config.onTransactionDenied) config.client.onTransactionDenied(reporterFor(config.onTransactionDenied));
+    this.follower = config.follow === false ? null : this.followReplica();
   }
 
   dispose(): void {
+    this.follower?.stop();
     this.closeSubscriptions();
+  }
+
+  /**
+   * True once every model the first sync brought is in this store. Observable:
+   * read it from an `observer` to hold back UI until the store has the data.
+   */
+  get synced(): boolean {
+    return this.follower?.synced ?? false;
+  }
+
+  /** Resolves once everything the server had received when asked is in this store's models. */
+  async caughtUp(): Promise<void> {
+    await this.client.caughtUp();
+    await this.follower?.idle();
+  }
+
+  private followReplica(): ReplicaFollower {
+    const getMap = this.getIdentityMapByName.bind(this);
+    const follower = new ReplicaFollower(this.client, {
+      entities: () => getEntityNames(),
+      queryFor: (entity, where) => this.buildQueryWithRelationships({ [entity]: where ? { where } : {} }),
+      hydrate: (entity, rows) => { this.hydrator.hydrateMany(entity, rows, getMap); },
+      hydrateWhole: (entity, rows) => {
+        this.hydrator.hydrateMany(entity, rows, getMap);
+        this.evictAbsent(entity, rows);
+      },
+      evict: (entity, ids) => {
+        const models = getMap(entity);
+        for (const id of ids) {
+          const model = models.get(id);
+          if (model?.isPersisted) this.evictModel(model);
+        }
+      },
+      failed: (error) => {
+        this.subscriptionObserver.degraded({ label: "replica", message: error instanceof Error ? error.message : String(error) });
+      },
+    });
+    follower.start();
+    return follower;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -435,39 +477,6 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
     );
   }
 
-  /** Subscribe to live updates for all registered entity classes */
-  /**
-   * True once every entity subscription opened by `subscribeAll` has delivered
-   * its first snapshot. Observable — read it from an `observer` to gate UI on
-   * the store being hydrated (e.g. onboarding routing must not decide before
-   * the user's relationships have synced).
-   */
-  get initialSyncComplete(): boolean {
-    return this._initialSyncComplete.get();
-  }
-
-  subscribeAll(callback?: () => void): { close(): void } {
-    const entityNames = getEntityNames();
-    runInAction(() => { this._initialSyncComplete.set(false); });
-
-    const firstSnapshots = entityNames.map((name) => {
-      const ModelClass = getModelClass(name);
-      return this.subscribeModel(ModelClass, () => {
-        callback?.();
-      });
-    });
-
-    void Promise.allSettled(firstSnapshots).then(() => {
-      runInAction(() => { this._initialSyncComplete.set(true); });
-    });
-
-    return {
-      close: () => {
-        this.closeSubscriptions();
-      },
-    };
-  }
-
   private closeSubscriptions(): void {
     for (const sub of [...this.subscriptions.values()]) {
       sub.close();
@@ -580,7 +589,7 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
             prevStore = null;
             return;
           }
-          const callbackStore = new RootStore<Schema>(config);
+          const callbackStore = new RootStore<Schema>({ ...config, follow: false });
           try {
             callbackStore.hydrateResult(data);
             await handler(callbackStore, prevStore);

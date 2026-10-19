@@ -38,7 +38,7 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
     }, 1000).catch(() => { });
 
     const deleteStore = new RootStore({ client: connectTestClient() });
-    await deleteStore.queryModel(User);
+    await deleteStore.caughtUp();
     await deleteStore.transaction(() => {
       const target = deleteStore.getById(User, u.id);
       assertDefined(target);
@@ -73,7 +73,7 @@ describe("subscribeQueryIsolated (curr, prev)", () => {
 
     // Wait until first callback has fired.
     const mutateStore = new RootStore({ client: connectTestClient() });
-    await mutateStore.queryModel(User);
+    await mutateStore.caughtUp();
     await mutateStore.transaction(() => {
       const target = mutateStore.getById(User, u.id);
       assertDefined(target);

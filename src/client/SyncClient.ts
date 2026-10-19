@@ -15,8 +15,10 @@ import {
 import type { LocalReplica } from "./LocalReplica";
 import { ReplicaGate } from "./ReplicaGate";
 import { PresenceRoom } from "./PresenceRoom";
+import { ReplicaChange } from "./ReplicaChange";
 
 export type DenialListener = (denial: TransactionEffect) => void;
+export type ReplicaListener = (change: ReplicaChange) => void;
 
 const FIRST_RETRY_MS = 50;
 const MAX_RETRY_MS = 1000;
@@ -78,6 +80,8 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
   private readonly awaitingVerdicts = new Map<string, Set<Deferred<TransactionOutcome>>>();
   private readonly subscriptions = new Set<LiveSubscription>();
   private readonly denialListeners = new Set<DenialListener>();
+  private readonly replicaListeners = new Set<ReplicaListener>();
+  private readonly pendingPings = new Map<string, Deferred<void>>();
   private inbox: Promise<void> = Promise.resolve();
   private socket: Socket | null = null;
   private connected = false;
@@ -104,7 +108,41 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
   async query(query: UntypedQuery): Promise<QueryResult> {
     await this.initialSync.promise;
     await this.pull(query);
+    return this.read(query);
+  }
+
+  /** Answers from the replica as it stands; no server is asked. */
+  read(query: UntypedQuery): Promise<QueryResult> {
     return this.gate.read(async () => (await this.replica).read(query));
+  }
+
+  /** Settled once the first hello has been answered in full, or no server could be reached. */
+  ready(): Promise<void> {
+    return this.initialSync.promise;
+  }
+
+  /**
+   * Resolves once everything the server had received when asked, from any
+   * client, has reached this replica. Offline, once what already arrived is in.
+   */
+  async caughtUp(): Promise<void> {
+    await this.initialSync.promise;
+    if (this.connected) {
+      const requestId = uuid();
+      const pong = new Deferred<void>();
+      this.pendingPings.set(requestId, pong);
+      this.send({ type: "ping", requestId });
+      await pong.promise;
+    }
+    await this.inbox;
+  }
+
+  /** Told which rows each server message wrote to or removed from the replica. */
+  onReplicaChanged(listener: ReplicaListener): Unsubscribe {
+    this.replicaListeners.add(listener);
+    return () => {
+      this.replicaListeners.delete(listener);
+    };
   }
 
   /**
@@ -285,9 +323,15 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
       case "changed":
         await this.applyChanged(message);
         return;
-      case "scope":
-        await this.applyScope(message, message.tick);
+      case "scope": {
+        const change = new ReplicaChange();
+        await this.applyScope(message, message.tick, change);
         this.refreshSubscriptions();
+        this.replicaChanged(change);
+        return;
+      }
+      case "pong":
+        this.settle(this.pendingPings, message.requestId)?.resolve();
         return;
       case "resync":
         await this.resync(message.models);
@@ -295,6 +339,7 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
       case "pulled":
         await (await this.replica).absorb(message.data);
         this.refreshSubscriptions();
+        this.replicaChanged(ReplicaChange.ofRows(message.data));
         this.settle(this.pendingPulls, message.requestId)?.resolve(message.data);
         return;
       case "failed": {
@@ -318,8 +363,10 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
     const own = await replica.log.isOwnPending(effect.transactionId);
     await replica.apply(effect);
     await replica.log.record(effect);
-    if (scope) await this.applyScope(scope, effect.tick);
+    const change = ReplicaChange.ofRows(effect.rows, effect.removed);
+    if (scope) await this.applyScope(scope, effect.tick, change);
     this.refreshSubscriptions();
+    this.replicaChanged(change);
     // The undo first, so whoever awaits the verdict sees the models taken back.
     if (own && effect.status === "denied") this.reportDenial(effect);
     for (const waiting of this.awaitingVerdicts.get(effect.transactionId) ?? []) waiting.resolve(effect);
@@ -330,31 +377,44 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
     await replica.restore(message.rows);
     for (const [entity, ids] of Object.entries(message.removed)) await replica.remove(entity, ids);
     await replica.cursors.advance(message.buckets, message.tick);
-    if (message.scope) await this.applyScope(message.scope, message.tick);
+    const change = ReplicaChange.ofRows(message.rows, message.removed);
+    if (message.scope) await this.applyScope(message.scope, message.tick, change);
     this.refreshSubscriptions();
+    this.replicaChanged(change);
   }
 
   // A lost bucket's rows go by the bucket's own filter: nothing else in the
   // replica points at them, and the server may not name them any more.
-  private async applyScope(scope: ScopeChange, tick: number): Promise<void> {
+  private async applyScope(scope: ScopeChange, tick: number, change: ReplicaChange): Promise<void> {
     const replica = await this.replica;
     for (const bucket of scope.removed) {
       const held = await replica.cursors.take(bucket);
-      if (held) await replica.removeMatching(held.model, held.filter);
+      if (!held) continue;
+      await replica.removeMatching(held.model, held.filter);
+      change.addWholeModel(held.model);
     }
     for (const added of scope.added) {
       await replica.restore(added.rows);
       await replica.cursors.set(BucketKey.fromJson(added.key), tick, added.generation);
+      change.addRows(added.rows);
     }
   }
 
   private async resync(models: readonly string[]): Promise<void> {
     const replica = await this.replica;
+    const change = new ReplicaChange();
     for (const model of models) {
       await replica.removeMatching(model, {});
       await replica.cursors.forgetModel(model);
+      change.addWholeModel(model);
     }
     this.refreshSubscriptions();
+    this.replicaChanged(change);
+  }
+
+  private replicaChanged(change: ReplicaChange): void {
+    if (change.isEmpty) return;
+    for (const listener of this.replicaListeners) listener(change);
   }
 
   private reportDenial(denial: TransactionEffect): void {
@@ -385,6 +445,9 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
     this.initialSync.resolve();
     for (const pending of this.pendingPulls.values()) pending.reject(new ConnectionLost());
     this.pendingPulls.clear();
+    // Nothing more is coming over this connection: what arrived is all there is to catch up on.
+    for (const pending of this.pendingPings.values()) pending.resolve();
+    this.pendingPings.clear();
     for (const { room } of this.presenceRooms.values()) room.disconnected();
     this.scheduleReconnect();
   }

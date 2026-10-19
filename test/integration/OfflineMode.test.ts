@@ -45,12 +45,13 @@ describe("Offline mode", () => {
       const [kept] = await seedUsers("Kept");
       assertDefined(kept);
       const device = await Device.open();
-      await device.store().queryModel(User);
+      await device.store().caughtUp();
 
       device.goOffline();
 
       const offline = device.store();
-      const users = await offline.queryModel(User);
+      await offline.caughtUp();
+      const users = offline.getAll(User);
       expect(users.map((user) => user.id)).toContain(kept.id);
       expect(userIn(offline, kept.id).name).toBe("Kept");
     });
@@ -70,7 +71,7 @@ describe("Offline mode", () => {
       device.goOffline();
 
       const other = new RootStore({ client: connectTestClient() });
-      await other.queryModel(User);
+      await other.caughtUp();
       await other.transaction(() => { userIn(other, watched.id).name = "After"; });
       await wait(SETTLE_MS);
       expect(faults).toEqual([]);
@@ -90,7 +91,7 @@ describe("Offline mode", () => {
       assertDefined(author);
       const device = await Device.open();
       const store = device.store();
-      await store.queryModel(User);
+      await store.caughtUp();
       const postsSeen: string[][] = [];
       await store.subscribeModel(Post, (posts) => { postsSeen.push(posts.map((post) => post.id)); });
 
@@ -108,16 +109,15 @@ describe("Offline mode", () => {
 
       const restarted = device.reopen();
       const fresh = restarted.store();
-      await fresh.queryModel(User);
-      await fresh.queryModel(Post);
+      await fresh.caughtUp();
       expect(userIn(fresh, author.id).name).toBe("Renamed offline");
       expect(fresh.getById(Post, postId)?.author?.id).toBe(author.id);
 
       restarted.goOnline();
 
       const other = new RootStore({ client: connectTestClient() });
-      await waitFor(async () => (await other.queryModel(Post)).some((candidate) => candidate.id === postId));
-      await other.queryModel(User);
+      await waitFor(() => other.getAll(Post).some((candidate) => candidate.id === postId));
+      await other.caughtUp();
       expect(userIn(other, author.id).name).toBe("Renamed offline");
       expect(other.getById(Post, postId)?.author?.id).toBe(author.id);
     });
@@ -126,7 +126,7 @@ describe("Offline mode", () => {
       const device = await Device.open();
       const denials: TransactionOutcome[] = [];
       const store = device.store({ denials });
-      await store.queryModel(User);
+      await store.caughtUp();
 
       device.goOffline();
 
@@ -137,8 +137,8 @@ describe("Offline mode", () => {
       device.goOnline();
 
       const other = new RootStore({ client: connectTestClient() });
-      await waitFor(async () => (await other.queryModel(Post)).some((candidate) => candidate.id === post.id));
-      await other.queryModel(User);
+      await waitFor(() => other.getAll(Post).some((candidate) => candidate.id === post.id));
+      await other.caughtUp();
       expect(userIn(other, newUser.id).name).toBe("Renamed offline");
       expect(other.getById(Post, post.id)?.author?.id).toBe(newUser.id);
       expect(denials).toEqual([]);
@@ -149,7 +149,7 @@ describe("Offline mode", () => {
       const device = await Device.open();
       const denials: TransactionOutcome[] = [];
       const store = device.store({ denials });
-      await store.queryModel(Post);
+      await store.caughtUp();
       const other = new RootStore({ client: connectTestClient() });
       await other.subscribeModel(Post, () => undefined);
 
@@ -172,7 +172,7 @@ describe("Offline mode", () => {
       const device = await Device.open(`intruder-${id()}@example.com`);
       const denials: TransactionOutcome[] = [];
       const store = device.store({ denials });
-      await store.queryModel(User);
+      await store.caughtUp();
 
       device.goOffline();
 
@@ -185,10 +185,10 @@ describe("Offline mode", () => {
       expect(denials[0]?.reason).toMatch(/polic/i);
       expect(userIn(store, ownerId).name).toBe("Owner");
       const fresh = device.store();
-      await fresh.queryModel(User);
+      await fresh.caughtUp();
       expect(userIn(fresh, ownerId).name).toBe("Owner");
       const other = new RootStore({ client: connectTestClient() });
-      await other.queryModel(User);
+      await other.caughtUp();
       expect(userIn(other, ownerId).name).toBe("Owner");
     });
 
@@ -196,7 +196,7 @@ describe("Offline mode", () => {
       const ownerId = await seedOwner();
       const device = await Device.open(`intruder-${id()}@example.com`);
       const store = device.store();
-      await store.queryModel(User);
+      await store.caughtUp();
 
       device.goOffline();
       await store.transaction(() => { userIn(store, ownerId).name = "Hacked"; });
@@ -204,7 +204,7 @@ describe("Offline mode", () => {
       const restarted = device.reopen();
       const denials: TransactionOutcome[] = [];
       const fresh = restarted.store({ denials });
-      await fresh.queryModel(User);
+      await fresh.caughtUp();
       expect(userIn(fresh, ownerId).name).toBe("Hacked");
 
       restarted.goOnline();
@@ -213,7 +213,7 @@ describe("Offline mode", () => {
       expect(denials[0]?.reason).toMatch(/polic/i);
       await waitFor(() => userIn(fresh, ownerId).name === "Owner");
       const another = restarted.store();
-      await another.queryModel(User);
+      await another.caughtUp();
       expect(userIn(another, ownerId).name).toBe("Owner");
     });
   });
@@ -225,7 +225,7 @@ describe("Offline mode", () => {
       assertDefined(newAuthor);
       assertDefined(doomed);
       const seed = new RootStore({ client: connectTestClient() });
-      await seed.queryModel(User);
+      await seed.caughtUp();
       const { tagged, deleted } = await seed.transaction(() => {
         const tag = new Tag("tag");
         const tagged = new Post("Tagged", userIn(seed, renamed.id));
@@ -234,13 +234,12 @@ describe("Offline mode", () => {
       });
 
       const device = await Device.open();
-      await device.store().queryModel(User);
-      await device.store().queryModel(Post);
+      await device.store().caughtUp();
+      await device.store().caughtUp();
       device.goOffline();
 
       const other = new RootStore({ client: connectTestClient() });
-      await other.queryModel(User);
-      await other.queryModel(Post);
+      await other.caughtUp();
       const created = await other.transaction(() => new User("Created while away"));
       await other.transaction(() => { userIn(other, renamed.id).name = "New name"; });
       await other.transaction(() => {

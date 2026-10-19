@@ -4,6 +4,7 @@ import { Temporal } from "../../src/object-graph";
 import {
   assertDefined,
   connectTestClient,
+  syncedStore,
   type TestStore,
 } from "./support/clients";
 import { Appointment } from "../support/entities/Appointment";
@@ -32,7 +33,8 @@ describe("Temporal persistence (Integration)", () => {
       return a;
     });
 
-    const reloaded = (await storeB.queryModel(Appointment)).find((a) => a.id === saved.id);
+    await storeB.caughtUp();
+    const reloaded = storeB.getAll(Appointment).find((a) => a.id === saved.id);
     assertDefined(reloaded);
 
     expect(reloaded.scheduledFor.equals(INSTANT)).toBe(true);
@@ -61,7 +63,8 @@ describe("Temporal persistence (Integration)", () => {
       return a;
     });
 
-    const reloaded = (await storeB.queryModel(Appointment)).find((a) => a.id === saved.id);
+    await storeB.caughtUp();
+    const reloaded = storeB.getAll(Appointment).find((a) => a.id === saved.id);
     assertDefined(reloaded);
     assertDefined(reloaded.vacation);
     expect(reloaded.vacation).toBeInstanceOf(DateRange);
@@ -84,7 +87,9 @@ describe("Temporal persistence (Integration)", () => {
       return a;
     });
 
-    const all = await storeB.queryModel(Appointment);
+    await storeB.caughtUp();
+
+    const all = storeB.getAll(Appointment);
     const rs = all.find((a) => a.id === savedSummer.id);
     const rw = all.find((a) => a.id === savedWinter.id);
     assertDefined(rs);
@@ -105,7 +110,8 @@ describe("Temporal persistence (Integration)", () => {
   it("round-trips a null optional Temporal field and persists clearing a set value", async () => {
     const saved = await storeA.transaction(() => new Appointment(INSTANT));
 
-    let reloaded = (await storeB.queryModel(Appointment)).find((a) => a.id === saved.id);
+    await storeB.caughtUp();
+    let reloaded = storeB.getAll(Appointment).find((a) => a.id === saved.id);
     assertDefined(reloaded);
     expect(reloaded.day).toBeNull();
 
@@ -116,7 +122,7 @@ describe("Temporal persistence (Integration)", () => {
       saved.day = null;
     });
 
-    reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Appointment)).find(
+    reloaded = (await syncedStore()).getAll(Appointment).find(
       (a) => a.id === saved.id
     );
     assertDefined(reloaded);
@@ -126,7 +132,8 @@ describe("Temporal persistence (Integration)", () => {
   it("hydrates base timestamps as Temporal.Instant", async () => {
     const saved = await storeA.transaction(() => new Appointment(INSTANT));
 
-    const reloaded = (await storeB.queryModel(Appointment)).find((a) => a.id === saved.id);
+    await storeB.caughtUp();
+    const reloaded = storeB.getAll(Appointment).find((a) => a.id === saved.id);
     assertDefined(reloaded);
     expect(reloaded.createdAt).toBeInstanceOf(Temporal.Instant);
     expect(reloaded.updatedAt).toBeInstanceOf(Temporal.Instant);

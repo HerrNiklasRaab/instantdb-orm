@@ -39,7 +39,7 @@ describe("Soft Delete (Integration)", () => {
 
       // Hydrate in storeB FIRST (entity in identity map)
       const storeB = new RootStore({ client: connectTestClient() });
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
       expect(storeB.getById(User, user.id)).toBeDefined();
 
       expect(user.deletedAt).toBeNull();
@@ -52,7 +52,7 @@ describe("Soft Delete (Integration)", () => {
       expect(users[0]?.deletedAt).toBeDefined();
 
       // Re-hydrate in storeB → triggers cleanup
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
       expect(storeB.getById(User, user.id)).toBeUndefined();
     });
 
@@ -62,7 +62,8 @@ describe("Soft Delete (Integration)", () => {
       await store.transaction(() => { user2.softDelete(); });
 
       const storeB = new RootStore({ client: connectTestClient() });
-      const users = await storeB.queryModel(User);
+      await storeB.caughtUp();
+      const users = storeB.getAll(User);
 
       expect(users.find((u) => u.id === user1.id)).toBeDefined();
       expect(users.find((u) => u.id === user2.id)).toBeUndefined();
@@ -82,14 +83,13 @@ describe("Soft Delete (Integration)", () => {
 
       // Hydrate in storeB FIRST (entity in identity map)
       const storeB = new RootStore({ client: connectTestClient() });
-      await storeB.queryModel(User);
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       const hydratedPost = storeB.getById(Post, post.id);
       expect(hydratedPost?.author).toBeDefined();
 
       await store.transaction(() => { user.softDelete(); });
 
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
 
       expect(storeB.getById(User, user.id)).toBeUndefined();
       expect(hydratedPost?.author).toBeNull();
@@ -106,14 +106,13 @@ describe("Soft Delete (Integration)", () => {
       });
 
       const storeB = new RootStore({ client: connectTestClient() });
-      await storeB.queryModel(User);
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser?.posts.length).toBe(2);
 
       await store.transaction(() => { post1.softDelete(); });
 
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
 
       expect(storeB.getById(Post, post1.id)).toBeUndefined();
       expect(hydratedUser?.posts.length).toBe(1);
@@ -131,14 +130,13 @@ describe("Soft Delete (Integration)", () => {
       });
 
       const storeB = new RootStore({ client: connectTestClient() });
-      await storeB.queryModel(User);
-      await storeB.queryModel(UserProfile);
+      await storeB.caughtUp();
       const hydratedUser = storeB.getById(User, user.id);
       expect(hydratedUser?.profile).toBeDefined();
 
       await store.transaction(() => { profile.softDelete(); });
 
-      await storeB.queryModel(UserProfile);
+      await storeB.caughtUp();
 
       expect(storeB.getById(UserProfile, profile.id)).toBeUndefined();
       expect(hydratedUser?.profile).toBeNull();

@@ -116,7 +116,7 @@ describe("Hard Delete (Integration)", () => {
     expect(store.getById(User, user.id)).toBe(user);
     expect(user.deletedAt).toBeNull();
     const verificationStore = new RootStore({ client: connectTestClient() });
-    await verificationStore.queryModel(User);
+    await verificationStore.caughtUp();
     expect(verificationStore.getById(User, user.id)).toBeDefined();
   });
 
@@ -129,7 +129,7 @@ describe("Hard Delete (Integration)", () => {
     });
 
     const verificationStore = new RootStore({ client: connectTestClient() });
-    await verificationStore.queryModel(Post);
+    await verificationStore.caughtUp();
     expect(verificationStore.getById(Post, post.id)).toBeUndefined();
   });
 
@@ -145,7 +145,7 @@ describe("Hard Delete (Integration)", () => {
     const subscription = await storeA.subscribeModel(User, () => {});
 
     await waitFor(() => storeA.getById(User, user.id) !== undefined);
-    await storeB.queryModel(User);
+    await storeB.caughtUp();
     const toDelete = storeB.getById(User, user.id);
     assertDefined(toDelete);
     await storeB.transaction(() => { toDelete.softDelete(); });

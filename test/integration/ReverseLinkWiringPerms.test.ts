@@ -49,7 +49,8 @@ describe("Reverse-link wiring perms", () => {
     // through their non-admin client.
     const actorClient = connectTestClientAs(authorEmail);
     const actorStore = new RootStore({ client: actorClient });
-    const users = await actorStore.queryModel(User);
+    await actorStore.caughtUp();
+    const users = actorStore.getAll(User);
     const other = users.find((u) => u.id === otherId);
     assertDefined(other);
 

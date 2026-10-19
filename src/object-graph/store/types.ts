@@ -31,6 +31,12 @@ export interface RootStoreConfig<Schema extends SchemaDef> {
    * client logs a console warning.
    */
   onTransactionDenied?: (outcome: TransactionOutcome) => void;
+  /**
+   * Keep the models in step with the client's replica: everything it holds,
+   * and every change the server sends after. On by default; off for a store
+   * that is a snapshot of one answer.
+   */
+  follow?: boolean;
 }
 
 export type Constructor<T = unknown> = { prototype: T; readonly name: string };

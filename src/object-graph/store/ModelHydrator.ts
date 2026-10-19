@@ -213,7 +213,7 @@ export class ModelHydrator {
             targetModel = targetMap.get(item.id) ?? null;
           }
 
-          if (targetModel) {
+          if (targetModel && !this.heldLocally(model, targetModel, fieldName)) {
             existing.push(targetModel);
             this.setReverseRelationship(model, targetModel, fieldName);
           }
@@ -267,6 +267,15 @@ export class ModelHydrator {
     return getModelClass(entityName);
   }
 
+  // The target's own to-one reference back is under a local edit, which wins over
+  // the server's older rows; a to-many side merges instead.
+  private heldLocally(model: Model, targetModel: Model, fieldName: string): boolean {
+    const reverse = findReverseSide(model.entityName, fieldName);
+    if (!reverse || reverse[2] === "many") return false;
+    const reverseFieldName = reverse[1];
+    return targetModel.isFieldTouched(reverseFieldName) || targetModel.isFieldShielded(reverseFieldName);
+  }
+
   private setReverseRelationship(
     model: Model,
     targetModel: Model,
@@ -275,6 +284,7 @@ export class ModelHydrator {
     const reverse = findReverseSide(model.entityName, fieldName);
     if (!reverse) return;
     const [, reverseFieldName, reverseCardinality] = reverse;
+    if (this.heldLocally(model, targetModel, fieldName)) return;
 
     if (reverseCardinality === "many") {
       const array = readField(targetModel, reverseFieldName);

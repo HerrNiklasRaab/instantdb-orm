@@ -15,7 +15,7 @@ describe("Rebasing local writes", () => {
     const client = connectTestClient({ replyLatencyMs: REPLY_LATENCY_MS });
     const reader = new RootStore({ client });
     const writer = new RootStore({ client });
-    await writer.queryModel(Post);
+    await writer.caughtUp();
     const shown: string[] = [];
     const unsubscribe = client.subscribe({ posts: { where: { id: post.id } } }, ({ data }) => {
       const title = data?.posts?.[0]?.title;
@@ -46,7 +46,7 @@ describe("Rebasing local writes", () => {
     const { result: post } = await author.transaction(() => new Post("Old")).settled();
     const device = await Device.open();
     const store = device.store();
-    await store.queryModel(Post);
+    await store.caughtUp();
     const shown: string[] = [];
     const unsubscribe = device.client.subscribe({ posts: { where: { id: post.id } } }, ({ data }) => {
       const title = data?.posts?.[0]?.title;

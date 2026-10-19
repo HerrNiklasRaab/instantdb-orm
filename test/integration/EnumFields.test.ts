@@ -25,7 +25,8 @@ describe("Enum field support (Integration)", () => {
         });
 
         const freshStore = new RootStore({ client: connectTestClient() });
-        const users = await freshStore.queryModel(User);
+        await freshStore.caughtUp();
+        const users = freshStore.getAll(User);
         const hydrated = users.find((u) => u.id === user.id);
 
         assertDefined(hydrated);
@@ -37,7 +38,8 @@ describe("Enum field support (Integration)", () => {
       const user = await store.transaction(() => new User("No Status"));
 
       const freshStore = new RootStore({ client: connectTestClient() });
-      const users = await freshStore.queryModel(User);
+      await freshStore.caughtUp();
+      const users = freshStore.getAll(User);
       const hydrated = users.find((u) => u.id === user.id);
 
       assertDefined(hydrated);
@@ -59,7 +61,8 @@ describe("Enum field support (Integration)", () => {
       });
 
       const freshStore = new RootStore({ client: connectTestClient() });
-      const users = await freshStore.queryModel(User);
+      await freshStore.caughtUp();
+      const users = freshStore.getAll(User);
       const hydrated = users.find((u) => u.id === user.id);
 
       assertDefined(hydrated);
@@ -82,7 +85,8 @@ describe("Enum field support (Integration)", () => {
         });
 
         const freshStore = new RootStore({ client: connectTestClient() });
-        const users = await freshStore.queryModel(User);
+        await freshStore.caughtUp();
+        const users = freshStore.getAll(User);
         const hydrated = users.find((u) => u.id === user.id);
 
         assertDefined(hydrated);
@@ -98,7 +102,8 @@ describe("Enum field support (Integration)", () => {
       });
 
       const freshStore = new RootStore({ client: connectTestClient() });
-      const users = await freshStore.queryModel(User);
+      await freshStore.caughtUp();
+      const users = freshStore.getAll(User);
       const hydrated = users.find((u) => u.id === user.id);
 
       assertDefined(hydrated);

@@ -47,7 +47,7 @@ describe("Transaction (Integration)", () => {
       });
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
       expect(storeB.getById(User, user.id)?.name).toBe("Updated");
     });
 
@@ -74,7 +74,7 @@ describe("Transaction (Integration)", () => {
       });
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
       expect(storeB.getById(User, user1.id)?.name).toBe("Updated User 1");
       expect(storeB.getById(User, user2.id)?.name).toBe("Updated User 2");
     });
@@ -90,8 +90,7 @@ describe("Transaction (Integration)", () => {
       });
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(Post);
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
       assertDefined(postId);
       const savedPost = storeB.getById(Post, postId);
       expect(savedPost?.title).toBe("New Post");
@@ -125,7 +124,7 @@ describe("Transaction (Integration)", () => {
       await tx.commit();
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
       expect(storeB.getById(User, user.id)?.name).toBe("Updated");
     });
 
@@ -305,8 +304,7 @@ describe("Transaction (Integration)", () => {
       });
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       const savedPost = storeB.getById(Post, post.id);
 
       expect(savedPost?.title).toBe("Transient Post");
@@ -322,8 +320,7 @@ describe("Transaction (Integration)", () => {
       });
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       const savedUser = storeB.getById(User, user.id);
       const savedPost = storeB.getById(Post, post.id);
 
@@ -342,9 +339,7 @@ describe("Transaction (Integration)", () => {
       });
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
-      await storeB.queryModel(Post);
-      await storeB.queryModel(Tag);
+      await storeB.caughtUp();
       const savedAuthor = storeB.getById(User, author.id);
       const savedPost = storeB.getById(Post, post.id);
       const savedTag = storeB.getById(Tag, tag.id);
@@ -379,8 +374,7 @@ describe("Transaction (Integration)", () => {
       });
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       const savedPost = storeB.getById(Post, post.id);
 
       expect(savedPost?.title).toBe("Retryable Post");
@@ -409,8 +403,7 @@ describe("Transaction (Integration)", () => {
       });
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       const savedPost = storeB.getById(Post, retryPost.id);
 
       expect(savedPost?.title).toBe("Transaction-Born Post");
@@ -432,7 +425,7 @@ describe("Transaction (Integration)", () => {
       expect(error).toBeInstanceOf(Error);
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       expect(storeB.getById(Post, post.id)).toBeUndefined();
     });
   });
@@ -457,8 +450,7 @@ describe("Transaction (Integration)", () => {
       await txUser.commit();
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
 
       expect(storeB.getById(User, user.id)?.name).toBe("Updated User");
       // Post should NOT be persisted yet
@@ -468,7 +460,7 @@ describe("Transaction (Integration)", () => {
       await txPost.commit();
 
       const storeC = createVerificationStore();
-      await storeC.queryModel(Post);
+      await storeC.caughtUp();
       expect(storeC.getById(Post, post.id)?.title).toBe("Updated Post");
     });
 
@@ -497,7 +489,7 @@ describe("Transaction (Integration)", () => {
       await txPost.commit();
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       expect(storeB.getById(Post, post.id)?.title).toBe("Changed Post");
     });
 
@@ -520,7 +512,7 @@ describe("Transaction (Integration)", () => {
       await tx2.commit();
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
       expect(storeB.getById(User, user.id)?.name).toBe("Changed by tx2");
     });
 
@@ -540,7 +532,7 @@ describe("Transaction (Integration)", () => {
       await tx2.commit();
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(User);
+      await storeB.caughtUp();
       expect(storeB.getById(User, user.id)?.name).toBe("Second change");
     });
 
@@ -571,7 +563,7 @@ describe("Transaction (Integration)", () => {
       await txPost.commit();
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       expect(storeB.getById(Post, newPost.id)?.title).toBe("New Post");
     });
   });
@@ -608,7 +600,7 @@ describe("Transaction (Integration)", () => {
       const post = await store.transaction(() => createPost("Independent"));
 
       const storeB = createVerificationStore();
-      await storeB.queryModel(Post);
+      await storeB.caughtUp();
       expect(storeB.getById(Post, post.id)?.title).toBe("Independent");
 
       tx.rollback();

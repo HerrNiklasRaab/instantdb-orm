@@ -74,7 +74,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Store B hydrates all invitations
-      await storeB.query({ invitations: {} });
+      await storeB.caughtUp();
 
       const chess = storeB.getById(ChessInvitation, chessA.id);
       const ski = storeB.getById(SkiInvitation, skiA.id);
@@ -105,7 +105,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Store B hydrates
-      await storeB.query({ invitations: { include: { inviter: true } } });
+      await storeB.caughtUp();
 
       const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       const hydratedUser = storeB.getById(User, user.id);
@@ -135,7 +135,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Store B hydrates
-      await storeB.query({ users: { include: { invitations: true } } });
+      await storeB.caughtUp();
 
       const hydratedUser = storeB.getById(User, user.id);
 
@@ -167,14 +167,14 @@ describe("Single Table Inheritance (Integration)", () => {
       const chess = await createChessInvitationInStoreA({ timeControl: "5+0" });
 
       // Hydrate in store B
-      await storeB.query({ invitations: {} });
+      await storeB.caughtUp();
       expect(storeB.getById(ChessInvitation, chess.id)).toBeDefined();
 
       // Mark as deleted in DB (simulating deletion from another device)
       await markAsDeletedInDb("invitations", chess.id);
 
       // Re-hydrate - should be removed
-      await storeB.query({ invitations: {} });
+      await storeB.caughtUp();
       expect(storeB.getById(ChessInvitation, chess.id)).toBeUndefined();
     });
 
@@ -187,7 +187,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Hydrate in store B
-      await storeB.query({ invitations: { include: { inviter: true } } });
+      await storeB.caughtUp();
       const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       assertDefined(hydratedChess);
       expect(hydratedChess.inviter).toBeDefined();
@@ -196,7 +196,7 @@ describe("Single Table Inheritance (Integration)", () => {
       await markAsDeletedInDb("users", user.id);
 
       // Re-hydrate - chess.inviter should be null
-      await storeB.query({ users: {} });
+      await storeB.caughtUp();
       expect(hydratedChess.inviter).toBeNull();
     });
 
@@ -214,7 +214,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Hydrate
-      await storeB.query({ users: { include: { invitations: true } } });
+      await storeB.caughtUp();
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.invitations.length).toBe(2);
@@ -223,7 +223,7 @@ describe("Single Table Inheritance (Integration)", () => {
       await markAsDeletedInDb("invitations", chess1.id);
 
       // Re-hydrate - should only have 1 invitation
-      await storeB.query({ invitations: {} });
+      await storeB.caughtUp();
       expect(hydratedUser.invitations.length).toBe(1);
       expect(firstOrFail(hydratedUser.invitations).id).toBe(chess2.id);
     });
@@ -243,7 +243,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Hydrate
-      await storeB.query({ users: { include: { invitations: true } } });
+      await storeB.caughtUp();
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.invitations.length).toBe(2);
@@ -252,7 +252,7 @@ describe("Single Table Inheritance (Integration)", () => {
       await markAsDeletedInDb("invitations", chess.id);
 
       // Re-hydrate
-      await storeB.query({ invitations: {} });
+      await storeB.caughtUp();
       expect(hydratedUser.invitations.length).toBe(1);
       expect(hydratedUser.invitations[0]).toBeInstanceOf(SkiInvitation);
     });
@@ -273,7 +273,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Verify in store B
-      await storeB.query({ invitations: { include: { inviter: true } } });
+      await storeB.caughtUp();
       const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       assertDefined(hydratedChess);
       expect(hydratedChess.inviter).toBeNull();
@@ -288,7 +288,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Hydrate and verify relationship
-      await storeB.query({ users: { include: { invitations: true } } });
+      await storeB.caughtUp();
       const hydratedUser = storeB.getById(User, user.id);
       assertDefined(hydratedUser);
       expect(hydratedUser.invitations.length).toBe(1);
@@ -299,7 +299,7 @@ describe("Single Table Inheritance (Integration)", () => {
       });
 
       // Re-hydrate from user side to refresh reverse relationships
-      await storeB.query({ users: { include: { invitations: true } } });
+      await storeB.caughtUp();
       expect(hydratedUser.invitations.length).toBe(0);
     });
   });
@@ -309,7 +309,7 @@ describe("Single Table Inheritance (Integration)", () => {
       await createChessInvitationInStoreA();
       await createSkiInvitationInStoreA();
 
-      await storeB.query({ invitations: {} });
+      await storeB.caughtUp();
 
       const allInvitations = storeB.getAll(Invitation);
 
@@ -322,7 +322,7 @@ describe("Single Table Inheritance (Integration)", () => {
       await createChessInvitationInStoreA();
       await createSkiInvitationInStoreA();
 
-      await storeB.query({ invitations: {} });
+      await storeB.caughtUp();
 
       const chessInvitations = storeB.getAll(ChessInvitation);
       const skiInvitations = storeB.getAll(SkiInvitation);
@@ -345,7 +345,7 @@ describe("Single Table Inheritance (Integration)", () => {
         chess.opponent = opponent;
       });
 
-      await storeB.query({ invitations: { include: { opponent: true } } });
+      await storeB.caughtUp();
 
       const hydratedChess = storeB.getById(ChessInvitation, chess.id);
       const hydratedOpponent = storeB.getById(User, opponent.id);
@@ -358,7 +358,7 @@ describe("Single Table Inheritance (Integration)", () => {
     it("assigns the schema relationship onto every concrete subclass, even ones that don't declare it", async () => {
       const ski = await createSkiInvitationInStoreA({ resort: "Vail" });
 
-      await storeB.query({ invitations: { include: { opponent: true } } });
+      await storeB.caughtUp();
 
       const hydratedSki = storeB.getById(SkiInvitation, ski.id);
       assertDefined(hydratedSki);

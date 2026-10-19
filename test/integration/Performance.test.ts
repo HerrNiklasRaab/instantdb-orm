@@ -129,23 +129,15 @@ describe("performance", () => {
     expect(calls).toBeLessThan(N * 4 + 50);
   });
 
-  it("hydrating posts under a watched user fires reactions at most once per batch", async () => {
+  it("posts arriving in one transaction under a watched user fire its reactions once", async () => {
     const N = 20;
 
-    let userId = "";
-    const seed = new RootStore({ client: connectTestClient() });
-    await seed.transaction(() => {
-      const u = new User("Owner");
-      userId = u.id;
-      for (let i = 0; i < N; i++) {
-        const p = new Post(`Post ${i}`);
-        p.author = u;
-      }
-    });
+    const author = new RootStore({ client: connectTestClient() });
+    const owner = await author.transaction(() => new User("Owner"));
 
-    const fresh = new RootStore({ client: connectTestClient() });
-    await fresh.queryModel(User);
-    const user = fresh.getById(User, userId);
+    const watcher = new RootStore({ client: connectTestClient() });
+    await watcher.caughtUp();
+    const user = watcher.getById(User, owner.id);
     assertDefined(user);
     expect(user.posts.length).toBe(0);
 
@@ -158,7 +150,13 @@ describe("performance", () => {
     );
 
     try {
-      await fresh.queryModel(Post);
+      await author.transaction(() => {
+        for (let i = 0; i < N; i++) {
+          const p = new Post(`Post ${i}`);
+          p.author = owner;
+        }
+      });
+      await watcher.caughtUp();
     } finally {
       disposer();
     }
@@ -182,7 +180,7 @@ describe("performance", () => {
     });
 
     const fresh = new RootStore({ client: connectTestClient() });
-    await fresh.queryAll();
+    await fresh.caughtUp();
 
     const targetId = firstOrFail(postIds);
     const untouchedId = firstOrFail(postIds.slice(1));
@@ -197,7 +195,7 @@ describe("performance", () => {
     const d2 = reaction(() => untouchedPost.title, () => { untouchedFires++; });
 
     const remote = new RootStore({ client: connectTestClient() });
-    await remote.queryAll();
+    await remote.caughtUp();
     await remote.transaction(() => {
       const remotePost = remote.getById(Post, targetId);
       assertDefined(remotePost);
@@ -205,7 +203,7 @@ describe("performance", () => {
     });
 
     try {
-      await fresh.queryAll();
+      await fresh.caughtUp();
     } finally {
       d1();
       d2();
@@ -236,7 +234,7 @@ describe("performance", () => {
     });
 
     const fresh = new RootStore({ client: connectTestClient() });
-    await fresh.queryAll();
+    await fresh.caughtUp();
 
     const firstPostId = firstOrFail(postIds);
     const untouchedPostId = firstOrFail(postIds.slice(1));
@@ -255,7 +253,7 @@ describe("performance", () => {
     const d3 = reaction(() => untouchedPost.title, () => { untouchedTitleFires++; });
 
     const remote = new RootStore({ client: connectTestClient() });
-    await remote.queryAll();
+    await remote.caughtUp();
     await remote.transaction(() => {
       const remotePost = remote.getById(Post, firstPostId);
       const remoteB = remote.getById(User, userBId);
@@ -265,7 +263,7 @@ describe("performance", () => {
     });
 
     try {
-      await fresh.queryAll();
+      await fresh.caughtUp();
     } finally {
       d1();
       d2();

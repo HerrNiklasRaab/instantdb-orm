@@ -32,7 +32,8 @@ class RoomAdmin {
   }
 
   async removeMember(room: Room, userId: string): Promise<void> {
-    const members = await this.store.queryModel(RoomMember);
+    await this.store.caughtUp();
+    const members = this.store.getAll(RoomMember);
     const member = members.find((candidate) => candidate.userId === userId && candidate.room?.id === room.id);
     assertDefined(member, `no membership of ${userId} in ${room.name}`);
     await this.store.transaction(() => { member.delete(); });
@@ -58,7 +59,8 @@ function texts(messages: RoomMessage[]): string[] {
 
 /** Member of `room` posts through their own store, as the app would. */
 async function say(who: Person, room: Room, text: string): Promise<void> {
-  const rooms = await who.store.queryModel(Room);
+  await who.store.caughtUp();
+  const rooms = who.store.getAll(Room);
   const mine = rooms.find((candidate) => candidate.id === room.id);
   assertDefined(mine, `${who.userId} cannot see ${room.name}`);
   await who.store.transaction(() => new RoomMessage(text, mine));
@@ -94,7 +96,8 @@ describe("Buckets", () => {
     await wait(SETTLE_MS);
     expect(carol.device.framesReceived()).toBe(carolFrames);
     expect(texts(carolSees)).toEqual(["hello carol"]);
-    expect(texts(await carol.store.queryModel(RoomMessage))).toEqual(["hello carol"]);
+    await carol.store.caughtUp();
+    expect(texts(carol.store.getAll(RoomMessage))).toEqual(["hello carol"]);
   });
 
   it("delivers the rows a newly gained bucket already holds", async () => {
@@ -109,7 +112,8 @@ describe("Buckets", () => {
 
     await waitFor(() => texts(carolSees).length === 3);
     expect(texts(carolSees)).toEqual(["one", "three", "two"]);
-    expect((await carol.store.queryModel(Room)).map((room) => room.name)).toEqual(["room 1"]);
+    await carol.store.caughtUp();
+    expect(carol.store.getAll(Room).map((room) => room.name)).toEqual(["room 1"]);
 
     await say(alice, room1, "four");
     await waitFor(() => texts(carolSees).includes("four"));
@@ -126,7 +130,8 @@ describe("Buckets", () => {
     await admin.removeMember(room1, carol.userId);
 
     await waitFor(() => carolSees.length === 0);
-    expect(await carol.store.queryModel(Room)).toEqual([]);
+    await carol.store.caughtUp();
+    expect(carol.store.getAll(Room)).toEqual([]);
     const carolFrames = carol.device.framesReceived();
     await say(alice, room1, "four");
     await wait(SETTLE_MS);
@@ -171,7 +176,8 @@ describe("Buckets", () => {
 
     await waitFor(() => carolSees.length === 4);
     expect(texts(carolSees)).toEqual(["four", "one", "three", "two"]);
-    expect((await carol.store.queryModel(Room)).map((room) => room.name)).toEqual(["room 1"]);
+    await carol.store.caughtUp();
+    expect(carol.store.getAll(Room).map((room) => room.name)).toEqual(["room 1"]);
   });
 
   it("removes a bucket lost while offline on reconnect", async () => {
@@ -188,8 +194,9 @@ describe("Buckets", () => {
     carol.device.goOnline();
 
     await waitFor(() => carolSees.length === 0);
-    expect(await carol.store.queryModel(Room)).toEqual([]);
-    expect(await carol.store.queryModel(RoomMessage)).toEqual([]);
+    await carol.store.caughtUp();
+    expect(carol.store.getAll(Room)).toEqual([]);
+    expect(carol.store.getAll(RoomMessage)).toEqual([]);
   });
 
   it("resumes from its stored cursors when reopened", async () => {
@@ -226,7 +233,8 @@ describe("Buckets", () => {
     carol.device.goOnline();
 
     await waitFor(() => carolSees.length === 0);
-    expect(await carol.store.queryModel(RoomMessage)).toEqual([]);
+    await carol.store.caughtUp();
+    expect(carol.store.getAll(RoomMessage)).toEqual([]);
     await wait(SETTLE_MS);
     expect(texts(aliceSees)).toEqual(["one", "three", "two"]);
   });

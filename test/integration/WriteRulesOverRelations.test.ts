@@ -23,14 +23,15 @@ describe("Write rules over relations", () => {
     const room = await roomWith(registerIdentity(email));
     const denials: TransactionOutcome[] = [];
     const alice = (await Device.open(email)).store({ denials });
-    const rooms = await alice.queryModel(Room);
+    await alice.caughtUp();
+    const rooms = alice.getAll(Room);
     const mine = rooms.find((candidate) => candidate.id === room.id);
     assertDefined(mine);
 
     const message = await alice.transaction(() => new RoomMessage("hello", mine));
 
     const admin = new RootStore({ client: connectTestClient() });
-    await waitFor(async () => (await admin.queryModel(RoomMessage)).some((stored) => stored.id === message.id));
+    await waitFor(() => admin.getAll(RoomMessage).some((stored) => stored.id === message.id));
     expect(denials).toEqual([]);
   });
 

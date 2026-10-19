@@ -171,9 +171,24 @@ export class ClientConnection implements PresenceOccupant {
           }
         });
         return;
+      case "ping": {
+        // Taken at receipt: a write that arrives later may queue behind this very ping.
+        const written = this.server.caughtUp();
+        this.enqueue(async () => {
+          await written;
+          // Behind whatever that filing queued here.
+          this.enqueue(() => {
+            this.send({ type: "pong", requestId: message.requestId });
+            return Promise.resolve();
+          });
+        });
+        return;
+      }
       case "commit": {
         const transaction = new Transaction(message.transaction.id, message.transaction.changes);
         this.committedHere.add(transaction.id);
+        let finished = (): void => undefined;
+        this.server.track(new Promise<void>((resolve) => { finished = resolve; }));
         this.enqueue(async () => {
           try {
             // Sent again after a lost reply: nothing to apply, the author
@@ -192,6 +207,8 @@ export class ClientConnection implements PresenceOccupant {
             await this.principal.write(transaction);
           } catch (error) {
             this.send({ type: "failed", requestId: message.requestId, message: messageOf(error) });
+          } finally {
+            finished();
           }
         });
         return;

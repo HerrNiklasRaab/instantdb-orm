@@ -54,8 +54,8 @@ describe("Entity persistence via transaction (Integration)", () => {
 
       // Verify via fresh store (query User first to populate identity map)
       const freshStore = new RootStore({ client: connectTestClient() });
-      await freshStore.queryModel(User);
-      const posts = await freshStore.queryModel(Post);
+      await freshStore.caughtUp();
+      const posts = freshStore.getAll(Post);
       const hydratedPost = posts.find((p) => p.id === post.id);
 
       assertDefined(hydratedPost);
@@ -66,7 +66,8 @@ describe("Entity persistence via transaction (Integration)", () => {
       const user = await store.transaction(() => createUser("New Name"));
 
       const freshStore = new RootStore({ client: connectTestClient() });
-      const users = await freshStore.queryModel(User);
+      await freshStore.caughtUp();
+      const users = freshStore.getAll(User);
       const hydratedUser = users.find((u) => u.id === user.id);
 
       assertDefined(hydratedUser);
@@ -97,15 +98,16 @@ describe("Entity persistence via transaction (Integration)", () => {
         user.profile = profile;
       });
 
-      await store.queryModel(User);
-      await store.queryModel(UserProfile);
+      await store.caughtUp();
 
       expect(user.profile).toBe(profile);
       expect(profile.user).toBe(user);
 
       let freshStore = new RootStore({ client: connectTestClient() });
-      let users = await freshStore.queryModel(User);
-      let profiles = await freshStore.queryModel(UserProfile);
+      await freshStore.caughtUp();
+      let users = freshStore.getAll(User);
+      await freshStore.caughtUp();
+      let profiles = freshStore.getAll(UserProfile);
       let hydratedUser = users.find((u) => u.id === user.id);
       let hydratedProfile = profiles.find((p) => p.id === profile.id);
 
@@ -117,15 +119,15 @@ describe("Entity persistence via transaction (Integration)", () => {
         user.profile = null;
       });
 
-      await store.queryModel(User);
-      await store.queryModel(UserProfile);
+      await store.caughtUp();
 
       expect(user.profile).toBeNull();
       expect(profile.user).toBeNull();
 
       freshStore = new RootStore({ client: connectTestClient() });
-      users = await freshStore.queryModel(User);
-      profiles = await freshStore.queryModel(UserProfile);
+      await freshStore.caughtUp();
+      users = freshStore.getAll(User);
+      profiles = freshStore.getAll(UserProfile);
       hydratedUser = users.find((u) => u.id === user.id);
       hydratedProfile = profiles.find((p) => p.id === profile.id);
 
@@ -144,16 +146,17 @@ describe("Entity persistence via transaction (Integration)", () => {
         user.posts.push(post);
       });
 
-      await store.queryModel(Post);
-      await store.queryModel(User);
+      await store.caughtUp();
 
       expect(user.posts.length).toBe(1);
       expect(user.posts[0]).toBe(post);
       expect(post.author).toBe(user);
 
       let freshStore = new RootStore({ client: connectTestClient() });
-      let posts = await freshStore.queryModel(Post);
-      let users = await freshStore.queryModel(User);
+      await freshStore.caughtUp();
+      let posts = freshStore.getAll(Post);
+      await freshStore.caughtUp();
+      let users = freshStore.getAll(User);
       let hydratedUser = users.find((u) => u.id === user.id);
       let hydratedPost = posts.find((p) => p.id === post.id);
 
@@ -166,15 +169,15 @@ describe("Entity persistence via transaction (Integration)", () => {
         user.posts.pop();
       });
 
-      await store.queryModel(Post);
-      await store.queryModel(User);
+      await store.caughtUp();
 
       expect(user.posts.length).toBe(0);
       expect(post.author).toBeNull();
 
       freshStore = new RootStore({ client: connectTestClient() });
-      posts = await freshStore.queryModel(Post);
-      users = await freshStore.queryModel(User);
+      await freshStore.caughtUp();
+      posts = freshStore.getAll(Post);
+      users = freshStore.getAll(User);
       hydratedUser = users.find((u) => u.id === user.id);
       hydratedPost = posts.find((p) => p.id === post.id);
 
@@ -191,16 +194,17 @@ describe("Entity persistence via transaction (Integration)", () => {
         post.author = user;
       });
 
-      await store.queryModel(User);
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       expect(post.author).toBe(user);
       expect(user.posts.length).toBe(1);
       expect(user.posts[0]).toBe(post);
 
       let freshStore = new RootStore({ client: connectTestClient() });
-      let users = await freshStore.queryModel(User);
-      let posts = await freshStore.queryModel(Post);
+      await freshStore.caughtUp();
+      let users = freshStore.getAll(User);
+      await freshStore.caughtUp();
+      let posts = freshStore.getAll(Post);
       let hydratedPost = posts.find((p) => p.id === post.id);
       let hydratedUser = users.find((u) => u.id === user.id);
 
@@ -213,15 +217,15 @@ describe("Entity persistence via transaction (Integration)", () => {
         post.author = null;
       });
 
-      await store.queryModel(User);
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       expect(post.author).toBeNull();
       expect(user.posts.length).toBe(0);
 
       freshStore = new RootStore({ client: connectTestClient() });
-      users = await freshStore.queryModel(User);
-      posts = await freshStore.queryModel(Post);
+      await freshStore.caughtUp();
+      users = freshStore.getAll(User);
+      posts = freshStore.getAll(Post);
       hydratedPost = posts.find((p) => p.id === post.id);
       hydratedUser = users.find((u) => u.id === user.id);
 
@@ -263,7 +267,8 @@ describe("Entity persistence via transaction (Integration)", () => {
       const savedUpdatedAt = user.updatedAt;
 
       const freshStore = new RootStore({ client: connectTestClient() });
-      const users = await freshStore.queryModel(User);
+      await freshStore.caughtUp();
+      const users = freshStore.getAll(User);
       const hydratedUser = users.find((u) => u.id === user.id);
 
       assertDefined(hydratedUser);

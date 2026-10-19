@@ -18,7 +18,7 @@ async function seedOwner(): Promise<string> {
 describe("A store transaction", () => {
   it("resolves once applied locally, without waiting for the server's answer", async () => {
     const store = new RootStore({ client: connectTestClient({ replyLatencyMs: REPLY_LATENCY_MS }) });
-    await store.queryModel(Post);
+    await store.caughtUp();
 
     const started = Date.now();
     const post = await store.transaction(() => new Post("local first"));
@@ -40,7 +40,8 @@ describe("A store transaction", () => {
   it("settles as denied with the reason, instead of throwing", async () => {
     const ownerId = await seedOwner();
     const intruder = new RootStore({ client: connectTestClientAs(`intruder-${id()}@example.com`) });
-    const owner = (await intruder.queryModel(User)).find((user) => user.id === ownerId);
+    await intruder.caughtUp();
+    const owner = intruder.getAll(User).find((user) => user.id === ownerId);
     assertDefined(owner);
 
     const { outcome } = await intruder.transaction(() => { owner.name = "Hacked"; }).settled();
@@ -53,7 +54,7 @@ describe("A store transaction", () => {
   it("settles an offline transaction once the device is back online", async () => {
     const device = await Device.open();
     const store = device.store();
-    await store.queryModel(Post);
+    await store.caughtUp();
     device.goOffline();
 
     const handle = store.transaction(() => new Post("written offline"));
@@ -71,7 +72,7 @@ describe("A store transaction", () => {
   it("stops waiting for the verdict when the caller aborts", async () => {
     const device = await Device.open();
     const store = device.store();
-    await store.queryModel(Post);
+    await store.caughtUp();
     device.goOffline();
     const abort = new AbortController();
 
@@ -102,7 +103,7 @@ describe("A store transaction", () => {
     const device = await Device.open();
     const denials: TransactionOutcome[] = [];
     const store = device.store({ denials });
-    await store.queryModel(Room);
+    await store.caughtUp();
     device.goOffline();
 
     const handle = store.transaction(() => {

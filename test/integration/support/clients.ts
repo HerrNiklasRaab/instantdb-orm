@@ -9,7 +9,7 @@ import { LatentSocket } from "./LatentSocket";
 import type { PausableSqlite } from "./PausableSqlite";
 import { LocalReplica, SyncClient } from "../../../src/client";
 import type { UntypedQuery } from "../../../src/queries";
-import type { RootStore } from "../../../src/object-graph/store/RootStore";
+import { RootStore } from "../../../src/object-graph/store/RootStore";
 import type { Principal, SyncServer } from "../../../src/server";
 import type { SchemaDef } from "@zenstackhq/schema";
 import { schema, type SchemaType } from "../../support/zenstack/client/schema";
@@ -71,6 +71,13 @@ export function writeStraightToPostgres(sql: string): Promise<void> {
 export type TestClient = SyncClient<SchemaType>;
 
 export type TestStore = RootStore<SchemaType>;
+
+/** A store on a new client, holding everything the server had when it was opened. */
+export async function syncedStore(): Promise<TestStore> {
+  const store: TestStore = new RootStore({ client: connectTestClient() });
+  await store.caughtUp();
+  return store;
+}
 
 export interface InspectableClient {
   readonly client: TestClient;

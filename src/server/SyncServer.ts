@@ -43,6 +43,7 @@ export class SyncServer<Schema extends SchemaDef = SchemaDef> {
   readonly unrestrictedRows: RowStore;
   readonly feed: ChangeFeed;
   readonly presence = new PresenceRooms();
+  private readonly writesInFlight = new Set<Promise<void>>();
 
   constructor(
     readonly schema: Schema,
@@ -63,6 +64,18 @@ export class SyncServer<Schema extends SchemaDef = SchemaDef> {
 
   get unrestrictedClient(): DatabaseClient {
     return this.clients.unrestricted;
+  }
+
+  /** Counts `write` as in flight until it settles, for `caughtUp`. */
+  track(write: Promise<void>): void {
+    this.writesInFlight.add(write);
+    void write.finally(() => { this.writesInFlight.delete(write); });
+  }
+
+  /** Resolves once the writes in flight at the call are committed and filed, so announced to their holders. */
+  caughtUp(): Promise<void> {
+    const pending = [...this.writesInFlight];
+    return Promise.allSettled(pending).then(() => this.feed.catchUp());
   }
 
   announce(filing: Filing): void {

@@ -29,7 +29,8 @@ describe("Transactions without permission", () => {
   }
 
   async function ownerAsSeenBy(store: TestStore, ownerId: string): Promise<User> {
-    const owner = (await store.queryModel(User)).find((user) => user.id === ownerId);
+    await store.caughtUp();
+    const owner = store.getAll(User).find((user) => user.id === ownerId);
     assertDefined(owner);
     return owner;
   }
@@ -60,6 +61,7 @@ describe("Transactions without permission", () => {
     expect(intruder.getById(Post, smuggled.id)).toBeUndefined();
 
     expect((await ownerAsSeenBy(auditor, ownerId)).name).toBe("Owner");
-    expect((await auditor.queryModel(Post)).some((post) => post.id === smuggled?.id)).toBe(false);
+    await auditor.caughtUp();
+    expect(auditor.getAll(Post).some((post) => post.id === smuggled?.id)).toBe(false);
   });
 });

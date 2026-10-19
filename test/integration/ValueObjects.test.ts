@@ -4,6 +4,7 @@ import { RootStore } from "../../src/object-graph/store/RootStore";
 import {
   assertDefined,
   connectTestClient,
+  syncedStore,
   type TestClient,
   type TestStore,
 } from "./support/clients";
@@ -136,7 +137,8 @@ describe("ValueObject (Integration)", () => {
         l.slug = new Slug("hydration-test");
         return l;
       });
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       assertDefined(reloaded.slug);
       expect(reloaded.slug).toBeInstanceOf(Slug);
@@ -160,7 +162,8 @@ describe("ValueObject (Integration)", () => {
 
     it("hydrates null when the optional column is null", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.slug).toBeNull();
     });
@@ -168,7 +171,7 @@ describe("ValueObject (Integration)", () => {
 
   describe("change tracking", () => {
     async function reloadUpdatedAt(id: string): Promise<number> {
-      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === id);
+      const reloaded = (await syncedStore()).getAll(Listing).find(l => l.id === id);
       assertDefined(reloaded);
       return reloaded.updatedAt.epochMilliseconds;
     }
@@ -191,7 +194,7 @@ describe("ValueObject (Integration)", () => {
       });
       const after = await reloadUpdatedAt(saved.id);
       expect(after).not.toBe(before);
-      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === saved.id);
+      const reloaded = (await syncedStore()).getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.amount).toBe(60);
     });
@@ -201,7 +204,7 @@ describe("ValueObject (Integration)", () => {
       await storeA.transaction(() => {
         saved.price = new Money(60, "USD");
       });
-      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === saved.id);
+      const reloaded = (await syncedStore()).getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.amount).toBe(60);
       expect(reloaded.price.currency).toBe("USD");
@@ -225,7 +228,7 @@ describe("ValueObject (Integration)", () => {
       });
       const after = await reloadUpdatedAt(saved.id);
       expect(after).not.toBe(before);
-      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === saved.id);
+      const reloaded = (await syncedStore()).getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.tags.equals(new Tags(["a", "c"]))).toBe(true);
     });
@@ -253,7 +256,8 @@ describe("ValueObject (Integration)", () => {
         l.flexPrice = new Price(100, null);
         return l;
       });
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       const flex = reloaded.flexPrice;
       assertDefined(flex);
@@ -265,21 +269,24 @@ describe("ValueObject (Integration)", () => {
   describe("hydration", () => {
     it("hydrates a spread VO into an instance structurally equal to one built via new", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.equals(new Money(50, "EUR"))).toBe(true);
     });
 
     it("hydrates an embedded-JSON VO into an instance structurally equal to one built via new", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags(["a", "b"])));
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.tags.equals(new Tags(["a", "b"]))).toBe(true);
     });
 
     it("freezes hydrated VO instances", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(Object.isFrozen(reloaded.price)).toBe(true);
     });
@@ -291,7 +298,8 @@ describe("ValueObject (Integration)", () => {
         l.slot = slot;
         return l;
       });
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       const reloadedSlot = reloaded.slot;
       assertDefined(reloadedSlot);
@@ -304,7 +312,8 @@ describe("ValueObject (Integration)", () => {
 
     it("hydrates an unset nullable field as null", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.minBid).toBeNull();
     });
@@ -315,7 +324,8 @@ describe("ValueObject (Integration)", () => {
         l.flexPrice = new Price(100, null);
         return l;
       });
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       const flex = reloaded.flexPrice;
       assertDefined(flex);
@@ -340,7 +350,8 @@ describe("ValueObject (Integration)", () => {
           end: { hour: 17, minute: 30 },
         },
       });
-      const reloaded = (await storeB.queryModel(Listing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       const reloadedSchedule = reloaded.schedule;
       assertDefined(reloadedSchedule);
@@ -378,13 +389,13 @@ describe("ValueObject (Integration)", () => {
         return l;
       });
       await client.commit(new Transaction().update("listings", saved.id, { minBidCurrency: null }));
-      await expect(new RootStore({ client: connectTestClient() }).queryModel(Listing)).resolves.toBeDefined();
+      expect((await syncedStore()).getAll(Listing).some((l) => l.id === saved.id)).toBe(true);
     });
 
     it("tolerates all required spread columns being null on a non-nullable field", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags([])));
       await client.commit(new Transaction().update("listings", saved.id, { priceAmount: null, priceCurrency: null }));
-      await expect(new RootStore({ client: connectTestClient() }).queryModel(Listing)).resolves.toBeDefined();
+      expect((await syncedStore()).getAll(Listing).some((l) => l.id === saved.id)).toBe(true);
     });
 
     it("tolerates a required field being null while an optional sibling is set", async () => {
@@ -394,19 +405,19 @@ describe("ValueObject (Integration)", () => {
         return l;
       });
       await client.commit(new Transaction().update("listings", saved.id, { flexPriceAmount: null, flexPriceDiscount: 5 }));
-      await expect(new RootStore({ client: connectTestClient() }).queryModel(Listing)).resolves.toBeDefined();
+      expect((await syncedStore()).getAll(Listing).some((l) => l.id === saved.id)).toBe(true);
     });
 
     it("tolerates a null JSON column on a non-nullable embedded field", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(50, "EUR"), new Tags(["a"])));
       await client.commit(new Transaction().update("listings", saved.id, { tags: null }));
-      await expect(new RootStore({ client: connectTestClient() }).queryModel(Listing)).resolves.toBeDefined();
+      expect((await syncedStore()).getAll(Listing).some((l) => l.id === saved.id)).toBe(true);
     });
 
     it("does not re-run constructor validation on hydration of out-of-range stored data", async () => {
       const saved = await storeA.transaction(() => new Listing(new Money(0, "EUR"), new Tags([])));
       await client.commit(new Transaction().update("listings", saved.id, { priceAmount: -5 }));
-      const reloaded = (await new RootStore({ client: connectTestClient() }).queryModel(Listing)).find(l => l.id === saved.id);
+      const reloaded = (await syncedStore()).getAll(Listing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.amount).toBe(-5);
     });
@@ -415,7 +426,8 @@ describe("ValueObject (Integration)", () => {
   describe("VO-field discovery for constructor-validating models", () => {
     it("discovers VO fields without invoking the Model constructor (nullable field hydrates as null, required field round-trips)", async () => {
       const saved = await storeA.transaction(() => new ValidatingListing(new Money(75, "EUR")));
-      const reloaded = (await storeB.queryModel(ValidatingListing)).find(l => l.id === saved.id);
+      await storeB.caughtUp();
+      const reloaded = storeB.getAll(ValidatingListing).find(l => l.id === saved.id);
       assertDefined(reloaded);
       expect(reloaded.price.equals(new Money(75, "EUR"))).toBe(true);
       expect(reloaded.slot).toBeNull();

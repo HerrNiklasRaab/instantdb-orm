@@ -91,7 +91,7 @@ describe("Linear-style optimistic merge", () => {
    */
   async function applyRemote(fn: (remote: TestStore) => void | Promise<void>): Promise<void> {
     const remote = new RootStore({ client: connectTestClient() });
-    await remote.queryAll();
+    await remote.caughtUp();
     await remote.transaction(async () => {
       await fn(remote);
     });
@@ -121,7 +121,7 @@ describe("Linear-style optimistic merge", () => {
       });
 
       // Subscription / re-query delivers the teammate's change.
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       // Mid-tx view: your edit is intact, teammate's assignee change visible.
       expect(issue.title).toBe("Fix login bug");
@@ -129,7 +129,7 @@ describe("Linear-style optimistic merge", () => {
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
@@ -151,14 +151,14 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.title = "Resolved by Alice";
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       // Your edit is preserved locally even though DB had "Resolved by Alice".
       expect(issue.title).toBe("Fix login bug");
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
@@ -180,13 +180,13 @@ describe("Linear-style optimistic merge", () => {
         remoteUser.name = "Alice Remote";
       });
 
-      await store.queryModel(User);
+      await store.caughtUp();
 
       expect(user.name).toBe("Alice Local");
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(User, user.id);
     assertDefined(stored);
     expect(stored.name).toBe("Alice Local");
@@ -216,14 +216,14 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.tags.push(remoteP0);
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       // User keeps their local addition; tx will commit it.
       expect(issue.tags.map((t) => t.name)).toContain("frontend");
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     const labelNames = stored.tags.map((t) => t.name).sort();
@@ -253,11 +253,11 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.tags.push(remoteP0);
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     const labelNames = stored.tags.map((t) => t.name).sort();
@@ -290,13 +290,13 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.tags.push(remoteP0);
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       expect(issue.tags.map((t) => t.name)).not.toContain("frontend");
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     const labelNames = stored.tags.map((t) => t.name).sort();
@@ -327,13 +327,13 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.author = remoteCharlie;
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       expect(issue.author.id).toBe(alice.id);
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     expect(stored.author?.id).toBe(alice.id);
@@ -362,13 +362,13 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.author = remoteCharlie;
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       expect(issue.author).toBeNull();
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     expect(stored.author).toBeNull();
@@ -398,7 +398,7 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.author = remoteBob;
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
     });
 
     tx.rollback();
@@ -428,7 +428,7 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.content = "Teammate added details";
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       // Title: user's value. Description: live teammate update.
       expect(issue.title).toBe("Fix login bug");
@@ -436,7 +436,7 @@ describe("Linear-style optimistic merge", () => {
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
@@ -466,7 +466,7 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.tags.push(remoteP0);
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       // Title is user's; labels reflect the live teammate update.
       expect(issue.title).toBe("Fix login bug");
@@ -474,7 +474,7 @@ describe("Linear-style optimistic merge", () => {
     });
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
@@ -505,7 +505,7 @@ describe("Linear-style optimistic merge", () => {
         remoteIssue.softDelete();
       });
 
-      await store.queryModel(Post);
+      await store.caughtUp();
 
       // The hydrator's soft-delete path orphaned the model from the
       // identity map. The user's local reference still has their edit
@@ -517,7 +517,7 @@ describe("Linear-style optimistic merge", () => {
 
     // queryModel filters soft-deleted, so the issue is gone from the fresh view.
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     expect(verify.getById(Post, issue.id)).toBeUndefined();
 
     // But the row IS in the DB with the user's title edit on top of the tombstone.
@@ -551,7 +551,7 @@ describe("Linear-style optimistic merge", () => {
     await txB.commit();
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     expect(stored.title).toBe("Fix login bug");
@@ -580,7 +580,7 @@ describe("Linear-style optimistic merge", () => {
     await tx2.commit();
 
     const verify = freshStore();
-    await verify.queryAll();
+    await verify.caughtUp();
     const stored = verify.getById(Post, issue.id);
     assertDefined(stored);
     expect(stored.title).toBe("From tx2");

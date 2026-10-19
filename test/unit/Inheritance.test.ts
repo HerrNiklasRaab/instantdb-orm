@@ -81,7 +81,7 @@ describe("Single-table inheritance in a production bundle", () => {
     const hike = await writer.transaction(() => new HikeTrip());
     const sail = await writer.transaction(() => new SailTrip());
 
-    await reader.query({ invitations: {} });
+    await reader.caughtUp();
 
     expect(reader.getAll(HikeTrip).map((t) => t.id)).toEqual([hike.id]);
     expect(reader.getAll(SailTrip).map((t) => t.id)).toEqual([sail.id]);
@@ -91,7 +91,7 @@ describe("Single-table inheritance in a production bundle", () => {
     const { writer, reader } = await bootStores();
     const written = await writer.transaction(() => new SkiInvitation("Zermatt", "advanced"));
 
-    await reader.query({ invitations: {} });
+    await reader.caughtUp();
 
     expect(reader.getAll(SkiInvitation).map((i) => i.id)).toEqual([written.id]);
   });
@@ -100,7 +100,7 @@ describe("Single-table inheritance in a production bundle", () => {
     const { writer, reader } = await bootStores();
     const written = await writer.transaction(() => new SkiInvitation("Zermatt", "advanced"));
 
-    await reader.query({ invitations: {} });
+    await reader.caughtUp();
 
     expect(reader.getAll(SkiInvitationFromOtherBundle).map((i) => i.id)).toEqual([written.id]);
     expect(reader.getById(SkiInvitation, written.id)?.id).toBe(written.id);
@@ -111,7 +111,7 @@ describe("Single-table inheritance in a production bundle", () => {
     const ski = await writer.transaction(() => new SkiInvitation("Zermatt", "advanced"));
     const chess = await writer.transaction(() => new ChessInvitation("5+0", true));
 
-    await reader.query({ invitations: {} });
+    await reader.caughtUp();
 
     expect(reader.getAll(ChessInvitation).map((i) => i.id)).toEqual([chess.id]);
     expect(reader.getAll(SkiInvitation).map((i) => i.id)).toEqual([ski.id]);
