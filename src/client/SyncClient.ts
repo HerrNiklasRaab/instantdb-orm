@@ -113,7 +113,19 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
 
   /** Answers from the replica as it stands; no server is asked. */
   read(query: UntypedQuery): Promise<QueryResult> {
-    return this.gate.read(async () => (await this.replica).read(query));
+    return this.snapshot((read) => read(query));
+  }
+
+  /**
+   * Runs `use` against one state of the replica: its reads all see the same
+   * rows, and no write, local or the server's, lands until it returns. For
+   * whoever must act on what they read before anything else changes it.
+   */
+  snapshot<T>(use: (read: (query: UntypedQuery) => Promise<QueryResult>) => Promise<T>): Promise<T> {
+    return this.gate.read(async () => {
+      const replica = await this.replica;
+      return use((query) => replica.read(query));
+    });
   }
 
   /** Settled once the first hello has been answered in full, or no server could be reached. */
@@ -159,6 +171,9 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
       await replica.log.addPending(transaction);
     });
     this.refreshSubscriptions();
+    // Reported like any other write: a store adopts the rows of its own new models
+    // from the replica, so they are in its identity map before the server answers.
+    this.replicaChanged(ReplicaChange.ofTransaction(transaction));
     if (this.connected) this.send(commitMessage(transaction));
   }
 

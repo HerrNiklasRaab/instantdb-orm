@@ -1,6 +1,6 @@
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { afterAll } from "vitest";
+import { afterAll, afterEach } from "vitest";
 import { InMemoryPostgres, inMemorySqliteDialect, id as newId } from "@upfor/sync/test";
 import { inProcessSocketPair, type Socket } from "../../../src/protocol";
 import { testTransport } from "./env";
@@ -122,8 +122,19 @@ function connect(
     const socket = openSocket(identityId);
     return latencyMs === undefined ? socket : new LatentSocket(socket, latencyMs);
   };
-  return new SyncClient(schema, open, replica);
+  const client = new SyncClient(schema, open, replica);
+  opened.add(client);
+  return client;
 }
+
+// A client left open keeps receiving every later commit, and the server reads
+// its visible rows for each one: by the end of a file that is dozens of
+// connections queued in front of the test's own round trip.
+const opened = new Set<TestClient>();
+afterEach(() => {
+  for (const client of opened) client.close();
+  opened.clear();
+});
 
 export function openReplica(options: ConnectionOptions = {}): Promise<LocalReplica> {
   return LocalReplica.open(schema, options.sqlite?.dialect ?? inMemorySqliteDialect());

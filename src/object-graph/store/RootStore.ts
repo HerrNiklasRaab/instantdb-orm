@@ -1,7 +1,7 @@
-import { runInAction } from "mobx";
+import { observable, runInAction } from "mobx";
 import type { Settled, TransactionHandle } from "./TransactionHandle";
 import type { SchemaDef } from "@zenstackhq/schema";
-import type { PresenceRoom, SyncClient } from "../../client";
+import { ReplicaChange, type PresenceRoom, type SyncClient } from "../../client";
 import { type QueryResult, type SyncQuery, type UntypedQuery, isRecord, untypedQuery } from "../../queries";
 import { type QuerySubscriptionState } from "../../subscriptions";
 import { type TransactionEffect, type TransactionOutcome } from "../../transactions";
@@ -17,7 +17,6 @@ import { setDebugViewEnabled, Model } from "../Model";
 import { configureEntityMeta, getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
 import { getModelClass, getModelClassForDiscriminator, getSubclasses } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
-import { ReplicaFollower } from "./ReplicaFollower";
 import { getEntityNameFromClass } from "../decorators";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
 import { TransactionContext } from "../persistence/TransactionContext";
@@ -94,7 +93,13 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
   private identityMaps = new Map<string, IdentityMap<Model>>();
   private subscriptions = new Map<string, { close(): void }>();
   private hydrator: ModelHydrator;
-  private readonly follower: ReplicaFollower | null;
+  // Following the replica: everything it holds once the first sync is in, then
+  // the rows each server message wrote or removed, read back from it.
+  private readonly loaded = observable.box(false);
+  private readonly pendingChange = new ReplicaChange();
+  private passScheduled = false;
+  private following: Promise<void> = Promise.resolve();
+  private stopFollowing: (() => void) | null = null;
   readonly client: SyncClient<Schema>;
   readonly subscriptionObserver: SubscriptionObserver;
   // Retained whole: the per-callback stores of `subscribeQueryIsolated` are
@@ -112,11 +117,12 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
     this.initializeIdentityMaps();
     config.client.onTransactionDenied((denial) => { this.takeBack(denial); });
     if (config.onTransactionDenied) config.client.onTransactionDenied(reporterFor(config.onTransactionDenied));
-    this.follower = config.follow === false ? null : this.followReplica();
+    if (config.follow !== false) this.followReplica();
   }
 
   dispose(): void {
-    this.follower?.stop();
+    this.stopFollowing?.();
+    this.stopFollowing = null;
     this.closeSubscriptions();
   }
 
@@ -125,38 +131,96 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
    * read it from an `observer` to hold back UI until the store has the data.
    */
   get synced(): boolean {
-    return this.follower?.synced ?? false;
+    return this.loaded.get();
   }
 
   /** Resolves once everything the server had received when asked is in this store's models. */
   async caughtUp(): Promise<void> {
     await this.client.caughtUp();
-    await this.follower?.idle();
+    await this.following;
   }
 
-  private followReplica(): ReplicaFollower {
-    const getMap = this.getIdentityMapByName.bind(this);
-    const follower = new ReplicaFollower(this.client, {
-      entities: () => getEntityNames(),
-      queryFor: (entity, where) => this.buildQueryWithRelationships({ [entity]: where ? { where } : {} }),
-      hydrate: (entity, rows) => { this.hydrator.hydrateMany(entity, rows, getMap); },
-      hydrateWhole: (entity, rows) => {
-        this.hydrator.hydrateMany(entity, rows, getMap);
-        this.evictAbsent(entity, rows);
-      },
-      evict: (entity, ids) => {
-        const models = getMap(entity);
-        for (const id of ids) {
-          const model = models.get(id);
-          if (model?.isPersisted) this.evictModel(model);
-        }
-      },
-      failed: (error) => {
-        this.subscriptionObserver.degraded({ label: "replica", message: error instanceof Error ? error.message : String(error) });
-      },
+  private followReplica(): void {
+    this.stopFollowing = this.client.onReplicaChanged((change) => {
+      this.pendingChange.absorb(change);
+      this.scheduleFollowPass();
     });
-    follower.start();
-    return follower;
+    this.enqueueFollowPass(async () => {
+      await this.client.ready();
+      await this.client.snapshot(async (read) => {
+        const whole = await this.readWhole(read, getEntityNames());
+        // Everything is read whole: whatever was reported so far is in it.
+        this.pendingChange.clear();
+        runInAction(() => {
+          for (const [entity, rows] of whole) this.hydrateWhole(entity, rows);
+          this.loaded.set(true);
+        });
+      });
+    });
+  }
+
+  private scheduleFollowPass(): void {
+    if (this.passScheduled) return;
+    this.passScheduled = true;
+    this.enqueueFollowPass(() => {
+      this.passScheduled = false;
+      return this.applyPendingChange();
+    });
+  }
+
+  private enqueueFollowPass(pass: () => Promise<void>): void {
+    this.following = this.following.then(pass).catch((error: unknown) => {
+      this.subscriptionObserver.degraded({ label: "replica", message: error instanceof Error ? error.message : String(error) });
+    });
+  }
+
+  // One pass applies every change reported by the time the gate read is held:
+  // the replica may be several messages ahead of the models, and reading its
+  // rows for one message's ids alone would show a row as a later message left
+  // it without the rows that message brought. Under the read nothing more lands,
+  // so what is pending is exactly the replica's lead, read as one state and
+  // hydrated as one action.
+  private async applyPendingChange(): Promise<void> {
+    await this.client.snapshot(async (read) => {
+      const change = this.pendingChange.take();
+      if (change.isEmpty) return;
+      const whole = await this.readWhole(read, change.models().filter(isValidEntityName));
+      const written: [string, RawEntityData[]][] = [];
+      for (const [entity, ids] of change.writtenIds()) {
+        if (!isValidEntityName(entity)) continue;
+        const result = await read(this.buildQueryWithRelationships({ [entity]: { where: { id: { in: ids } } } }));
+        written.push([entity, toRawEntityArray(result[entity])]);
+      }
+      const removed = change.removedIds().filter(([entity]) => isValidEntityName(entity));
+      runInAction(() => {
+        for (const [entity, rows] of whole) this.hydrateWhole(entity, rows);
+        for (const [entity, rows] of written) this.hydrator.hydrateMany(entity, rows, this.getIdentityMapByName.bind(this));
+        for (const [entity, ids] of removed) this.evictPersisted(entity, ids);
+      });
+    });
+  }
+
+  private async readWhole(read: (query: UntypedQuery) => Promise<QueryResult>, entities: readonly string[]): Promise<[string, RawEntityData[]][]> {
+    const whole: [string, RawEntityData[]][] = [];
+    for (const entity of entities) {
+      const result = await read(this.buildQueryWithRelationships({ [entity]: {} }));
+      whole.push([entity, toRawEntityArray(result[entity])]);
+    }
+    return whole;
+  }
+
+  // The model's rows as the replica holds all of them: models it no longer lists leave.
+  private hydrateWhole(entity: string, rows: RawEntityData[]): void {
+    this.hydrator.hydrateMany(entity, rows, this.getIdentityMapByName.bind(this));
+    this.evictAbsent(entity, rows);
+  }
+
+  private evictPersisted(entity: string, ids: readonly string[]): void {
+    const models = this.getIdentityMapByName(entity);
+    for (const id of ids) {
+      const model = models.get(id);
+      if (model?.isPersisted) this.evictModel(model);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

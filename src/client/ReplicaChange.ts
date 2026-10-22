@@ -1,4 +1,5 @@
 import type { QueryResult } from "../queries";
+import type { Transaction } from "../transactions";
 
 /**
  * What one server message changed in the replica: rows written, rows
@@ -9,6 +10,16 @@ export class ReplicaChange {
   private readonly written = new Map<string, Set<string>>();
   private readonly dropped = new Map<string, Set<string>>();
   private readonly wholeModels = new Set<string>();
+
+  /** The rows this client's own transaction wrote or deleted. */
+  static ofTransaction(transaction: Transaction): ReplicaChange {
+    const change = new ReplicaChange();
+    for (const entry of transaction.changes) {
+      if (entry.kind === "delete") change.idsIn(change.dropped, entry.entity).add(entry.id);
+      else change.idsIn(change.written, entry.entity).add(entry.id);
+    }
+    return change;
+  }
 
   static ofRows(rows: QueryResult, removed: Readonly<Record<string, readonly string[]>> = {}): ReplicaChange {
     const change = new ReplicaChange();
@@ -33,6 +44,27 @@ export class ReplicaChange {
 
   addWholeModel(model: string): void {
     this.wholeModels.add(model);
+  }
+
+  /** Everything in `other` as well: the union, for changes applied as one. */
+  absorb(other: ReplicaChange): void {
+    for (const [entity, ids] of other.written) for (const id of ids) this.idsIn(this.written, entity).add(id);
+    for (const [entity, ids] of other.dropped) for (const id of ids) this.idsIn(this.dropped, entity).add(id);
+    for (const model of other.wholeModels) this.wholeModels.add(model);
+  }
+
+  /** Hands over what is accumulated and starts empty. */
+  take(): ReplicaChange {
+    const taken = new ReplicaChange();
+    taken.absorb(this);
+    this.clear();
+    return taken;
+  }
+
+  clear(): void {
+    this.written.clear();
+    this.dropped.clear();
+    this.wholeModels.clear();
   }
 
   get isEmpty(): boolean {
