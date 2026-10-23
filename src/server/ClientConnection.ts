@@ -1,7 +1,7 @@
 import { BucketKey } from "../buckets/BucketKey";
 import type { BucketEntry } from "../buckets/BucketEntry";
 import type { Filing } from "./Filing";
-import type { HeldBuckets } from "../buckets/HeldBuckets";
+import { HeldBuckets } from "../buckets/HeldBuckets";
 import { TouchedRows } from "../buckets/TouchedRows";
 import { Transaction } from "../transactions";
 import type { QueryResult } from "../queries";
@@ -43,6 +43,8 @@ export class ClientConnection implements PresenceOccupant {
     private readonly server: SyncServer,
     private readonly socket: Socket,
     private readonly principal: Principal,
+    /** Told about nothing: its replica gets what it queries, and the verdicts on what it writes. */
+    private readonly pullOnly: boolean = false,
   ) {
     socket.onMessage((frame) => {
       let message: ClientMessage;
@@ -110,7 +112,7 @@ export class ClientConnection implements PresenceOccupant {
   // A membership-like row changed under this identity: its held buckets may
   // have moved, and a gained bucket arrives with everything in it.
   private async rescope(): Promise<ScopeChange | null> {
-    if (!this.held || this.held.holdsEverything) return null;
+    if (!this.held || this.held.holdsEverything || this.pullOnly) return null;
     const previous = this.held;
     this.held = await this.server.heldBy(this.principal);
     const diff = this.held.diff(previous);
@@ -223,7 +225,7 @@ export class ClientConnection implements PresenceOccupant {
    */
   private async hello(cursors: readonly BucketCursor[], generations: Record<string, string>): Promise<void> {
     const tick = await this.principal.currentTick();
-    this.held = await this.server.heldBy(this.principal);
+    this.held = this.pullOnly ? HeldBuckets.none() : await this.server.heldBy(this.principal);
     // A model this server no longer has is as stale as one whose policy
     // changed: the client drops its rows and cursors either way.
     const stale = new Set(Object.entries(generations)

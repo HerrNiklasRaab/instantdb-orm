@@ -25,6 +25,11 @@ export class HeldBuckets {
     return new HeldBuckets(scheme.modelNames().map((model) => BucketKey.whole(model)), true);
   }
 
+  /** A connection that is told about nothing: it reads what it asks for. */
+  static none(): HeldBuckets {
+    return new HeldBuckets([], false);
+  }
+
   static async of(scheme: BucketScheme, identityId: string | null, queries: ParameterQueries): Promise<HeldBuckets> {
     return new HeldBuckets(await scheme.heldKeys(identityId, queries), false);
   }

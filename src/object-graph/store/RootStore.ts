@@ -15,7 +15,7 @@ import {
 import { IdentityMap } from "../IdentityMap";
 import { setDebugViewEnabled, Model } from "../Model";
 import { configureEntityMeta, getEntityNames, isValidEntityName, getEntityLinks, readField, writeField } from "./EntityMeta";
-import { getModelClass, getModelClassForDiscriminator, getSubclasses } from "./ModelRegistry";
+import { getModelClass, getModelClassForDiscriminator, getSubclasses, hasDiscriminatorMapping, isRegisteredModel } from "./ModelRegistry";
 import { ModelHydrator } from "./ModelHydrator";
 import { getEntityNameFromClass } from "../decorators";
 import { ScopedTransaction, type TransactionStoreAccess } from "../persistence/ScopedTransaction";
@@ -100,6 +100,7 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
   private passScheduled = false;
   private following: Promise<void> = Promise.resolve();
   private stopFollowing: (() => void) | null = null;
+  private readonly notFollowed = new Set<string>();
   readonly client: SyncClient<Schema>;
   readonly subscriptionObserver: SubscriptionObserver;
   // Retained whole: the per-callback stores of `subscribeQueryIsolated` are
@@ -148,7 +149,7 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
     this.enqueueFollowPass(async () => {
       await this.client.ready();
       await this.client.snapshot(async (read) => {
-        const whole = await this.readWhole(read, getEntityNames());
+        const whole = await this.readWhole(read, this.followed(getEntityNames()));
         // Everything is read whole: whatever was reported so far is in it.
         this.pendingChange.clear();
         runInAction(() => {
@@ -184,20 +185,35 @@ export class RootStore<Schema extends SchemaDef> implements TransactionStoreAcce
     await this.client.snapshot(async (read) => {
       const change = this.pendingChange.take();
       if (change.isEmpty) return;
-      const whole = await this.readWhole(read, change.models().filter(isValidEntityName));
+      const whole = await this.readWhole(read, this.followed(change.models().filter(isValidEntityName)));
       const written: [string, RawEntityData[]][] = [];
       for (const [entity, ids] of change.writtenIds()) {
-        if (!isValidEntityName(entity)) continue;
+        if (!isValidEntityName(entity) || !this.follows(entity)) continue;
         const result = await read(this.buildQueryWithRelationships({ [entity]: { where: { id: { in: ids } } } }));
         written.push([entity, toRawEntityArray(result[entity])]);
       }
-      const removed = change.removedIds().filter(([entity]) => isValidEntityName(entity));
+      const removed = change.removedIds().filter(([entity]) => isValidEntityName(entity) && this.follows(entity));
       runInAction(() => {
         for (const [entity, rows] of whole) this.hydrateWhole(entity, rows);
         for (const [entity, rows] of written) this.hydrator.hydrateMany(entity, rows, this.getIdentityMapByName.bind(this));
         for (const [entity, ids] of removed) this.evictPersisted(entity, ids);
       });
     });
+  }
+
+  // A table nobody registered a class for (an auth provider's, say) is replicated
+  // but has no models to keep in step; it is left out, and said so once.
+  private followed(entities: readonly string[]): string[] {
+    return entities.filter((entity) => this.follows(entity));
+  }
+
+  private follows(entity: string): boolean {
+    if (isRegisteredModel(entity) || hasDiscriminatorMapping(entity)) return true;
+    if (!this.notFollowed.has(entity)) {
+      this.notFollowed.add(entity);
+      this.subscriptionObserver.degraded({ label: "replica", message: `${entity} has no model class and is not followed` });
+    }
+    return false;
   }
 
   private async readWhole(read: (query: UntypedQuery) => Promise<QueryResult>, entities: readonly string[]): Promise<[string, RawEntityData[]][]> {

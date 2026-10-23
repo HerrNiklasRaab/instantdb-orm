@@ -2,6 +2,9 @@ import type { ZenStackModels } from "../schema/DatabaseClient";
 import type { BucketKey } from "../buckets/BucketKey";
 import { BucketEntry } from "../buckets/BucketEntry";
 import { serverClientOf, type ServerClient } from "../schema/serverClient";
+import { StatementBatch } from "../storage/StatementBatch";
+
+const BUCKET_LOG_COLUMNS = 5;
 
 /** The server's record of which bucket every change was filed under, by log tick. */
 export class BucketLog {
@@ -13,16 +16,16 @@ export class BucketLog {
 
   async file(tick: number, entries: readonly BucketEntry[]): Promise<void> {
     if (entries.length === 0) return;
-    await this.db.bucketLog.createMany({
-      data: entries.map((entry) => ({
-        bucket: entry.bucket,
-        entity: entry.entity,
-        entityId: entry.entityId,
-        removed: entry.removed,
-        tick,
-      })),
-      skipDuplicates: true,
-    });
+    const rows = entries.map((entry) => ({
+      bucket: entry.bucket,
+      entity: entry.entity,
+      entityId: entry.entityId,
+      removed: entry.removed,
+      tick,
+    }));
+    for (const batch of StatementBatch.forColumns(BUCKET_LOG_COLUMNS).split(rows)) {
+      await this.db.bucketLog.createMany({ data: batch, skipDuplicates: true });
+    }
   }
 
   /** Everything filed in `key` by transactions after `tick`, grouped by transaction, oldest first. */

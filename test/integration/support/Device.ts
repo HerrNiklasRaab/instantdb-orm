@@ -3,7 +3,7 @@ import type { TransactionOutcome } from "../../../src/transactions";
 import type { Socket } from "../../../src/protocol";
 import { SyncClient, type LocalReplica } from "../../../src/client";
 import type { SubscriptionFault } from "../../../src/subscriptions";
-import { assertDefined, openReplica, openSocket, registerIdentity, type ConnectionOptions, type TestStore } from "./clients";
+import { assertDefined, openReplica, openSocket, PULL_ONLY_SERVICE, registerIdentity, type ConnectionOptions, type TestStore } from "./clients";
 import { schema, type SchemaType } from "../../support/zenstack/client/schema";
 
 /** Sits between the client and its real socket so the test can cut the line. */
@@ -75,7 +75,7 @@ export class Device {
   }
 
   static async open(email?: string, options: ConnectionOptions = {}): Promise<Device> {
-    const identityId = email === undefined ? null : registerIdentity(email);
+    const identityId = email === undefined ? null : email === PULL_ONLY_SERVICE ? email : registerIdentity(email);
     return new Device(identityId, await openReplica(options), { online: true });
   }
 

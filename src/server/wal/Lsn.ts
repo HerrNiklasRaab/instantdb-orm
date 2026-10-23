@@ -12,6 +12,10 @@ export class Lsn {
     return this.value > other.value;
   }
 
+  isBefore(other: Lsn): boolean {
+    return this.value < other.value;
+  }
+
   toString(): string {
     return `${(this.value >> 32n).toString(16).toUpperCase()}/${(this.value & 0xffffffffn).toString(16).toUpperCase()}`;
   }

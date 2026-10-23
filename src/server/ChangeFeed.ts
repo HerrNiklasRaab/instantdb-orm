@@ -83,16 +83,27 @@ export class ChangeFeed {
   }
 
   private async read(): Promise<void> {
+    const snapshot = await this.logStandbySnapshot();
     const messages = (await this.query(`SELECT data FROM pg_logical_slot_peek_binary_changes('${this.slot}', NULL, NULL, 'proto_version', '1', 'publication_names', '${PUBLICATION}')`,
     )).map((row) => row.data).filter(isBytes);
     const commits = new PgOutputDecoder().decode(messages).map((wal) => new WalCommit(wal, this.tables));
-    const last = commits.at(-1);
-    if (!last) return;
-    const filedUpTo = await this.position();
+    const filedUpTo = commits.length > 0 ? await this.position() : null;
     for (const commit of commits) {
       if (filedUpTo === null || commit.commitLsn.isAfter(filedUpTo)) await this.file(commit);
     }
-    await this.query(`SELECT pg_replication_slot_advance('${this.slot}', '${last.commitLsn.toString()}')`);
+    const last = commits.at(-1);
+    const consumed = last !== undefined && last.commitLsn.isAfter(snapshot) ? last.commitLsn : snapshot;
+    await this.query(`SELECT pg_replication_slot_advance('${this.slot}', '${consumed.toString()}')`);
+  }
+
+  // A slot only releases WAL once it has decoded a running-transactions
+  // record past what it filed; nothing writes one here but a checkpoint, so
+  // the feed logs its own before each read. Without it every read replays
+  // the log from the slot's creation, and Postgres keeps all of it.
+  private async logStandbySnapshot(): Promise<Lsn> {
+    const [row] = await this.query("SELECT pg_log_standby_snapshot()::text AS lsn");
+    if (typeof row?.lsn !== "string") throw new Error("Postgres logged no standby snapshot.");
+    return Lsn.parse(row.lsn);
   }
 
   private async file(commit: WalCommit): Promise<void> {

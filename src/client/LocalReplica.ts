@@ -1,4 +1,5 @@
 import { ZenStackClient, type ClientOptions } from "@zenstackhq/orm";
+import { SqlJsDialect } from "@zenstackhq/orm/dialects/sql.js";
 import type { SchemaDef } from "@zenstackhq/schema";
 import { SyncSchema } from "../schema/SyncSchema";
 import { type Change, type Transaction, type TransactionEffect } from "../transactions";
@@ -32,6 +33,9 @@ function isStub(row: Row): boolean {
  * on top. Confirmed rows enter through pulled queries and through the effects
  * of committed transactions. Its tables follow `ReplicaSchema`.
  */
+/** What `initSqlJs()` resolves to, as far as a replica needs it. */
+export type SqlJsModule = { Database: new () => ConstructorParameters<typeof SqlJsDialect>[0]["sqlJs"] };
+
 export class LocalReplica {
   private constructor(
     private readonly schema: SyncSchema,
@@ -42,6 +46,11 @@ export class LocalReplica {
     readonly log: LocalLog,
     readonly cursors: BucketCursors,
   ) {}
+
+  /** A replica in a fresh in-memory SQLite: a browser tab's, or a server process's cache of what it holds. */
+  static inMemory(schema: SchemaDef, sqlJs: SqlJsModule): Promise<LocalReplica> {
+    return LocalReplica.open(schema, new SqlJsDialect({ sqlJs: new sqlJs.Database() }));
+  }
 
   static async open(schema: SchemaDef, dialect: SqliteDialect): Promise<LocalReplica> {
     const sync = SyncSchema.of(schema);

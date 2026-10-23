@@ -174,7 +174,16 @@ export class SyncClient<Schema extends SchemaDef = SchemaDef> {
     // Reported like any other write: a store adopts the rows of its own new models
     // from the replica, so they are in its identity map before the server answers.
     this.replicaChanged(ReplicaChange.ofTransaction(transaction));
-    if (this.connected) this.send(commitMessage(transaction));
+    if (this.connected) {
+      this.send(commitMessage(transaction));
+      await this.handedOver();
+    }
+  }
+
+  // A transaction's promise means the server has it, not just that the frame was queued:
+  // over a wire that buffers, what another client's `caughtUp` sees would otherwise depend on timing.
+  private handedOver(): Promise<void> {
+    return this.socket?.flushed?.() ?? Promise.resolve();
   }
 
   /**

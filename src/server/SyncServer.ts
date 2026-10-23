@@ -14,6 +14,10 @@ import { Principal } from "./Principal";
 import { PresenceRooms } from "./PresenceRooms";
 import { ReplicatedTables } from "./wal/ReplicatedTables";
 
+export interface AcceptOptions {
+  readonly pullOnly?: boolean;
+}
+
 export interface SyncIdentity {
   readonly id: string;
 }
@@ -103,8 +107,14 @@ export class SyncServer<Schema extends SchemaDef = SchemaDef> {
   }
 
   /** Serves one authenticated socket as `principal`. */
-  accept(socket: Socket, principal: Principal): void {
-    const connection = new ClientConnection(this, socket, principal);
+  /**
+   * Takes a connection in as `principal`. It holds the buckets the principal
+   * may see, so its replica is kept in step with them; `pullOnly` makes it
+   * hold none, so only what it queries reaches its replica — for a server
+   * process that reads per request and must not copy a large table.
+   */
+  accept(socket: Socket, principal: Principal, options: AcceptOptions = {}): void {
+    const connection = new ClientConnection(this, socket, principal, options.pullOnly === true);
     this.connections.add(connection);
     connection.onClose(() => {
       this.connections.delete(connection);

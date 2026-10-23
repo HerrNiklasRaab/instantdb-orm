@@ -5,12 +5,15 @@ import { InMemoryPostgres, inMemorySqliteDialect, id as newId } from "@upfor/syn
 import { inProcessSocketPair, type Socket } from "../../../src/protocol";
 import { testTransport } from "./env";
 import { WebSocketEndpoint } from "./WebSocketEndpoint";
+import { StreamEndpoint, type StreamRoutes } from "./StreamEndpoint";
 import { LatentSocket } from "./LatentSocket";
 import type { PausableSqlite } from "./PausableSqlite";
 import { LocalReplica, SyncClient } from "../../../src/client";
 import type { UntypedQuery } from "../../../src/queries";
 import { RootStore } from "../../../src/object-graph/store/RootStore";
-import type { Principal, SyncServer } from "../../../src/server";
+import { StreamAdmission, type Principal, type SyncServer } from "../../../src/server";
+import { Lsn } from "../../../src/server/wal/Lsn";
+import { isRecord } from "../../../src/queries";
 import type { SchemaDef } from "@zenstackhq/schema";
 import { schema, type SchemaType } from "../../support/zenstack/client/schema";
 import { schema as serverSchema } from "../../support/zenstack/server/schema";
@@ -68,6 +71,20 @@ export function writeStraightToPostgres(sql: string): Promise<void> {
   return postgres.execute(sql);
 }
 
+/** Where the write-ahead log ends right now. */
+export async function walPosition(): Promise<Lsn> {
+  const [row] = await postgres.select("SELECT pg_current_wal_lsn()::text AS lsn");
+  if (!isRecord(row) || typeof row.lsn !== "string") throw new Error("Postgres reported no WAL position.");
+  return Lsn.parse(row.lsn);
+}
+
+/** The oldest WAL the sync server's replication slot still makes Postgres keep. */
+export async function walRetainedFrom(): Promise<Lsn> {
+  const [row] = await postgres.select("SELECT restart_lsn::text AS lsn FROM pg_replication_slots");
+  if (!isRecord(row) || typeof row.lsn !== "string") throw new Error("The sync server has no replication slot.");
+  return Lsn.parse(row.lsn);
+}
+
 export type TestClient = SyncClient<SchemaType>;
 
 export type TestStore = RootStore<SchemaType>;
@@ -84,13 +101,48 @@ export interface InspectableClient {
   readonly replica: LocalReplica;
 }
 
+/** Stands in for the identity of a service connection that pulls but holds no bucket. */
+export const PULL_ONLY_SERVICE = "~service:pull-only";
+
 function principalFor(identityId: string | null): Principal {
-  return identityId === null ? server.unrestricted() : server.principal({ id: identityId });
+  return identityId === null || identityId === PULL_ONLY_SERVICE ? server.unrestricted() : server.principal({ id: identityId });
 }
 
-const endpoint = testTransport() === "websocket"
-  ? await WebSocketEndpoint.listen((socket, identityId) => { server.accept(socket, principalFor(identityId)); })
-  : null;
+/** Hands a socket from any endpoint to whichever server is running now. */
+export function acceptSocket(socket: Socket, identityId: string | null): void {
+  server.accept(socket, principalFor(identityId), { pullOnly: identityId === PULL_ONLY_SERVICE });
+}
+
+const admissions = new WeakMap<SyncServer, StreamAdmission>();
+
+function streamAdmission(): StreamAdmission {
+  let admission = admissions.get(server);
+  if (admission === undefined) {
+    admission = new StreamAdmission(server);
+    admissions.set(server, admission);
+  }
+  return admission;
+}
+
+/** The stream transport's routes, always on whichever server is running now. */
+export const streamRoutes: StreamRoutes = {
+  open: (identityId, signal) => streamAdmission().open(principalFor(identityId), signal, { pullOnly: identityId === PULL_ONLY_SERVICE }),
+  deliver: (connection, identityId, body) => streamAdmission().deliver(connection, principalFor(identityId), body),
+  dropAll: () => { streamAdmission().close(); },
+};
+
+async function listen(): Promise<WebSocketEndpoint | StreamEndpoint | null> {
+  switch (testTransport()) {
+    case "websocket":
+      return WebSocketEndpoint.listen(acceptSocket);
+    case "stream":
+      return StreamEndpoint.listen(streamRoutes);
+    case "in-process":
+      return null;
+  }
+}
+
+const endpoint = await listen();
 
 afterAll(() => {
   endpoint?.close();
@@ -100,7 +152,7 @@ export function openSocket(identityId: string | null): Socket {
   if (down) throw new Error("server is down");
   if (endpoint) return endpoint.connect(identityId);
   const [clientEnd, serverEnd] = inProcessSocketPair();
-  server.accept(serverEnd, principalFor(identityId));
+  acceptSocket(serverEnd, identityId);
   return clientEnd;
 }
 
@@ -110,6 +162,8 @@ export interface ConnectionOptions {
   readonly replyLatencyMs?: number;
   /** The device's SQLite; a fresh in-memory one by default. */
   readonly sqlite?: PausableSqlite;
+  /** Where the client connects; the suite's endpoint by default. */
+  readonly open?: () => Socket;
 }
 
 function connect(
@@ -119,7 +173,7 @@ function connect(
 ): TestClient {
   const latencyMs = options.replyLatencyMs;
   const open = (): Socket => {
-    const socket = openSocket(identityId);
+    const socket = options.open === undefined ? openSocket(identityId) : options.open();
     return latencyMs === undefined ? socket : new LatentSocket(socket, latencyMs);
   };
   const client = new SyncClient(schema, open, replica);
@@ -183,9 +237,14 @@ export function connectTestClient(options: ConnectionOptions = {}): TestClient {
   return connect(null, openReplica(options), options);
 }
 
+/** A service client that is sent nothing it did not ask for. */
+export function connectPullOnlyServiceClient(options: ConnectionOptions = {}): TestClient {
+  return connect(PULL_ONLY_SERVICE, openReplica(options), options);
+}
+
 /** A new client — its own SQLite replica and connection — acting as the user registered under `email`. */
-export function connectTestClientAs(email: string): TestClient {
-  return connect(identities.register(email), openReplica());
+export function connectTestClientAs(email: string, options: ConnectionOptions = {}): TestClient {
+  return connect(identities.register(email), openReplica(options), options);
 }
 
 export function registerIdentity(email: string): string {

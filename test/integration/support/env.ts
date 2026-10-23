@@ -1,6 +1,12 @@
-export type TestTransport = "websocket" | "in-process";
+export type TestTransport = "websocket" | "stream" | "in-process";
 
-/** `SYNC_TEST_TRANSPORT=in-process` skips the WebSocket and links client and server directly. */
+/**
+ * `SYNC_TEST_TRANSPORT=in-process` skips the network and links client and
+ * server directly; `stream` runs the suite over the HTTP stream transport
+ * instead of a WebSocket.
+ */
 export function testTransport(): TestTransport {
-  return process.env.SYNC_TEST_TRANSPORT === "in-process" ? "in-process" : "websocket";
+  const configured = process.env.SYNC_TEST_TRANSPORT;
+  if (configured === "in-process" || configured === "stream") return configured;
+  return "websocket";
 }

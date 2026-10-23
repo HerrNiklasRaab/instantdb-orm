@@ -30,8 +30,9 @@ describe("New model routing (Plan A)", () => {
     assertDefined(userA);
     assertDefined(userB);
     expect(storeA.getById(User, userA.id)).toBe(userA);
-    expect(storeA.getById(User, userB.id)).toBeUndefined();
     expect(storeB.getById(User, userB.id)).toBe(userB);
-    expect(storeB.getById(User, userA.id)).toBeUndefined();
+    // The other store may already hold the replicated row, but never the model made elsewhere.
+    expect(storeA.getById(User, userB.id)).not.toBe(userB);
+    expect(storeB.getById(User, userA.id)).not.toBe(userA);
   });
 });
